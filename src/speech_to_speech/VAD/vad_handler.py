@@ -119,9 +119,14 @@ class VADHandler(BaseHandler[VADIn, VADOut]):
             unanswered_reopen_ms,
             self.smart_turn_max_wait_ms if smart_turn else 0,
         )
+        # 本地加载 Silero VAD：运行时容器无法直连 github.com（被网络拦截/代理死链，
+        # torch.hub 去 github 拉取 zipball 会 Connection refused），故构建期已将仓库
+        # 预置到 /opt/silero-vad，使用 source="local" 从本地目录加载，权重随仓库自带、
+        # 无需联网。
         self.model, _ = torch.hub.load(
-            "snakers4/silero-vad:master",
+            "/opt/silero-vad",
             "silero_vad",
+            source="local",
             trust_repo=True,
             skip_validation=True,
         )

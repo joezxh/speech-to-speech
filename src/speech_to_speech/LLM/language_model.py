@@ -23,6 +23,7 @@ from transformers import (
     AutoModelForImageTextToText,
     AutoProcessor,
     AutoTokenizer,
+    BitsAndBytesConfig,
     Pipeline,
     PreTrainedModel,
     PreTrainedTokenizerBase,
@@ -187,6 +188,8 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         stream_batch_sentences: int = 3,
         enable_lang_prompt: bool = False,
         compact_history: bool = False,
+        load_in_8bit: bool = False,
+        load_in_4bit: bool = False,
         **_kwargs: Any,
     ) -> None:
         self.backend = backend
@@ -198,7 +201,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         self.stream_batch_sentences = max(1, stream_batch_sentences)
         self.enable_lang_prompt = enable_lang_prompt
 
-        self._load_model(model_name, device, torch_dtype, gen_kwargs)
+        self._load_model(model_name, device, torch_dtype, gen_kwargs, load_in_8bit, load_in_4bit)
 
         self.user_role = user_role
         # Serializes transformers pipe/model.generate calls between the speech
@@ -222,6 +225,8 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
         device: str,
         torch_dtype: str,
         gen_kwargs: dict[str, Any],
+        load_in_8bit: bool = False,
+        load_in_4bit: bool = False,
     ) -> None:
         """Load the model, tokenizer, and any backend-specific resources."""
 
@@ -812,7 +817,15 @@ class LanguageModelHandler(BaseLanguageModelHandler):
         logger.info(f"LLM Backend: {self.backend}")
         self.warmup()
 
-    def _load_model(self, model_name: str, device: str, torch_dtype: str, gen_kwargs: dict[str, Any]) -> None:
+    def _load_model(
+        self,
+        model_name: str,
+        device: str,
+        torch_dtype: str,
+        gen_kwargs: dict[str, Any],
+        load_in_8bit: bool = False,
+        load_in_4bit: bool = False,
+    ) -> None:
 
         logger.info("LLM Language Model Handler setup")
 
@@ -824,9 +837,19 @@ class LanguageModelHandler(BaseLanguageModelHandler):
         else:
             self.torch_dtype = getattr(torch, torch_dtype)
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)  # type: ignore[assignment]
+            quant_kwargs: dict[str, Any] = {}
+            if load_in_4bit:
+                quant_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
+            elif load_in_8bit:
+                quant_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
             self.model = AutoModelForCausalLM.from_pretrained(
-                model_name, torch_dtype=torch_dtype, trust_remote_code=True
-            ).to(device)  # type: ignore[arg-type]
+                model_name,
+                torch_dtype=torch_dtype,
+                trust_remote_code=True,
+                **quant_kwargs,
+            )
+            if not quant_kwargs:
+                self.model = self.model.to(device)
             self.pipe = pipeline(  # type: ignore[call-overload]
                 "text-generation", model=self.model, tokenizer=self.tokenizer, device=device
             )
@@ -834,7 +857,7 @@ class LanguageModelHandler(BaseLanguageModelHandler):
                 self.tokenizer,  # type: ignore[arg-type]
                 skip_prompt=True,
                 skip_special_tokens=True,
-                timeout=1.0,
+                timeout=60.0,
             )
             self._cancel_criteria = _CancelCriteria()
             self.gen_kwargs = {
@@ -1006,7 +1029,15 @@ class VisionLanguageModelHandler(BaseLanguageModelHandler):
         super().setup(**kwargs)
         logger.info(f"VLM Backend: {self.backend}")
 
-    def _load_model(self, model_name: str, device: str, torch_dtype: str, gen_kwargs: dict[str, Any]) -> None:
+    def _load_model(
+        self,
+        model_name: str,
+        device: str,
+        torch_dtype: str,
+        gen_kwargs: dict[str, Any],
+        load_in_8bit: bool = False,
+        load_in_4bit: bool = False,
+    ) -> None:
 
         logger.info("VLM Language Model Handler setup")
 
@@ -1022,14 +1053,24 @@ class VisionLanguageModelHandler(BaseLanguageModelHandler):
             self.torch_dtype = getattr(torch, torch_dtype)
             self.processor = AutoProcessor.from_pretrained(model_name, trust_remote_code=True)  # type: ignore[assignment]
             self.tokenizer = self.processor.tokenizer  # type: ignore[assignment]
+            quant_kwargs: dict[str, Any] = {}
+            if load_in_4bit:
+                quant_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
+            elif load_in_8bit:
+                quant_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
             self.model = AutoModelForImageTextToText.from_pretrained(
-                model_name, torch_dtype=self.torch_dtype, trust_remote_code=True
-            ).to(device)  # type: ignore[arg-type]
+                model_name,
+                torch_dtype=self.torch_dtype,
+                trust_remote_code=True,
+                **quant_kwargs,
+            )
+            if not quant_kwargs:
+                self.model = self.model.to(device)
             self.streamer = TextIteratorStreamer(
                 self.tokenizer,  # type: ignore[arg-type]
                 skip_prompt=True,
                 skip_special_tokens=True,
-                timeout=1.0,
+                timeout=60.0,
             )
             self._cancel_criteria = _CancelCriteria()
             self.gen_kwargs = gen_kwargs

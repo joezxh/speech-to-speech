@@ -15,6 +15,20 @@ class LanguageModelHandlerArguments(LanguageModelBaseArguments):
             "help": "The PyTorch data type for the model and input tensors. One of `float32` (full-precision), `float16` or `bfloat16` (both half-precision)."
         },
     )
+    llm_load_in_8bit: bool = field(
+        default=False,
+        metadata={
+            "help": "Load the LLM with bitsandbytes 8-bit quantization (transformers backend only). "
+            "Cuts VRAM of a 4B model from ~8GB (fp16) to ~4GB with near-lossless quality."
+        },
+    )
+    llm_load_in_4bit: bool = field(
+        default=False,
+        metadata={
+            "help": "Load the LLM with bitsandbytes 4-bit (NF4) quantization (transformers backend only). "
+            "Overrides --llm_load_in_8bit. Cuts VRAM of a 4B model to ~2.1GB at a small quality cost."
+        },
+    )
     llm_gen_max_new_tokens: int = field(
         default=1024,
         metadata={"help": "Maximum number of new tokens to generate in a single completion. Default is 1024."},
