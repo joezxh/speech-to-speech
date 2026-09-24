@@ -40,6 +40,7 @@ from speech_to_speech.pipeline.messages import (
 from speech_to_speech.pipeline.speculative_turns import SpeculativeTurnTracker
 from speech_to_speech.pipeline.transcript_logging import log_exception
 from speech_to_speech.utils.mlx_lock import MLXLockContext
+from speech_to_speech.utils.model_monitor import _truncate
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -566,8 +567,9 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
                     logger.warning("Qwen3-TTS backend warmup failed: %s", e)
 
         try:
-            for _ in self._warmup_process("Hello, this is a warmup."):
-                pass
+            with self.monitor.trace("TTS", self.model_name, input={"warmup": True}):
+                for _ in self._warmup_process("Hello, this is a warmup."):
+                    pass
             logger.info(f"{self.__class__.__name__} warmed up")
         except Exception as e:
             logger.warning(f"Warmup generation failed: {e}")
@@ -844,26 +846,52 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
 
         console.print(f"[green]ASSISTANT: {text}")
 
-        try:
-            if self._has_voice_clone_reference():
-                audio_iter = self._process_voice_clone(text)
-            elif model_type == "custom_voice":
-                audio_iter = self._process_custom_voice(text)
-            elif model_type == "voice_design":
-                audio_iter = self._process_voice_design(text)
-            else:
-                raise ValueError(
-                    "Qwen3-TTS Base model requires a voice-clone reference. "
-                    "Provide qwen3_tts_ref_audio or qwen3_tts_ref_spk, or use a CustomVoice/VoiceDesign model."
+        total_audio_bytes = 0
+        with self.monitor.trace(
+            "TTS",
+            self.model_name,
+            input={
+                "text": _truncate(text),
+                "text_length": len(text),
+                "language": self.language,
+                "speaker": self.speaker,
+                "model_type": model_type,
+                "backend": self.backend,
+                "device": getattr(self, "device", None),
+            },
+        ) as rec:
+            try:
+                if self._has_voice_clone_reference():
+                    audio_iter = self._process_voice_clone(text)
+                elif model_type == "custom_voice":
+                    audio_iter = self._process_custom_voice(text)
+                elif model_type == "voice_design":
+                    audio_iter = self._process_voice_design(text)
+                else:
+                    raise ValueError(
+                        "Qwen3-TTS Base model requires a voice-clone reference. "
+                        "Provide qwen3_tts_ref_audio or qwen3_tts_ref_spk, or use a CustomVoice/VoiceDesign model."
+                    )
+                first_audio = True
+                for audio_chunk in audio_iter:
+                    if first_audio:
+                        self._log_first_audio_latency(tts_input)
+                        first_audio = False
+                    if isinstance(audio_chunk, (bytes, bytearray)):
+                        total_audio_bytes += len(audio_chunk)
+                    else:
+                        total_audio_bytes += getattr(audio_chunk, "nbytes", 0)
+                    yield audio_chunk
+                rec.set_output(
+                    audio_bytes=total_audio_bytes,
+                    sample_rate=PIPELINE_SR,
+                    audio_duration_s=(
+                        round(total_audio_bytes / (PIPELINE_SR * 2), 3) if total_audio_bytes else 0.0
+                    ),
                 )
-            first_audio = True
-            for audio_chunk in audio_iter:
-                if first_audio:
-                    self._log_first_audio_latency(tts_input)
-                    first_audio = False
-                yield audio_chunk
-        except Exception as exc:
-            log_exception(logger, "Error during Qwen3-TTS generation", exc)
+            except Exception as exc:
+                rec.error = f"{type(exc).__name__}: {exc}"
+                log_exception(logger, "Error during Qwen3-TTS generation", exc)
 
     def _log_first_audio_latency(self, tts_input: TTSInput) -> None:
         if tts_input.speech_stopped_at_s is None:

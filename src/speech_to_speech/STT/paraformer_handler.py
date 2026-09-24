@@ -10,6 +10,7 @@ from rich.console import Console
 from speech_to_speech.pipeline.handler_types import STTIn, STTOut
 from speech_to_speech.pipeline.messages import PartialTranscription, Transcription
 from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
+from speech_to_speech.utils.model_monitor import audio_summary, _truncate
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class ParaformerSTTHandler(BaseSTTHandler):
             model_name = model_name.split("/")[-1]
         self.language = model_name.split("-")[1] if "-" in model_name else "zh"
         self.device = device
+        self.model_name = model_name
         try:
             from funasr import AutoModel
         except ModuleNotFoundError as exc:
@@ -50,16 +52,28 @@ class ParaformerSTTHandler(BaseSTTHandler):
         # 2 warmup steps for no compile or compile mode with CUDA graphs capture
         n_steps = 1
         dummy_input = np.array([0] * 512, dtype=np.float32)
-        for _ in range(n_steps):
-            _ = self.model.generate(dummy_input)[0]["text"].strip().replace(" ", "")
+        with self.monitor.trace("STT", self.model_name, input={"warmup": True}):
+            for _ in range(n_steps):
+                _ = self.model.generate(dummy_input)[0]["text"].strip().replace(" ", "")
 
     def process(self, vad_audio: STTIn) -> Iterator[STTOut]:
         logger.debug("infering paraformer...")
 
-        pred_text = self.model.generate(vad_audio.audio)[0]["text"].strip().replace(" ", "")
-        # Same idea as ChatTTSHandler: MPS cache clear only on Apple Silicon.
-        if self.device == "mps":
-            torch.mps.empty_cache()
+        audio = getattr(vad_audio, "audio", None)
+        with self.monitor.trace(
+            "STT",
+            self.model_name,
+            input={
+                "mode": getattr(vad_audio, "mode", None),
+                "language": self.language,
+                "audio": audio_summary(audio) if audio is not None else {},
+            },
+        ) as rec:
+            pred_text = self.model.generate(vad_audio.audio)[0]["text"].strip().replace(" ", "")
+            # Same idea as ChatTTSHandler: MPS cache clear only on Apple Silicon.
+            if self.device == "mps":
+                torch.mps.empty_cache()
+            rec.set_output(text=_truncate(pred_text), text_length=len(pred_text))
 
         logger.debug("finished paraformer inference")
         console.print(f"[yellow]USER: {pred_text}")

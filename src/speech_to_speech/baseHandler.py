@@ -15,6 +15,7 @@ from speech_to_speech.pipeline.events import PipelineEvent, TokenUsageEvent
 from speech_to_speech.pipeline.log_context import pipeline_log_ctx
 from speech_to_speech.pipeline.messages import PIPELINE_END, AudioOutput, EndOfResponse, TTSInput
 from speech_to_speech.pipeline.transcript_logging import log_exception
+from speech_to_speech.utils.model_monitor import get_model_monitor
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,9 @@ class BaseHandler(Generic[InT, OutT]):
         self.queue_in = queue_in
         self.queue_out = queue_out
         self.pipeline_index: int | None = None
+        # Shared monitor used by model handlers (TTS / STT / LLM) to record
+        # per-call latency, resource usage and input/output payloads.
+        self.monitor = get_model_monitor()
         self.setup(*setup_args, **setup_kwargs)
         self._times: list[float] = []
 

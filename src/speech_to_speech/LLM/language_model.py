@@ -70,6 +70,7 @@ from speech_to_speech.pipeline.messages import (
 )
 from speech_to_speech.pipeline.speculative_turns import SpeculativeTurnTracker
 from speech_to_speech.pipeline.transcript_logging import log_exception, transcript_for_log
+from speech_to_speech.utils.model_monitor import _truncate
 from speech_to_speech.utils.utils import is_out_of_band, response_wants_audio
 
 try:
@@ -673,26 +674,44 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             history_rolled_back = True
 
         try:
-            for chunk in self._generate(active_chat, language_code, gen, ctx, runtime_config, response):
-                chunk.response_key = request.response_key
-                chunk.prefetch_transaction = request.prefetch_transaction
-                new_parts = [part.model_copy(deep=True) for part in chunk.parts]
-                ctx.output_parts.extend(new_parts)
-                if not out_of_band and any(isinstance(part, AssistantToolCallPart) for part in new_parts):
-                    recorded = self._commit_ordered_output(
-                        original_chat,
-                        ctx.output_parts[ctx.history_parts_committed :],
-                        wants_audio=response_wants_audio(response),
-                        response_key=request.response_key,
-                        recorded_item_ids=ctx.recorded_item_ids,
-                        recorded_call_ids=ctx.recorded_call_ids,
-                        after_item_id=history_anchor_id,
-                    )
-                    if not recorded:
-                        ctx.cancelled = True
-                        break
-                    ctx.history_parts_committed = len(ctx.output_parts)
-                yield chunk
+            with self.monitor.trace(
+                "LLM",
+                self.model_name,
+                input={
+                    "turn_id": ctx.turn_id,
+                    "turn_revision": ctx.turn_revision,
+                    "language_code": language_code,
+                    "backend": self.backend,
+                },
+            ) as rec:
+                for chunk in self._generate(active_chat, language_code, gen, ctx, runtime_config, response):
+                    chunk.response_key = request.response_key
+                    chunk.prefetch_transaction = request.prefetch_transaction
+                    new_parts = [part.model_copy(deep=True) for part in chunk.parts]
+                    ctx.output_parts.extend(new_parts)
+                    if not out_of_band and any(isinstance(part, AssistantToolCallPart) for part in new_parts):
+                        recorded = self._commit_ordered_output(
+                            original_chat,
+                            ctx.output_parts[ctx.history_parts_committed :],
+                            wants_audio=response_wants_audio(response),
+                            response_key=request.response_key,
+                            recorded_item_ids=ctx.recorded_item_ids,
+                            recorded_call_ids=ctx.recorded_call_ids,
+                            after_item_id=history_anchor_id,
+                        )
+                        if not recorded:
+                            ctx.cancelled = True
+                            break
+                        ctx.history_parts_committed = len(ctx.output_parts)
+                    yield chunk
+
+                rec.set_output(
+                    generated_text=_truncate(ctx.raw_generated_text),
+                    generated_text_length=len(ctx.raw_generated_text),
+                    tool_calls=len(ctx.tools),
+                    input_tokens=ctx.input_tokens,
+                    output_parts=len(ctx.output_parts),
+                )
 
             if ctx.stopped:
                 return
@@ -836,18 +855,33 @@ class LanguageModelHandler(BaseLanguageModelHandler):
             self.gen_kwargs = gen_kwargs
         else:
             self.torch_dtype = getattr(torch, torch_dtype)
+            # Allow TF32 in fp32 matmuls (bitsandbytes dequant path) and cuDNN:
+            # small, safe speed-up for 4-bit/8-bit decode with negligible quality cost.
+            try:
+                torch.backends.cuda.matmul.allow_tf32 = True
+                torch.backends.cudnn.allow_tf32 = True
+            except Exception:
+                pass
             self.tokenizer = AutoTokenizer.from_pretrained(model_name)  # type: ignore[assignment]
             quant_kwargs: dict[str, Any] = {}
             if load_in_4bit:
                 quant_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_4bit=True)
             elif load_in_8bit:
                 quant_kwargs["quantization_config"] = BitsAndBytesConfig(load_in_8bit=True)
-            self.model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                torch_dtype=torch_dtype,
-                trust_remote_code=True,
+            # Use PyTorch SDPA (FlashAttention-2 when the arch supports it) for
+            # faster prefill/decode and lower attention memory vs. the eager path.
+            # Safe for 4-bit/8-bit (bitsandbytes) weights; negligible quality impact.
+            try:
+                torch.backends.cuda.enable_cudnn_sdp(True)  # type: ignore[attr-defined]
+            except Exception:
+                pass
+            load_kwargs: dict[str, Any] = {
+                "torch_dtype": torch_dtype,
+                "trust_remote_code": True,
+                "attn_implementation": "sdpa",
                 **quant_kwargs,
-            )
+            }
+            self.model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
             if not quant_kwargs:
                 self.model = self.model.to(device)
             self.pipe = pipeline(  # type: ignore[call-overload]
@@ -996,11 +1030,12 @@ class LanguageModelHandler(BaseLanguageModelHandler):
                 torch.cuda.synchronize()
                 start_event.record()
 
-            for _ in range(n_steps):
-                thread = Thread(target=self.pipe, args=(dummy_chat,), kwargs=warmup_gen_kwargs)
-                thread.start()
-                for _ in self.streamer:
-                    pass
+            with self.monitor.trace("LLM", self.model_name, input={"warmup": True}):
+                for _ in range(n_steps):
+                    thread = Thread(target=self.pipe, args=(dummy_chat,), kwargs=warmup_gen_kwargs)
+                    thread.start()
+                    for _ in self.streamer:
+                        pass
 
             if self.device == "cuda":
                 end_event.record()
