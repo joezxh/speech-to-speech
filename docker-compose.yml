@@ -4,15 +4,18 @@ services:
   llama:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda
     command:
-      - -hf
-      - ggml-org/gemma-4-E4B-it-GGUF
+      - -m
+      - /root/.cache/qwen35-4b/Qwen3.5-4B-Q4_K_M.gguf
       - -np
-      - "2"
+      - "1"
       - -c
-      - "65536"
+      - "8192"
       - -fa
       - "on"
-      - --swa-full
+      - -ctk
+      - q8_0
+      - -ctv
+      - q8_0
       - --host
       - 0.0.0.0
       - --port
@@ -30,8 +33,11 @@ services:
               capabilities: [gpu]
 
   pipeline:
-    depends_on:
-      - llama
+    # 端侧 LLM（llama）已停用，仅用云端 LLM（百炼）；如需回退端侧，
+    # 取消注释 depends_on 并 `docker compose up -d llama`
+    # depends_on:
+    #   llama:
+    #     condition: service_healthy
     build:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile}
@@ -44,22 +50,67 @@ services:
       - "8765"
       - --llm_backend
       - responses-api
+      # --- 云端 LLM 对比（百炼开源模型；回退端侧 llama.cpp 用注释里的原值）---
+      # 端侧基线: --model_name Qwen3.5-4B-Q4_K_M / --responses_api_base_url http://llama:8080/v1 / --responses_api_api_key ""
       - --model_name
-      - ggml-org/gemma-4-E4B-it-GGUF
+      - qwen3-8b
       - --responses_api_base_url
-      - http://llama:8080/v1
+      - https://dashscope.aliyuncs.com/compatible-mode/v1
       - --responses_api_api_key
-      - ""
+      - ${DASHSCOPE_API_KEY}
       - --init_chat_role
       - system
       - --init_chat_prompt
       - "You are a helpful assistant"
+      - --qwen3_tts_backend
+      - torch
+      - --qwen3_tts_device
+      - cuda
+      - --stream_batch_sentences
+      - "1"
+      - --stt
+      - paraformer
+      - --paraformer_stt_device
+      - cuda
+      # --- 性能优化：降低首包延迟(TTFA)，对体感延迟最有效 ---
+      # Qwen3-TTS 实测 throughput 已 >1x 实时(eager 在长音频上 speedup≈2.2)，
+      # 不是瓶颈；真正影响"用户说完到助手开口"的是首包延迟。
+      # 开启句内流式解码 + 更小音频块(默认8→4, 每块~320ms)，让第一块更早送出。
+      - --qwen3_tts_non_streaming_mode
+      - "False"
+      - --qwen3_tts_streaming_chunk_size
+      - "4"
+      # --- VAD / Smart-Turn 重开宽限调优（降低首响延迟 + 抑制 speculative reopen 抖动）---
+      # 原默认：speculative_reopen_ms=800, unanswered_reopen_ms=7000,
+      #         smart_turn_max_wait_ms=2000, smart_turn_incomplete_delay_ms=600, min_silence_ms=64
+      # 实测 live 会话中 Smart Turn 判定 complete(p~0.98) 后仍保留 800ms 重开宽限，且
+      # unanswered_reopen_ms=7000 让未提交 turn 在 7s 内可反复重开，单句被拆成数十次
+      # STT/LLM（大量 cancel task），首响被拖到 19s+。收紧后用户说完→开口 ≈
+      # grace(250) + STT(~2.5) + LLM(~0.8) + TTFA(0.5) ≈ 4s 量级。
+      - --min_silence_ms
+      - "200"
+      - --speculative_reopen_ms
+      - "250"
+      - --unanswered_reopen_ms
+      - "1500"
+      - --smart_turn_max_wait_ms
+      - "1000"
+      - --smart_turn_incomplete_delay_ms
+      - "300"
+    environment:
+      # 容器内 HuggingFace 出口不稳（SSL EOF），而模型权重/配置已完整缓存
+      # 在本地 ./cache。离线模式避免启动时对 processor_config.json 等「本就
+      # 不存在」的可选文件反复联网 HEAD 重试，导致 pipeline 卡死在加载阶段。
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - TOKENIZERS_PARALLELISM=false
     expose:
       - 8765/tcp
     ports:
       - 8765:8765/tcp
     volumes:
       - ./cache/:/root/.cache/
+      - ../.silero-dl2/silero-vad-master:/opt/silero-vad:ro
     deploy:
       resources:
         reservations:

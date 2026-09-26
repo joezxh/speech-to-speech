@@ -151,15 +151,94 @@ class ResponsesApiModelHandler(BaseOpenAICompatibleHandler):
     def _serialize(self, active_chat: Chat) -> Any:
         return active_chat.to_responses_api_chat()
 
+    @staticmethod
+    def _provider_safe_tools(req_tools: Any) -> list[Any]:
+        """Coerce tools to plain dicts and make their schemas provider-safe.
+
+        DashScope/Bailian ``/responses`` rejects function tools whose
+        ``parameters`` lacks the ``required`` key — even a zero-arg
+        ``{"type":"object","properties":{}}`` fails the whole response with
+        InvalidParameter ("must conform to a valid openai-compatible JSON
+        schema"), while OpenAI and llama.cpp accept it. Adding
+        ``"required": []`` when missing is a no-op for the model and is
+        accepted by all providers.
+        """
+        tools: list[Any] = []
+        for tool in req_tools:
+            if hasattr(tool, "model_dump"):
+                tool = tool.model_dump(exclude_none=True)
+            elif not isinstance(tool, dict):
+                try:
+                    tool = dict(tool)
+                except Exception:
+                    tools.append(tool)
+                    continue
+            params = tool.get("parameters")
+            if isinstance(params, dict) and "required" not in params:
+                params = dict(params)
+                params["required"] = []
+                tool = dict(tool)
+                tool["parameters"] = params
+            tools.append(tool)
+        return tools
+
     def _build_optional_kwargs(self, req_tools: Any, req_tool_choice: Any) -> dict[str, Any]:
         optional_kwargs = self._reasoning_kwargs()
         if req_tools is not None:
-            optional_kwargs["tools"] = req_tools
+            optional_kwargs["tools"] = self._provider_safe_tools(req_tools)
         if req_tool_choice is not None:
             optional_kwargs["tool_choice"] = req_tool_choice
         return optional_kwargs
 
+    def _serialize(self, active_chat: Chat) -> Any:
+        return self._provider_safe_input(active_chat.to_responses_api_chat())
+
+    @staticmethod
+    def _provider_safe_input(api_input: Any) -> Any:
+        """Replace ``function_call_output`` history items with plain user text.
+
+        DashScope/Bailian ``/responses`` internally maps tool outputs to chat
+        messages with ``role: "tool"`` and then rejects them ("role: tool must
+        be one of user,assistant,system,function" — QwenAgentError 50004),
+        failing every request after the first tool call. Keeping the
+        structured ``function_call`` item and textifying only the output is
+        accepted by OpenAI, llama.cpp and DashScope alike.
+        """
+        result: list[Any] = []
+        for item in api_input:
+            itype = item.get("type") if isinstance(item, dict) else getattr(item, "type", None)
+            if itype == "function_call_output":
+                if isinstance(item, dict):
+                    call_id = item.get("call_id", "")
+                    output = item.get("output", "")
+                else:
+                    call_id = getattr(item, "call_id", "")
+                    output = getattr(item, "output", "")
+                result.append(
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": f"[tool result for {call_id}] {output}"}],
+                    }
+                )
+            else:
+                result.append(item)
+        return result
+
     def _request(self, api_input: Any, optional_kwargs: dict[str, Any]) -> Any:
+        # DEBUG(dashscope): dump request payload for offline inspection; remove once stable
+        try:
+            import json as _json
+
+            with open("/tmp/last_llm_request.json", "w", encoding="utf-8") as _f:
+                _json.dump(
+                    {"model": self.model_name, "input": api_input, "kwargs": optional_kwargs, "extra": self._extra_body},
+                    _f,
+                    ensure_ascii=False,
+                    default=str,
+                )
+        except Exception:
+            pass
         return self.client.responses.create(
             model=self.model_name,
             input=api_input,
@@ -177,6 +256,25 @@ class ResponsesApiModelHandler(BaseOpenAICompatibleHandler):
 
     def _iter_stream_events(self, api_response: Stream) -> Iterator[ProviderEvent]:
         for raw_event in api_response:
+            # DEBUG(dashscope): surface failed/unknown stream events; remove once stable
+            _et = getattr(raw_event, "type", None)
+            if _et == "response.failed":
+                _err = getattr(getattr(raw_event, "response", None), "error", None)
+                logger.error("DashScope response.failed: %s", _err)
+            elif _et not in {
+                "response.created",
+                "response.in_progress",
+                "response.output_item.added",
+                "response.output_item.done",
+                "response.content_part.added",
+                "response.content_part.done",
+                "response.output_text.delta",
+                "response.output_text.done",
+                "response.output_audio_transcript.delta",
+                "response.output_audio_transcript.done",
+                "response.completed",
+            }:
+                logger.info("DashScope stream event: %s", _et)
             if isinstance(raw_event, ResponseTextDeltaEvent):
                 yield TextDelta(text=raw_event.delta)
             elif isinstance(raw_event, ResponseOutputItemDoneEvent):

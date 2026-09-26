@@ -56,14 +56,21 @@ from speech_to_speech.utils.thread_manager import ThreadManager
 from speech_to_speech.VAD.vad_handler import VADHandler
 
 # Ensure that the necessary NLTK resources are available
-try:
-    nltk.data.find("tokenizers/punkt_tab")
-except (LookupError, OSError):
-    nltk.download("punkt_tab")
-try:
-    nltk.data.find("tokenizers/averaged_perceptron_tagger_eng")
-except (LookupError, OSError):
-    nltk.download("averaged_perceptron_tagger_eng")
+for _pkg, _path in (
+    ("punkt", "tokenizers/punkt"),
+    ("punkt_tab", "tokenizers/punkt_tab"),
+    ("averaged_perceptron_tagger_eng", "tokenizers/averaged_perceptron_tagger_eng"),
+):
+    try:
+        nltk.data.find(_path)
+    except Exception:
+        try:
+            nltk.download(_pkg)
+        except Exception:
+            # Non-fatal: offline / blocked egress (e.g. container SSRF guard).
+            # sent_tokenize falls back to a regex splitter when 'punkt' is
+            # missing, so the pipeline still runs.
+            pass
 
 # caching allows ~50% compilation time reduction
 # see https://docs.google.com/document/d/1y5CRfMLdwEoF1nTk9q8qEu1mgMUuUtvhklPKJ2emLU8/edit#heading=h.o2asbxsrp1ma

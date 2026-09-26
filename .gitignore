@@ -232,3 +232,4 @@ uv.lock
 
 # JavaScript dependencies
 node_modules/
+/cache/

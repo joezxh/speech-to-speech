@@ -96,6 +96,16 @@ def _has_unclosed_markdown_fence(text: str) -> bool:
     return opening_ticks is not None
 
 
+def _regex_sent_tokenize(text: str) -> list[str]:
+    """Lightweight sentence splitter used when nltk's ``punkt`` resource is
+    unavailable (offline / blocked downloads). Splits on sentence-final
+    punctuation followed by whitespace and keeps the punctuation attached."""
+    if not text.strip():
+        return [text]
+    parts = re.split(r"(?<=[.!?。！？…])\s+", text)
+    return [p for p in parts if p]
+
+
 def sent_tokenize_preserving_markdown_code(
     text: str,
     tokenizer: Callable[[str], list[str]],
@@ -105,9 +115,16 @@ def sent_tokenize_preserving_markdown_code(
         return [text]
     protected_text, protected_code = _protect_markdown_code(text, keep_delimiters=True)
     protected_text, protected_emphasis = _protect_matched_emphasis(protected_text)
+    try:
+        raw_sentences = tokenizer(protected_text)
+    except Exception:
+        # nltk.sent_tokenize raises LookupError when the 'punkt' resource is
+        # missing. Fall back to a simple punctuation-based splitter so the
+        # pipeline never dies with "I'm having trouble responding right now".
+        raw_sentences = _regex_sent_tokenize(protected_text)
     return [
         _restore_markdown_code(_restore_matched_emphasis(sentence, protected_emphasis), protected_code)
-        for sentence in tokenizer(protected_text)
+        for sentence in raw_sentences
     ]
 
 
