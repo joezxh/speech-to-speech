@@ -1178,13 +1178,21 @@ def test_responses_reasoning_omitted_when_unset():
     assert "reasoning" not in captured
 
 
-def test_responses_extra_body_uses_provider_fallback_only_without_reasoning_effort():
+def test_responses_extra_body_sends_provider_fallback_with_or_without_reasoning_effort():
     build_extra_body = ResponsesApiModelHandler._build_extra_body
 
+    # Official OpenAI and unset base_url never receive the provider-specific key.
     assert build_extra_body(None, True, "none") is None
     assert build_extra_body("https://api.openai.com/v1", True, "none") is None
-    assert build_extra_body("http://provider/v1", True, "none") is None
+    # Non-OpenAI providers (e.g. DashScope) always get enable_thinking=false when
+    # disable_thinking is requested — even when reasoning_effort is also set — because
+    # their /responses layer ignores reasoning.effort for thinking control and would
+    # otherwise default enable_thinking=true and reject an assistant response prefill
+    # (400 "Assistant response prefill is incompatible with enable_thinking").
+    assert build_extra_body("http://provider/v1", True, "none") == {"chat_template_kwargs": {"enable_thinking": False}}
     assert build_extra_body("http://provider/v1", True, None) == {"chat_template_kwargs": {"enable_thinking": False}}
+    # disable_thinking off → no provider-specific key.
+    assert build_extra_body("http://provider/v1", False, "none") is None
 
 
 def test_second_turn_flattens_assistant_history_for_responses():

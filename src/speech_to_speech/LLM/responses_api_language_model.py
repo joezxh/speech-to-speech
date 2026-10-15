@@ -50,12 +50,24 @@ class ResponsesApiModelHandler(BaseOpenAICompatibleHandler):
         disable_thinking: bool,
         reasoning_effort: str | None,
     ) -> dict[str, Any] | None:
-        """Keep Responses reasoning out of the Chat-Completions-shaped extra body."""
-        return super()._build_extra_body(
-            base_url,
-            disable_thinking=disable_thinking and reasoning_effort is None,
-            reasoning_effort=None,
-        )
+        """Disable chat-template thinking on the Responses path for providers that
+        read ``enable_thinking`` directly.
+
+        DashScope/Bailian's ``/responses`` compatibility layer ignores
+        ``reasoning: {effort: ...}`` for thinking control and defaults
+        ``enable_thinking=True``, which then conflicts with an assistant response
+        prefill (400 "Assistant response prefill is incompatible with
+        enable_thinking"). Sending ``chat_template_kwargs.enable_thinking=false``
+        explicitly turns it off for those providers; the official OpenAI server
+        rejects the key, so we skip it there. ``reasoning.effort`` (applied
+        separately via :meth:`_reasoning_kwargs`) remains for providers that
+        prefer that knob.
+        """
+        if base_url is None or cls._is_official_openai(base_url):
+            return None
+        if disable_thinking:
+            return {"chat_template_kwargs": {"enable_thinking": False}}
+        return None
 
     def _reasoning_kwargs(self) -> dict[str, Any]:
         if self.reasoning_effort is None:

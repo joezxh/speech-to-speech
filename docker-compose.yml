@@ -58,6 +58,11 @@ services:
       - https://dashscope.aliyuncs.com/compatible-mode/v1
       - --responses_api_api_key
       - ${DASHSCOPE_API_KEY}
+      # 关闭推理/thinking：DashScope 的 /responses 兼容层忽略 reasoning.effort，
+      # 默认 enable_thinking=true 会与 assistant response prefill 冲突报 400；
+      # 代码层已对这类 provider 显式下发 chat_template_kwargs.enable_thinking=false。
+      - --responses_api_reasoning_effort
+      - "none"
       - --init_chat_role
       - system
       - --init_chat_prompt
