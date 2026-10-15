@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./README-CN.md) · **English**
+
 # Archived Models
 
 This directory stores sunset model implementations that are kept in-repo but are no longer wired into `s2s_pipeline.py`.

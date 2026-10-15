@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./AGENTS-CN.md) · **English**
+
 # Repository Instructions
 
 - Never include `codex` in branch names or pull request titles.

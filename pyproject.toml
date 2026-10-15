@@ -87,6 +87,16 @@ paraformer = [
     "modelscope>=1.17.1",
     "onnxruntime<1.24; python_version < '3.11'",
 ]
+sensevoice = [
+    "funasr>=1.1.6",
+    "modelscope>=1.17.1",
+    "onnxruntime<1.24; python_version < '3.11'",
+]
+cosyvoice = [
+    "cosyvoice",
+    "modelscope>=1.17.1",
+    "torchaudio>=2.4.0",
+]
 pocket = [
     "pocket-tts>=2.0.0",
 ]

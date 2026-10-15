@@ -16,7 +16,6 @@ from urllib.parse import urlparse
 
 import httpx
 import numpy as np
-from nltk import sent_tokenize
 from openai import OpenAI
 from openai.types.realtime.conversation_item import (
     RealtimeConversationItemAssistantMessage,
@@ -44,6 +43,7 @@ from speech_to_speech.LLM.utils import (
     remove_markdown,
     remove_unspeechable,
     resolve_auto_language,
+    safe_sent_tokenize,
     sent_tokenize_preserving_markdown_code,
 )
 from speech_to_speech.LLM.voice_prompt import build_voice_system_prompt
@@ -652,7 +652,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 state.clean_text += new_text
                 printable_text += new_text
                 trailing_whitespace = printable_text[len(printable_text.rstrip()) :]
-                sentences = sent_tokenize_preserving_markdown_code(printable_text, sent_tokenize)
+                sentences = sent_tokenize_preserving_markdown_code(printable_text, safe_sent_tokenize)
                 if len(sentences) > 1:
                     for s in sentences[:-1]:
                         sentence_batch.append(remove_markdown(s))

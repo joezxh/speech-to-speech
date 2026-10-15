@@ -9,7 +9,7 @@ from dataclasses import dataclass, fields, replace
 from pathlib import Path
 from queue import Queue
 from sys import platform
-from threading import Event
+from threading import Event, Thread
 from types import FrameType
 from typing import Any, Literal, Optional, Sequence
 
@@ -55,15 +55,36 @@ from speech_to_speech.STT.transcription_notifier import TranscriptionNotifier
 from speech_to_speech.utils.thread_manager import ThreadManager
 from speech_to_speech.VAD.vad_handler import VADHandler
 
-# Ensure that the necessary NLTK resources are available
-try:
-    nltk.data.find("tokenizers/punkt_tab")
-except (LookupError, OSError):
-    nltk.download("punkt_tab")
-try:
-    nltk.data.find("tokenizers/averaged_perceptron_tagger_eng")
-except (LookupError, OSError):
-    nltk.download("averaged_perceptron_tagger_eng")
+# Ensure that the necessary NLTK resources are available.
+# The download must be bounded: in locked-down environments nltk.org is
+# unreachable and nltk.download() blocks forever retrying. Sentence
+# tokenization has a regex fallback, so a missing punkt_tab is non-fatal.
+def _ensure_nltk_resource(resource: str, package: str, timeout: int = 60) -> None:
+    try:
+        nltk.data.find(resource)
+        return
+    except (LookupError, OSError):
+        pass
+
+    def _download() -> None:
+        try:
+            nltk.download(package, quiet=True)
+        except Exception as exc:  # pragma: no cover - best effort
+            logging.getLogger(__name__).warning(
+                "NLTK resource %s unavailable (non-fatal): %s", package, exc
+            )
+
+    worker = Thread(target=_download, daemon=True)
+    worker.start()
+    worker.join(timeout=timeout)
+    if worker.is_alive():
+        logging.getLogger(__name__).warning(
+            "NLTK %s download timed out after %ss; continuing without it", package, timeout
+        )
+
+
+_ensure_nltk_resource("tokenizers/punkt_tab", "punkt_tab")
+_ensure_nltk_resource("tokenizers/averaged_perceptron_tagger_eng", "averaged_perceptron_tagger_eng")
 
 # caching allows ~50% compilation time reduction
 # see https://docs.google.com/document/d/1y5CRfMLdwEoF1nTk9q8qEu1mgMUuUtvhklPKJ2emLU8/edit#heading=h.o2asbxsrp1ma

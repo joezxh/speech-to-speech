@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./openai-compatible-tts-CN.md) · **English**
+
 # OpenAI-compatible TTS endpoint
 
 The `openai` TTS backend keeps turns, sessions, conversation state, and response

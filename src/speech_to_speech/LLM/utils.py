@@ -111,6 +111,27 @@ def sent_tokenize_preserving_markdown_code(
     ]
 
 
+# Split on sentence boundaries without NLTK. Used as a fallback when punkt_tab
+# is unavailable (air-gapped / download-blocked environments). The terminating
+# punctuation stays attached to its sentence so downstream TTS still pauses.
+_SENTENCE_END_RE = re.compile(r"(?<=[.!?。！？])\s*")
+
+
+def _regex_sent_tokenize(text: str) -> list[str]:
+    """Best-effort sentence split that needs no NLTK data."""
+    return [piece.strip() for piece in _SENTENCE_END_RE.split(text) if piece.strip()]
+
+
+def safe_sent_tokenize(text: str) -> list[str]:
+    """``nltk.sent_tokenize`` with a regex fallback if punkt_tab is missing."""
+    try:
+        from nltk import sent_tokenize
+
+        return sent_tokenize(text)
+    except Exception:  # noqa: BLE001 - fall back to regex when NLTK data is absent
+        return _regex_sent_tokenize(text)
+
+
 def remove_markdown(text: str) -> str:
     """Strip common Markdown delimiters while preserving the enclosed text.
 

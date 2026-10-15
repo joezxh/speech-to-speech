@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./README-CN.md) · **English**
+
 # Gemma 4 12B speech-to-speech on Apple Silicon
 
 This example runs the complete realtime voice loop locally on a Mac:

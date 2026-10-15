@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./README-CN.md) · **English**
+
 # STT Summary
 
 This document summarizes the Speech-to-Text (STT) implementations in the `STT/` folder, including language support, language abbreviations, and usage in `s2s_pipeline.py`.

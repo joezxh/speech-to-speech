@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./README-CN.md) · **English**
+
 # TTS Summary
 
 ## Available TTS modes (`--tts`)

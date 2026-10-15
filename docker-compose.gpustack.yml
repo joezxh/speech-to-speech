@@ -1,0 +1,86 @@
+# speech-to-speech 部署到服务器，LLM 由 GPUStack 上的现有 Qwen3-8B 提供。
+#
+# 与原 docker-compose.yml 的区别：
+#   - 移除了内置 llama.cpp 服务（LLM 改走 GPUStack）
+#   - pipeline 容器只负责 VAD / STT / TTS，并预留一张 GPU 给 STT+TTS
+#   - LLM 通过 OpenAI 兼容接口指向 GPUStack 的 Qwen3-8B
+#
+# 用法：
+#   cp .env.gpustack.example .env.gpustack   # 按需修改
+#   docker compose -f docker-compose.gpustack.yml --env-file .env.gpustack up -d --build
+#
+# 说明：
+#   - GPUSTACK_BASE_URL 末尾不要带 /v1，GPUStack 的 OpenAI 兼容基址就是 /v1-openai
+#     若 GPUStack 与本项目同机部署，用 http://host.docker.internal/v1-openai
+#   - GPUSTACK_MODEL 必须与 GPUStack 中注册的模型名完全一致
+#   - GPUSTACK_API_KEY 在 GPUStack 控制台的 API Keys 页面生成
+
+services:
+  pipeline:
+    build:
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+    # 与 GPUStack 同机时可改为 host 网络，省去 host.docker.internal 映射
+    # network_mode: host
+    command:
+      - speech-to-speech
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+      # —— LLM 走 GPUStack（OpenAI 兼容，chat-completions 后端兼容性最好）——
+      - --llm_backend
+      - chat-completions
+      - --model_name
+      - "${GPUSTACK_MODEL:-Qwen3-8B}"
+      - --responses_api_base_url
+      - "${GPUSTACK_BASE_URL:-http://host.docker.internal/v1-openai}"
+      - --responses_api_api_key
+      - "${GPUSTACK_API_KEY:-not-needed}"
+      - --responses_api_stream
+      # 关闭 Qwen3 思考链以降低语音延迟（vLLM 后端默认即生效）
+      - --responses_api_reasoning_effort
+      - none
+      # —— STT / TTS（默认在容器内的 GPU 上运行）——
+      # STT 暂用 Paraformer-zh（阿里达摩院，中文普通话，funasr 1.1.6 稳定）；
+      # SenseVoice 因 FunASR 版本错配待后续修复后切回
+      - --stt
+      - paraformer
+      # TTS 改用阿里达摩院 CosyVoice2（方言/情感/音色可控）
+      - --tts
+      - cosyvoice
+      - --cosyvoice_tts_speaker
+      - 中文女
+      # instruct 可写方言/情感控制，例如：用四川话说这句话 / 用悲伤的语气说
+      - --cosyvoice_tts_instruct
+      - ""
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Reply concisely and in the user's language."
+      - --enable_live_transcription
+    ports:
+      - "${PIPELINE_PORT:-8765}:8765/tcp"
+    # 容器内无法直连 github.com（被网络拦截），Silero VAD 改为从本地目录加载
+    environment:
+      # Smart Turn / qwen3-tts 等 HF 模型已缓存在 ./cache，离线加载避免联网挂死
+      - HF_HUB_OFFLINE=1
+      - HF_ENDPOINT=https://hf-mirror.com
+      - HF_HUB_ENABLE_PROGRESS_BARS=false
+      # SenseVoice / CosyVoice 走 ModelScope；仅 modelscope.cn 出网可达
+      - MODELSCOPE_ENDPOINT=https://modelscope.cn
+    volumes:
+      - ./cache/:/root/.cache/
+      - ./silero-vad:/opt/silero-vad:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # 预留给 STT+TTS 的 GPU；若与 GPUStack 共用同一张卡，按需调整 device_ids
+              device_ids: ['${PIPELINE_GPU_ID:-1}']
+              capabilities: [gpu]

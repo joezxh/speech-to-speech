@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./README-CN.md) · **English**
+
 # LLM Summary
 
 ## Available LLM backends (`--llm_backend`)

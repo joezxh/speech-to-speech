@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./DESIGN-CN.md) · **English**
+
 # Design language
 
 The reference for keeping this app visually coherent as it grows. Read it before

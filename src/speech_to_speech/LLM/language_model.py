@@ -8,7 +8,6 @@ from threading import Lock, Thread
 from typing import Any, Literal, Optional, Protocol, runtime_checkable
 
 import torch
-from nltk import sent_tokenize
 from openai.types.realtime.realtime_conversation_item_assistant_message import (
     RealtimeConversationItemAssistantMessage,
 )
@@ -53,6 +52,7 @@ from speech_to_speech.LLM.utils import (
     remove_markdown,
     remove_unspeechable,
     resolve_auto_language,
+    safe_sent_tokenize,
     sent_tokenize_preserving_markdown_code,
 )
 from speech_to_speech.LLM.voice_prompt import build_voice_system_prompt
@@ -358,7 +358,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
             if text_only and before:
                 chunks.append(text_chunk(before))
             elif before.strip():
-                for s in sent_tokenize_preserving_markdown_code(before, sent_tokenize):
+                for s in sent_tokenize_preserving_markdown_code(before, safe_sent_tokenize):
                     ctx.sentence_batch.append(remove_markdown(s))
             if ctx.sentence_batch:
                 chunks.append(text_chunk(" ".join(ctx.sentence_batch)))
@@ -412,7 +412,7 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
 
         if printable_text:
             trailing_whitespace = printable_text[len(printable_text.rstrip()) :]
-            sentences = sent_tokenize_preserving_markdown_code(printable_text, sent_tokenize)
+            sentences = sent_tokenize_preserving_markdown_code(printable_text, safe_sent_tokenize)
             if len(sentences) > 1:
                 for s in sentences[:-1]:
                     ctx.sentence_batch.append(remove_markdown(s))

@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./openai-compatible-stt-CN.md) · **English**
+
 # OpenAI-compatible STT endpoint
 
 The `openai` STT backend keeps VAD, turns, sessions, conversation state, and

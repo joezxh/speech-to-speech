@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./README-CN.md) · **English**
+
 ## Realtime Engine -- High-Level Architecture
 
 A FastAPI/uvicorn server exposes WebSocket and WebRTC transports. Each session claims a queue-backed

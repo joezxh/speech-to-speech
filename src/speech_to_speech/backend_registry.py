@@ -26,11 +26,13 @@ from speech_to_speech.arguments_classes.omnivoice_tts_arguments import OmniVoice
 from speech_to_speech.arguments_classes.openai_stt_arguments import OpenAICompatibleSTTHandlerArguments
 from speech_to_speech.arguments_classes.openai_tts_arguments import OpenAICompatibleTTSHandlerArguments
 from speech_to_speech.arguments_classes.paraformer_stt_arguments import ParaformerSTTHandlerArguments
+from speech_to_speech.arguments_classes.sensevoice_stt_arguments import SenseVoiceSTTHandlerArguments
 from speech_to_speech.arguments_classes.parakeet_tdt_arguments import (
     ParakeetTDTSTTHandlerArguments,
 )
 from speech_to_speech.arguments_classes.pocket_tts_arguments import PocketTTSHandlerArguments
 from speech_to_speech.arguments_classes.qwen3_tts_arguments import Qwen3TTSHandlerArguments
+from speech_to_speech.arguments_classes.cosyvoice_tts_arguments import CosyVoiceTTSHandlerArguments
 from speech_to_speech.arguments_classes.responses_api_language_model_arguments import (
     ResponsesApiLanguageModelHandlerArguments,
 )
@@ -382,6 +384,18 @@ STT_BACKENDS = build_backend_registry(
             required_extra="paraformer",
         ),
         BackendSpec(
+            "sensevoice",
+            "stt",
+            SenseVoiceSTTHandlerArguments,
+            _simple_handler_factory(
+                "speech_to_speech.STT.sensevoice_handler",
+                "SenseVoiceSTTHandler",
+                attach_speculative_turns=True,
+            ),
+            config_prefix="sensevoice_stt",
+            required_extra="sensevoice",
+        ),
+        BackendSpec(
             "openai",
             "stt",
             OpenAICompatibleSTTHandlerArguments,
@@ -518,6 +532,19 @@ TTS_BACKENDS = build_backend_registry(
                 context_kwargs=True,
             ),
             config_prefix="qwen3_tts",
+        ),
+        BackendSpec(
+            "cosyvoice",
+            "tts",
+            CosyVoiceTTSHandlerArguments,
+            _simple_handler_factory(
+                "speech_to_speech.TTS.cosyvoice_handler",
+                "CosyVoiceTTSHandler",
+                setup_should_listen=True,
+                context_kwargs=True,
+            ),
+            config_prefix="cosyvoice_tts",
+            required_extra="cosyvoice",
         ),
         BackendSpec(
             "openai",
