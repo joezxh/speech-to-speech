@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: tests
+title: 语音转语音项目测试套件
+scope:
+    - tests/
+source_files: []
+depends_on: []
+related_to:
+    - path: scripts

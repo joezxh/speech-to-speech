@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./0001-docker-space-with-search-proxy-CN.md) · **English**
+
 # Convert the static Space into a Docker app with a search proxy
 
 To give the model a web search tool, the executor (which runs in the browser of a

@@ -1,0 +1,110 @@
+# 方案二（越南语 vi / 马来语 ms 版）：LLM 也一并部署（自带 llama.cpp 服务 Qwen3-8B，完全自包含）
+#
+# 在 docker-compose.llm-bundled.yml 基础上，把 STT / TTS 换成覆盖 vi/ms 的模型：
+#   - llama   : llama.cpp 服务器，在 GPU 上提供 OpenAI 兼容接口，承载 Qwen3-8B（文字理解 vi/ms 无碍）
+#   - pipeline:
+#       * STT  : whisper（distil-whisper/distil-large-v3，原生支持 99 种语言，含 vi/ms，自动检测语种）
+#       * TTS  : facebookmms（MMS-TTS，覆盖 1100+ 语言；vi→facebook/mms-tts-vie，ms→facebook/mms-tts-zlm）
+#       * VAD  : Silero VAD（语言无关，vi/ms 直接可用，与参考文件一致）
+#
+# 说明：
+#   - MMS-TTS 会在运行时按 STT 检测出的语种「动态」加载对应语音模型：
+#       STT 返回 "vi" → 加载 facebook/mms-tts-vie
+#       STT 返回 "ms" → 加载 facebook/mms-tts-zlm
+#       STT 返回其它 MMS 支持语种（见 facebookmms_handler.py 的映射表）也会自动切换；
+#       不在表中的语种会回退到英文（facebook/mms-tts-eng）。
+#     `--tts_language` 仅决定启动时的初始/预热模型，对话中仍以 STT 语种为准。
+#   - Whisper 默认模型为 distil-whisper/distil-large-v3；如需更高 vi/ms 准确率可显式指定
+#     完整大模型，例如把 --stt_model_name 改为 openai/whisper-large-v3。
+#   - 首次运行需联网从 HuggingFace 拉取 whisper 与 mms-tts 权重（已挂载 ./cache 持久化），
+#     与参考文件拉取 llama GGUF 的网络假设一致。
+#   - llama 与 pipeline 都占用 GPU 0，请确认显存足够（Qwen3-8B q8 ≈ 8.5GB + Whisper + MMS-TTS）。
+
+services:
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    command:
+      - -hf
+      - Qwen/Qwen3-8B-Instruct-GGUF
+      - -np
+      - "2"
+      - -c
+      - "65536"
+      - -fa
+      - "on"
+      - --reasoning-budget
+      - "0"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    ports:
+      - 8080:8080/tcp
+    volumes:
+      - ./cache/:/root/.cache/
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+
+  pipeline:
+    depends_on:
+      - llama
+    build:
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+    command:
+      - speech-to-speech
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+      # —— LLM 指向同 compose 内的 llama.cpp（OpenAI 兼容，chat-completions 后端）——
+      - --llm_backend
+      - chat-completions
+      - --model_name
+      - Qwen/Qwen3-8B-Instruct-GGUF
+      - --responses_api_base_url
+      - http://llama:8080/v1
+      - --responses_api_api_key
+      - ""
+      - --responses_api_stream
+      - --responses_api_reasoning_effort
+      - none
+      # —— STT：Whisper（自动检测 vi / ms 等语种）——
+      - --stt
+      - whisper
+      - --stt_model_name
+      - distil-whisper/distil-large-v3
+      - --language
+      - auto
+      # —— TTS：Facebook MMS-TTS（vi→mms-tts-vie，ms→mms-tts-zlm，运行时按 STT 语种动态切换）——
+      - --tts
+      - facebookmms
+      - --tts_language
+      - vi
+      - --facebook_mms_device
+      - cuda
+      # —— 系统提示：要求 LLM 用用户语种回复（vi / ms 等）——
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Reply concisely and in the user's language (Vietnamese or Malay)."
+      - --enable_live_transcription
+    ports:
+      - "${PIPELINE_PORT:-8765}:8765/tcp"
+    volumes:
+      - ./cache/:/root/.cache/
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]

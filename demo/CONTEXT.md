@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./CONTEXT-CN.md) · **English**
+
 # Context glossary
 
 Canonical terms for this space. A glossary, not a spec — it defines what words mean,

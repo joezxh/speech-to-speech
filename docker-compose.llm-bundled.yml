@@ -1,0 +1,100 @@
+# 方案二：LLM 也一并部署（自带 llama.cpp 服务 Qwen3-8B，完全自包含，不依赖 GPUStack）
+#
+# 与 docker-compose.yml（原 Gemma 示例）结构一致，但把 LLM 换成 Qwen3-8B-Instruct GGUF：
+#   - llama   : llama.cpp 服务器，在 GPU 上提供 OpenAI 兼容接口，承载 Qwen3-8B
+#   - pipeline: speech-to-speech 的 VAD/STT/TTS，LLM 指向同 compose 内的 llama 服务
+#
+# 用法：
+#   docker compose -f docker-compose.llm-bundled.yml up -d --build
+#
+# 说明：
+#   - 默认 Qwen3-8B-Instruct GGUF（HF 多文件仓库，llama.cpp 会拉取默认量化）。
+#     如需指定量化（如 Q4_K_M / Q8_0），把 -hf 换成具体文件，例如：
+#       -hf unsloth/Qwen3-8B-Instruct-GGUF
+#     并自行在 HuggingFace 上挑选对应 .gguf；--model_name 需与 -hf 一致。
+#   - 关闭 Qwen3 思考链以降低语音延迟：llama.cpp 较新版本支持 --reasoning-budget 0；
+#     同时 pipeline 侧仍发送 chat_template_kwargs.enable_thinking=false（vLLM 生效）。
+#   - llama 与 pipeline 都占用 GPU 0，请确认显存足够（Qwen3-8B q8 ≈ 8.5GB + STT/TTS）。
+
+services:
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    command:
+      - -hf
+      - Qwen/Qwen3-8B-Instruct-GGUF
+      - -np
+      - "2"
+      - -c
+      - "65536"
+      - -fa
+      - "on"
+      - --reasoning-budget
+      - "0"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    ports:
+      - 8080:8080/tcp
+    volumes:
+      - ./cache/:/root/.cache/
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+
+  pipeline:
+    depends_on:
+      - llama
+    build:
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+    command:
+      - speech-to-speech
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+      # —— LLM 指向同 compose 内的 llama.cpp（OpenAI 兼容，chat-completions 后端）——
+      - --llm_backend
+      - chat-completions
+      - --model_name
+      - Qwen/Qwen3-8B-Instruct-GGUF
+      - --responses_api_base_url
+      - http://llama:8080/v1
+      - --responses_api_api_key
+      - ""
+      - --responses_api_stream
+      - --responses_api_reasoning_effort
+      - none
+      # —— STT / TTS（默认在容器内 GPU 上运行）——
+      - --stt
+      - parakeet-tdt
+      - --tts
+      - qwen3
+      - --qwen3_tts_speaker
+      - Aiden
+      - --qwen3_tts_language
+      - auto
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Reply concisely and in the user's language."
+      - --enable_live_transcription
+    ports:
+      - "${PIPELINE_PORT:-8765}:8765/tcp"
+    volumes:
+      - ./cache/:/root/.cache/
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]

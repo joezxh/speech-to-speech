@@ -11,6 +11,8 @@ hf_oauth: true
 hf_oauth_expiration_minutes: 10080
 ---
 
+> 🌐 Language / 语言：[中文版](./README-CN.md) · **English**
+
 # Realtime Voice Demo
 
 Browser voice-chat UI for the

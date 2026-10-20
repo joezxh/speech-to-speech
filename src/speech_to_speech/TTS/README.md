@@ -1,3 +1,5 @@
+> 🌐 Language / 语言：[中文版](./README-CN.md) · **English**
+
 # TTS Summary
 
 The default voice is Qwen3-TTS CustomVoice with speaker `Aiden`, through MLX Audio on Apple Silicon and GGML elsewhere. To change the speaker:
