@@ -1,0 +1,148 @@
+# speech-to-speech 部署(192.168.1.137 / NV1),LLM 由局域网 GPUStack(192.168.40.30)的 Qwen3-8B 提供。
+#
+# ── 性能优化版(2026-10-15,基于 137 实机日志逐段定位)─────────────────────────────
+#   实测各段耗时(137 实机):
+#     LLM  GPUStack Qwen3-8B(chat-completions,流式,思考已关):TTFT ~0.3s   → 非瓶颈
+#     STT  Paraformer(GPU1):forward ~0.7s,rtf 0.015                       → 非瓶颈
+#     TTS  CosyVoice2(fp32 + 非流式):每句合成 12-14s,首音被它卡死          → ★主瓶颈★
+#     Turn Smart Turn:每轮固定等 800ms speculative grace + 反复重开/取消    → ★次瓶颈★
+#   本版优化:
+#     1) CosyVoice2 开 fp16 + 流式 + JIT(权重已在 ./cache,零下载):
+#        流式让首块音频不必等整句合成完,fp16 约 2x → 首音从 ~12s 大幅下降
+#     2) 收紧 Smart Turn / speculative reopen(800→250ms 等):
+#        每轮省 ~0.55s,并消除 speculative 反复重开导致的重复 STT/LLM 取消
+#   若仍不够快:把 TTS 换成本仓库同款栈实测更快的 Qwen3-TTS(torch/cuda/流式,RTF 0.69),
+#               见文件底部注释(需先补齐 Qwen3-TTS 权重)。
+#
+#   用法(137 上,目录 /home/jiangwei/nvme/speech-to-speech):
+#     docker compose -f docker-compose.gpustack.yml --env-file .env.gpustack up -d
+#   注意:仅改 CLI 参数、复用已构建镜像,无需 --build;但会重建 pipeline 容器,
+#         当前进行中的语音会话会断——请在没有通话时重启。
+
+name: speech-to-speech
+
+services:
+  pipeline:
+    build:
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+    command:
+      - speech-to-speech
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+      # —— LLM:GPUStack Qwen3-8B(OpenAI 兼容;chat-completions 后端兼容性最好)——
+      - --llm_backend
+      - chat-completions
+      - --model_name
+      - "${GPUSTACK_MODEL:-Qwen3-8B}"
+      - --responses_api_base_url
+      - "${GPUSTACK_BASE_URL:-http://192.168.40.30/v1-openai}"
+      - --responses_api_api_key
+      - "${GPUSTACK_API_KEY:-not-needed}"
+      - --responses_api_stream
+      - --responses_api_reasoning_effort
+      - ""
+      # ↑ 必须置空:非空时 _build_extra_body 只会发 reasoning_effort=none(GPUStack 不认),
+      #   Qwen3 默认思考→答案前几秒 reasoning。置空后才发 enable_thinking=false(关思考)。
+      # 首句即送 TTS:默认要凑够 3 句才把文本喂给 TTS(首音被拖慢 ~4-5s);
+      # 改成 1 = 句-by-句流式,LLM 一出首句 TTS 立刻开始合成 ★TTFA 关键★
+      - --stream_batch_sentences
+      - "1"
+      # —— STT:Qwen3-ASR-1.7B-hf(自 137 本地树移植的新后端)——
+      # 权重经 ModelScope 下到 ./cache/qwen3-asr-model-hf(容器内路径),本地路径离线加载
+      # (HF 在 137 不通,必须用本地目录,不能用 HF repo id)。
+      # ★必须用 -hf 版:handler 走 transformers 的 processor.apply_transcription_request(),
+      #   它需要 -hf 权重自带的 chat_template.jinja;ModelScope 的原版 Qwen/Qwen3-ASR-1.7B
+      #   模板与之不兼容(warmup 时 ValueError: continue_final_message ... → 容器崩溃重启)。
+      # language=auto:自动语种识别;device=auto:容器内单卡 RTX4090 会走 cuda。
+      - --stt
+      - qwen3-asr
+      - --qwen3_asr_model_name
+      - /root/.cache/qwen3-asr-model-hf
+      - --qwen3_asr_device
+      - auto
+      - --qwen3_asr_language
+      - auto
+      # —— TTS:Qwen3-TTS(torch 后端 / cuda / 句内流式)——
+      # 换芯原因:CosyVoice2 流式按 ~4s 大块产出,首包 1.7-3.6s(占首音 ~75%)。
+      # Qwen3-TTS 句内流式(chunk=4,~320ms/块)首包可降到 ~0.5s 且与句长基本无关。
+      # 前提:镜像内 transformers>=5.15.1 + faster-qwen3-tts(Dockerfile 末尾已固化),
+      #      且 Qwen3-TTS-12Hz-1.7B-CustomVoice 权重已缓存到 ./cache。
+      - --tts
+      - qwen3
+      # 权重经 ModelScope 下到 ./cache/qwen3-tts-model(容器内路径),本地路径离线加载
+      # (HF 不通,必须用本地目录,不能用 HF repo id)
+      - --qwen3_tts_model_name
+      - /root/.cache/qwen3-tts-model
+      - --qwen3_tts_backend
+      - torch
+      - --qwen3_tts_device
+      - cuda
+      - --qwen3_tts_non_streaming_mode
+      - "False"
+      - --qwen3_tts_streaming_chunk_size
+      - "4"
+      # —— VAD 判停:关闭 Smart Turn + speculative 重开,退回纯静音判停 ★根治重复+卡顿★
+      # 之前 smart-turn/speculative 会按 revision 反复重开,每轮从头重转并各提交一条
+      # 最终转写(chars 6/21/28/37 前缀重叠→重复气泡),还拖慢首音。关掉后:等 700ms
+      # 真静音即提交一轮、只转写+处理一次,一句一气泡、不重复。
+      - --min_silence_ms
+      - "700"
+      - --no_smart_turn
+      - --speculative_reopen_ms
+      - "0"
+      - --unanswered_reopen_ms
+      - "0"
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
+      # 关闭渐进式(live)转写:speculative 反复重开会按 revision 各发 partial,
+      # 后端按不同 item_id/turnId 建成多条 → 同一句重复。关掉后只留经去重的最终转写。
+      - --no_enable_live_transcription
+      - --smart_turn_model_path
+      - /root/.cache/smart-turn-v3.2-cpu.onnx
+    ports:
+      - "${PIPELINE_PORT:-8765}:8765/tcp"
+    environment:
+      # Smart Turn / CosyVoice2 等模型已缓存在 ./cache,离线加载避免联网卡死
+      - HF_HUB_OFFLINE=1
+      - HF_ENDPOINT=https://hf-mirror.com
+      - HF_HUB_ENABLE_PROGRESS_BARS=false
+      # CosyVoice2 走 ModelScope;仅 modelscope.cn 出网可达
+      - MODELSCOPE_ENDPOINT=https://modelscope.cn
+    volumes:
+      - ./cache/:/root/.cache/
+      - ./silero-vad:/opt/silero-vad:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              # 预留给 STT+TTS 的 GPU;GPU0 被本机 32B(VLLM)占满,用空闲的 GPU1
+              device_ids: ['${PIPELINE_GPU_ID:-1}']
+              capabilities: [gpu]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 备选:换 Qwen3-TTS(本仓库同款栈实测 RTF 0.69、TTFA ~0.5s,通常比 CosyVoice2 快一个量级)
+#   前提:当前 ./cache 只有 CosyVoice2,没有 Qwen3-TTS 权重;容器能连 huggingface.co,
+#        但本文件 HF_HUB_OFFLINE=1 会阻止下载 → 需先把权重下进 ./cache,或临时改 OFFLINE=0。
+#   改法:删除上面 "--tts cosyvoice" 及 --cosyvoice_tts_speaker/instruct/fp16/stream/load_jit,
+#        替换为:
+#         - --tts
+#         - qwen3-tts
+#         - --qwen3_tts_backend
+#         - torch
+#         - --qwen3_tts_device
+#         - cuda
+#         - --qwen3_tts_non_streaming_mode
+#         - "False"
+#         - --qwen3_tts_streaming_chunk_size
+#         - "4"
+# ──────────────────────────────────────────────────────────────────────────────

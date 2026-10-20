@@ -1,0 +1,90 @@
+# 本地部署版(本机 GPU + docker):直接复用已从 137 搬来的镜像 speech-to-speech-pipeline:latest,
+# 不在这里 build。STT/TTS/LLM 参数与 137 的 gpustack.yml 保持一致,仅把 GPU 改为本机唯一的 GPU0。
+#
+# 用法(在本目录):
+#   docker compose -f docker-compose.local.yml --env-file .env.local up -d
+# 模型权重放在 ./cache (bind → /root/.cache),VAD 放在 ./silero-vad。
+
+name: speech-to-speech-local
+
+services:
+  pipeline:
+    image: speech-to-speech-pipeline:latest
+    command:
+      - speech-to-speech
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+      # —— LLM:GPUStack Qwen3-8B(OpenAI 兼容;chat-completions 后端兼容性最好)——
+      - --llm_backend
+      - chat-completions
+      - --model_name
+      - "${GPUSTACK_MODEL:-Qwen3-8B}"
+      - --responses_api_base_url
+      - "${GPUSTACK_BASE_URL:-http://192.168.40.30/v1-openai}"
+      - --responses_api_api_key
+      - "${GPUSTACK_API_KEY:-not-needed}"
+      - --responses_api_stream
+      - --responses_api_reasoning_effort
+      - ""
+      - --stream_batch_sentences
+      - "1"
+      # —— STT:Qwen3-ASR-1.7B-hf(本地 ./cache/qwen3-asr-model-hf)——
+      - --stt
+      - qwen3-asr
+      - --qwen3_asr_model_name
+      - /root/.cache/qwen3-asr-model-hf
+      - --qwen3_asr_device
+      - auto
+      - --qwen3_asr_language
+      - auto
+      # —— TTS:Qwen3-TTS(torch / cuda / 句内流式)——
+      - --tts
+      - qwen3
+      - --qwen3_tts_model_name
+      - /root/.cache/qwen3-tts-model
+      - --qwen3_tts_backend
+      - torch
+      - --qwen3_tts_device
+      - cuda
+      - --qwen3_tts_non_streaming_mode
+      - "False"
+      - --qwen3_tts_streaming_chunk_size
+      - "4"
+      # —— VAD 判停:关闭 Smart Turn,纯静音判停 ——
+      - --min_silence_ms
+      - "700"
+      - --no_smart_turn
+      - --speculative_reopen_ms
+      - "0"
+      - --unanswered_reopen_ms
+      - "0"
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
+      - --no_enable_live_transcription
+      - --smart_turn_model_path
+      - /root/.cache/smart-turn-v3.2-cpu.onnx
+    ports:
+      - "${PIPELINE_PORT:-8765}:8765/tcp"
+    environment:
+      - HF_HUB_OFFLINE=1
+      - HF_ENDPOINT=https://hf-mirror.com
+      - HF_HUB_ENABLE_PROGRESS_BARS=false
+      - MODELSCOPE_ENDPOINT=https://modelscope.cn
+    volumes:
+      - ./cache/:/root/.cache/
+      - ./silero-vad:/opt/silero-vad:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${PIPELINE_GPU_ID:-0}']
+              capabilities: [gpu]
