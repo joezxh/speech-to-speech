@@ -32,7 +32,7 @@ This pipeline runs in production as the conversation backend for thousands of [R
 
 ## Quickstart
 
-Use Python 3.10+ (3.11 recommended):
+Use CPython 3.11–3.14 (3.11 recommended):
 
 ```bash
 python3 -m venv .venv
@@ -44,6 +44,25 @@ speech-to-speech local
 Then talk: speak, pause, and the assistant answers through your speakers. Stop with `Ctrl+C`. The first run downloads the models, so give it a few minutes. Use headphones so the assistant does not hear itself, or add `--local_audio_block_mic_during_playback`.
 
 On Ubuntu, first install the audio libraries with `sudo apt-get install libportaudio2 libsndfile1`. The default Linux Qwen3-TTS wheel targets CUDA 12.8 and Ubuntu 24.04; see the [CUDA note](#cuda-note-for-qwen3-tts) for other systems. On Windows, activate the environment with `.venv\Scripts\Activate.ps1`.
+
+The default installation has the following CI coverage:
+
+| Platform | Supported CPython versions | Checks |
+|---|---|---|
+| Linux | 3.11, 3.12, 3.13, 3.14 | Full test suite and installed package smoke test |
+| Apple Silicon macOS | 3.11, 3.12, 3.13, 3.14 | Installed package smoke test |
+
+Optional model backends can have narrower Python requirements. Windows is not
+covered by this compatibility matrix. Python 3.10 is no longer supported following
+its end of life on October 1, 2026.
+
+Kokoro is optional on every platform. On macOS, its Misaki dependency requires
+Python <3.13, so use Python 3.11 or 3.12 with `speech-to-speech[kokoro]`.
+The default Qwen3-TTS backend does not require Misaki. Python 3.15 is not yet
+supported on any platform: ONNX Runtime lacks CPython 3.15 wheels, and the pinned macOS PyTorch
+release also lacks them. Newer Python versions will be added after the default
+dependencies and CI checks pass; the package's `requires-python` lower bound does
+not promise compatibility with future Python releases.
 
 The command picks local models for your platform:
 
@@ -159,7 +178,7 @@ To use the previous CUDA-graphs implementation instead of GGML, pass `--qwen3_tt
 Optional components are installed with pip extras:
 
 ```bash
-pip install "speech-to-speech[kokoro]"          # Kokoro-82M TTS on non-macOS
+pip install "speech-to-speech[kokoro]"          # Kokoro-82M TTS (macOS: Python 3.11–3.12)
 pip install "speech-to-speech[kitten]"          # KittenTTS
 pip install "speech-to-speech[pocket]"          # Pocket TTS
 pip install "speech-to-speech[chattts]"         # ChatTTS
@@ -213,13 +232,14 @@ This installs the package in editable mode. With the environment activated, use 
 | LLM | [Transformers](https://huggingface.co/models?pipeline_tag=text-generation&sort=trending) (default elsewhere) | supported accelerators / CPU | built-in |
 | LLM | OpenAI-compatible API (`responses-api`, `chat-completions`) | optional hosted providers or self-hosted servers | built-in |
 | TTS | [Qwen3-TTS](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) (default) | GGML / CUDA on Linux, mlx-audio on macOS | built-in |
-| TTS | [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) | CUDA / CPU, Apple Silicon | `kokoro` on non-macOS; built-in on macOS |
+| TTS | [Kokoro-82M](https://huggingface.co/hexgrad/Kokoro-82M) | CUDA / CPU, Apple Silicon | `kokoro` (macOS: Python 3.11–3.12) |
 | TTS | [KittenTTS](https://github.com/KittenML/KittenTTS) | CPU | `kitten` |
 | TTS | [Pocket TTS](https://github.com/kyutai-labs/pocket-tts) | CPU / CUDA | `pocket` |
 | TTS | [ChatTTS](https://github.com/2noise/ChatTTS) | CUDA / CPU | `chattts` |
 | TTS | [OmniVoice](https://huggingface.co/k2-fsa/OmniVoice) | CUDA / Intel XPU / Apple Silicon | `omnivoice` |
 | TTS | [MMS TTS](https://huggingface.co/docs/transformers/model_doc/mms) | CUDA / CPU | built-in |
 | TTS | OpenAI-compatible `/v1/audio/speech` endpoint | local or remote HTTP server | built-in |
+| TTS | [Fish Audio Drama-3](https://huggingface.co/fishaudio/drama-3) (`--tts drama3`) | SGLang Omni on a local or remote GPU host | built-in client |
 | TTS | [MiniMax](https://platform.minimax.io/docs/api-reference/speech-t2a-http) | hosted HTTP streaming | built-in |
 
 Optional [streaming speaker diarization](./examples/streaming-diarization/README.md)
