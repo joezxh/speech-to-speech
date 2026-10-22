@@ -100,7 +100,9 @@ KV cache 规则（q8_0 KV，1 byte/元素）：
 | Qwen3.5-0.8B | ~0.6 GB | ~0.9 GB | ~1.6 GB | ~0.2 GB | ~0.8 GB |
 
 > 表内为**推导值**，验收 T4（显存）/ T6（本地 LLM）实测后替换。
-> 2B/0.8B 档的存在性与 GGUF 可用性见 §7 HT1/HT2（由 `plan-5` / `plan-6` 的检索结论解除）。
+> 2B/0.8B 档已证实存在（Qwen3.5 Small 系列，2026-03-02 开源），GGUF 见
+> `unsloth/Qwen3.5-2B-GGUF` / `unsloth/Qwen3.5-0.8B-GGUF`（检索日期 2026-10-22）；
+> 模型上限 256K 上下文，表中 32K 为**部署配置**而非模型能力。
 
 ---
 
@@ -182,8 +184,8 @@ RTX 5070 12GB + Qwen3.5-4B Q4 + KV 8K
 
 | 编号 | 假设 | 状态 | 解除方式 |
 |---|---|---|---|
-| HT1 | Qwen3.5-2B / 0.8B 存在可用 GGUF（Q4_K_M / Q8_0） | **待 Task 2 检索** | 检索 HF / ModelScope 官方仓库 |
-| HT2 | llama.cpp 支持 Qwen3.5 架构 | **待 Task 2 检索** | 查 llama.cpp 支持列表 / PR / issue |
+| HT1 | Qwen3.5-2B / 0.8B 存在可用 GGUF（Q4_K_M / Q8_0） | **已证实**：Qwen3.5 Small 系列 2026-03-02 开源；GGUF 见 unsloth/Qwen3.5-{2B,0.8B}-GGUF（2026-10-22） | 已解除；部署时核对文件体积与 SHA256 |
+| HT2 | llama.cpp 支持 Qwen3.5 架构 | **已证实**：qwen35 于 2026-05 合入（需 b8001+ 构建，旧版报 unknown architecture）（2026-10-22） | 已解除；镜像/二进制须 ≥2026-05 |
 | HT3 | ARM 盒可跑一致的 Qwen3-ASR / Qwen3-TTS（torch / transformers） | **待 Task 4 证据链** | 逐盒评估卡（`edge-box-feasibility.md`） |
 | HT4 | 电商价格为 2026-10-22 快照 | 持续有效 | 下单前复核（`procurement-list.md` 每条带日期） |
 | HA1 | 单轮语音典型 3 s / P95 10 s | 假设 | 验收 T2 实测 |
