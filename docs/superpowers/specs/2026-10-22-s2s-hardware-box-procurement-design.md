@@ -14,9 +14,12 @@ RTX 5070 Ti Laptop 12GB）。`docs/hardware/` 已有一版 4 方案选型文档�
 2. **边缘/国产算力盒覆盖薄弱**：Jetson 一句带过，昇腾 Atlas、RK3588、OpenVINO 迷你主机、
    寒武纪、DGX Spark 等未评估；
 3. **性能假设不显式**：并发路数/延迟估算缺完整假设条件链，且未把 `num_pipelines`
-   每路 ≈4.6GB 显存的硬约束纳入推导。
+   每路 ≈4.6GB 显存的硬约束纳入推导；
+4. **缺买回后的验收手段**：候选盒到货后没有统一的实测流程与判定线，无法客观得出
+   "通过 / 降级使用 / 退货" 结论（本次评审追加项）。
 
-本次目标：新增 3 份专题文档 + 1 份小模型方案文档，刷新存量 6 份文档，把方案体系扩展为
+本次目标：新增 4 份专题文档（假设表、采购清单、边缘盒可行性、实测验收）+ 2 份小模型
+方案文档，刷新存量 6 份文档，把方案体系扩展为
 **6 个 LLM 接入方案**（远程 / Qwen3-8B / Qwen3.5-9B / Qwen3.5-4B / Qwen3.5-2B / Qwen3.5-0.8B），
 形成可直接用于采购评估的候选设备清单。
 
@@ -50,6 +53,7 @@ RTX 5070 Ti Laptop 12GB）。`docs/hardware/` 已有一版 4 方案选型文档�
 | 边缘盒评估标准 | **模型一致硬约束**：候选盒必须能跑与本地一致的 Qwen3-ASR-1.7B + Qwen3-TTS-1.7B；跑 whisper/paraformer 替代不算合格，只能标"需替换模型，不满足一致性" |
 | 边缘盒深度 | 证据链（官方支持列表/社区实测/工具链状态）+ 置信度三级（已证实/待验证/高风险）+ 买前验证步骤清单 |
 | 方案体系 | 6 方案：①远程 ②8B ③9B ④4B ⑤Qwen3.5-2B ⑥Qwen3.5-0.8B（⑤⑥独立成案，各自一文件） |
+| 到货验收 | 新增 `acceptance-test-plan.md`：T0~T9 十阶段流程 + 三档判定线（通过/有条件通过/退货），判定阈值一律引用假设表，不另设口径 |
 
 ## 4. 文件结构与职责边界
 
@@ -65,7 +69,8 @@ docs/hardware/
 ├── plan-4-qwen3.5-4b.md           # 同上
 ├── plan-5-qwen3.5-2b.md           # 新增：结构对齐 plan-2~4
 ├── plan-6-qwen3.5-0.8b.md         # 新增：结构对齐 plan-2~4
-├── deployment-multibox.md         # 微改：加一行指向假设表
+├── acceptance-test-plan.md        # 新增：到货实测验收方案（T0~T9 + 判定规则 + 报告模板）
+├── deployment-multibox.md         # 微改：加一行指向假设表，并被验收方案引用压测命令
 ├── docker-compose.llm-box.yml     # 不动
 └── docker-compose.pipeline-box.yml# 不动
 ```
@@ -76,6 +81,7 @@ docs/hardware/
 | 性能假设条件 | performance-assumptions.md | 只引用 |
 | 电商商品/价格 | procurement-list.md | plan-N 只写 D-xx 引用 |
 | 边缘/国产盒结论 | edge-box-feasibility.md | plan-N 只写结论 + 链接 |
+| 验收判定阈值 | performance-assumptions.md | acceptance-test-plan.md 只引用不复制数值 |
 | 部署步骤/compose | 既有文档 | 不动 |
 
 ## 5. 六方案体系与假设数值
@@ -166,27 +172,66 @@ Atlas 500 Pro / 800I A2、RK3588 16–32G 推理盒（香橙派 5 Plus / Rongals
 寒武纪 MLU370-X4/X8、Intel Core Ultra 迷你主机（OpenVINO 路线，铭凡/Beelink GTR 等）、
 地平线 RDK。检索中若发现更合适的在售品类可增补，删减需在文档记录原因。
 
-## 8. 存量文档刷新点（最小改动）
+## 8. acceptance-test-plan.md 结构（到货实测验收）
 
-1. `README.md`：方案索引扩为 6 行；新增 3 文档 + plan-5/6 链接；"电商平台检索入口"小节改为
+**定位**：任一候选盒采购到货后，按此流程执行即得出结构性结论；所有延迟/并发/显存判定线
+引用 performance-assumptions.md，本文档不复制数值（避免双源）。不依赖任何新增被测代码，
+工具只用现有 `latency_test.py` + shell 并行压测 + 厂商监控（`nvidia-smi` / `jetson-stats` /
+`npu-smi`）。
+
+**十个阶段**：
+
+| 阶段 | 内容 | 取证 |
+|---|---|---|
+| T0 环境就绪 | x86：CUDA 版本与镜像匹配、Docker GPU 直通可见；ARM：aarch64 镜像构建通过；模型 cache 挂载成功 | 版本与设备列表快照 |
+| T1 模型一致性 | cache 文件 sha256 对齐基线机清单；启动无降级日志；启动参数与 `docker-compose.local.yml` 逐项 diff | 校验值 + diff 结果 |
+| T2 功能链路 | 单路跑通；中文音频转写正确性人工核对；音色/语种正常；barge-in 打断可用；记录 STT RTF 与 TTS RTF | 转写文本 + RTF 值 |
+| T3 单路延迟基线 | TTFA P50/P95 对照假设表双档；四个时间戳（VAD 判停、STT 出字、LLM 首 token、TTS 首帧）逐段归因 | 延迟时间线 |
+| T4 显存实测 | 三路采样：单路常驻 / `num_pipelines` 打满 / 本地 LLM 加载后；与 procurement-list 该条目承诺值对比 | 显存曲线 + 偏差百分比 |
+| T5 并发阶梯 | 1→3→5→10→20 路并行压测（命令沿用 deployment-multibox.md）；每档记录 P50/P95 TTFA、报错率、GPU 利用率/温度 | 饱和点 = P95 超目标档或出 `SERVER ERROR` |
+| T6 本地 LLM 专项（②~⑥） | llama.cpp 单流 tok/s、`-np` 批量吞吐、KV 显存实测；判定该盒“可承载方案”是否成立 | 吞吐表 |
+| T7 远程 LLM 专项（①） | 到 GPUStack 的 RTT/TTFT 实测、断网重连、超时兜底文案验证 | 网络样本 |
+| T8 稳定性 | 2h 连续对话 soak：显存泄漏曲线、热降频、音质劣化抽检 | soak 报告 |
+| T9 验收报告 | 固定模板：环境快照 / 逐项 PASS・FAIL・WARN / 与采购条目承诺值对照表 / 结论与整改项 | `acceptance-report-<型号>-<日期>.md` |
+
+**三档判定规则**：
+
+| 结论 | 条件 |
+|---|---|
+| **通过** | T0–T5 全 PASS，且该条目承诺并发档实测达成 |
+| **有条件通过**（降级使用） | T4 偏差 15–30%，或 T5 达成档位比承诺低一档；记录实际容量上限并写回 procurement-list |
+| **退货 / 替换** | T1 不一致（模型被替或跑不起来）、T2 RTF≥1（跟不上实时）、T3 单路就超 2s |
+
+**边缘盒挂钩**：edge-box-feasibility.md 中结论为“待验证”的盒子，验收时强制执行 T1/T2 的
+ARM 一致性专项（torch/transformers wheel 安装、FP16 推理 RTF）；失败即触发“需替换模型 =
+不满足一致性”退货条款。
+
+**附录**：测试用 wav 样本要求（16kHz 单声道、典型 3s / P95 10s 各若干条）、并行压测一行命令、
+验收报告模板。
+
+## 9. 存量文档刷新点（最小改动）
+
+1. `README.md`：方案索引扩为 6 行；新增 4 文档 + plan-5/6 链接；"电商平台检索入口"小节改为
    指向 procurement-list.md；保留显存基线与实测表（唯一来源）。
 2. `plan-1~4.md`：并发/TTFA 段落改为"按 performance-assumptions.md §5.2 推导"并保留结论数值；
-   "商品检索"表压缩为 D-xx 引用行。
+   "商品检索"表压缩为 D-xx 引用行；尾部加一行"到货验收见 acceptance-test-plan.md"。
 3. 新增 `plan-5-qwen3.5-2b.md`、`plan-6-qwen3.5-0.8b.md`：小节结构对齐 plan-2~4
    （概述/显存分配/商品检索/并发与性能/多盒拆分/部署建议）；显式列出 HT1/HT2 假设项。
-4. `deployment-multibox.md`：文首加一行"并发与延迟估算统一引用 performance-assumptions.md"。
+4. `deployment-multibox.md`：文首加一行"并发与延迟估算统一引用 performance-assumptions.md，
+   压测命令被 acceptance-test-plan.md T5 沿用"。
 
-## 9. 执行顺序与检索批次
+## 10. 执行顺序与检索批次
 
 1. 写 `performance-assumptions.md`（不依赖外部检索）；
 2. 联网检索批次一：Qwen3.5-2B/0.8B GGUF 权重与 llama.cpp 支持（解除 HT1/HT2）；
 3. 联网检索批次二：GPU 整机/显卡在售商品与价格（填充 procurement-list GPU 部分）；
 4. 联网检索批次三：边缘/国产盒证据链（模型支持、社区实测、工具链）；
 5. 写 `procurement-list.md`、`edge-box-feasibility.md`；
-6. 写 plan-5/6；刷新 README、plan-1~4、deployment-multibox；
-7. 按 §10 验收标准自检。
+6. 写 plan-5/6；写 `acceptance-test-plan.md`（不依赖检索，仅依赖假设表与现有工具）；
+7. 刷新 README、plan-1~4、deployment-multibox；
+8. 按 §11 验收标准自检。
 
-## 10. 验收标准
+## 11. 验收标准
 
 - [ ] 用户任务书 6 项输出要求逐条可指认到文档位置（映射表见附录 A）；
 - [ ] 每个价格/链接带检索日期；无证据处显式标注"待验证"；
@@ -194,7 +239,8 @@ Atlas 500 Pro / 800I A2、RK3588 16–32G 推理盒（香橙派 5 Plus / Rongals
 - [ ] 快选矩阵 6 方案 × 4 维度无空格（无合适条目时写"暂无 + 建议"）；
 - [ ] 与 README 实测基线（4.6GB/路）无口径冲突；
 - [ ] 边缘盒结论均带置信度分级与买前验证步骤；
-- [ ] 双源检查：商品数据只出现在 procurement-list.md，假设只在假设表出现。
+- [ ] 验收方案 T0~T9 完整，判定规则三档可执行且阈值均指向假设表（无自建数值）；
+- [ ] 双源检查：商品数据只出现在 procurement-list.md，假设与阈值只在假设表出现。
 
 ### 附录 A：任务书要求 → 文档位置映射
 
@@ -206,13 +252,14 @@ Atlas 500 Pro / 800I A2、RK3588 16–32G 推理盒（香橙派 5 Plus / Rongals
 | 4. 并发假设条件 | performance-assumptions（§5.2） |
 | 5. 方案对比表分组维度 | procurement-list 快选矩阵 + README 索引 |
 | 6. 优先级/场景/成本/复杂度/风险 | procurement-list 条目 + plan-N"部署建议/风险"小节 |
+| 追加项：到货实测验收 | acceptance-test-plan.md（本 spec §8） |
 
-## 11. 范围外（YAGNI）
+## 12. 范围外（YAGNI）
 
 - 不含浏览器实查下单验证（用户已选联网检索深度）；
 - 不修改任何运行时代码与 compose 模板逻辑；
 - 不评估 x86 纯 CPU 服务器（无 GPU/NPU，STT/TTS RTF 不达标）与 AMD GPU（ROCm 上
   transformers Qwen3-TTS 无现成证据链，若检索发现反例再补）；
-- 不做买回后的实测验收方案（用户未选该深度；`latency_test.py` 压测步骤已在
-  deployment-multibox.md，引用即可）；
+- 不实际执行验收（本次只交付验收方案文档，执行需等硬件到货）；不新增任何压测代码，
+  沿用 `latency_test.py` 与 shell 并行包装；
 - 不涉及 cloud API 定价对比（远程 LLM 按现网 GPUStack 内网假设）。
