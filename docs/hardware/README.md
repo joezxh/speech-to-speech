@@ -1,10 +1,32 @@
 # Speech-to-Speech 算力盒子选型与部署手册
 
 > 适用对象：`speech-to-speech-src` 的 VAD→STT→LLM→TTS 实时语音流水线
-> 定价日期：**2026-10**（来自 1688 / 淘宝 / 京东检索，价格随行情波动，下单前请复核）
+> 定价日期：**2026-10-22**（来自 1688 / 淘宝 / 京东检索，价格随行情波动，下单前请复核）
 > 本地基线参考机：**RTX 5070 / 5070 Ti（12–16GB 档）**，仅跑 VAD+STT+TTS，LLM 走远程
 
-本目录给出 4 种 LLM 部署方案的完整选型结果，并附「多盒 + 内网 LLM 端点」部署清单。
+本目录给出 **6 种 LLM 部署方案**的完整选型结果，并附「多盒 + 内网 LLM 端点」部署清单、
+可采购商品清单、边缘盒可行性评估与到货验收方案。
+
+## 文档地图（什么改动该改哪个文件）
+
+**单一事实来源规则**：下列文件各有唯一职责，同一类信息只在一个文件里维护。
+发现两处数值不一致时，先判断它属于哪一类，再改对应文件——**不要在两处同时改**。
+
+| 文件 | 唯一职责 | 什么时候必须改它 |
+|---|---|---|
+| [performance-assumptions.md](./performance-assumptions.md) | 显存基线（4.6 GB/路）、并发公式、延迟档位、假设登记表（HT/HA） | 测出新的显存或延迟值；假设状态变化（如 HT3 解除） |
+| [procurement-list.md](./procurement-list.md) | 商品编号 `D-xx`、在售 SKU、价格区间、置信标注 | 找到新的可下单商品；价格复核；到货实测后回填单盒路数 |
+| [edge-box-feasibility.md](./edge-box-feasibility.md) | 边缘/国产盒的证据链与置信分级（G1 运行时 / G2 内存两道硬门槛） | 新增边缘盒候选；样机实测后升级或降级置信度 |
+| [acceptance-test-plan.md](./acceptance-test-plan.md) | 到货后 T0~T9 的验收步骤、判定线、报告模板、基线指纹 | 验收流程变化；基线指纹更新（§14.1） |
+| `plan-1`~`plan-6.md` | 每种 LLM 方案的部署选择与调优建议 | 方案本身变化（换模型、换量化、换部署形态） |
+| [deployment-multibox.md](./deployment-multibox.md) | 多盒拆分拓扑、内网端点、并发压测与调优命令 | 拓扑变化；压测口径变化 |
+
+**引用关系（单向，不可反向复制数值）：**
+
+- `plan-1`~`plan-6` → 引用 `performance-assumptions.md`（口径）与 `procurement-list.md`（只写 `D-xx` 编号，不写价格）
+- `edge-box-feasibility.md` → 引用 `procurement-list.md` 的 `D-xx`，结论回填 `performance-assumptions.md` §7 的 HT3
+- `acceptance-test-plan.md` → 判定线来自 `performance-assumptions.md`，实测结果回填 `procurement-list.md` 与假设表
+- 本文（README）→ 只做索引与概览，不新增推导；价格仅作区间概览，明细以 `procurement-list.md` 为准
 
 ## 组件与显存基线（与本地部署一致）
 
@@ -16,6 +38,10 @@
 | LLM | 远程 GPUStack（Qwen3-8B）/ 或本地 GGUF | 网络 / llama.cpp | 见各方案 |
 
 **管线常驻（STT+TTS+VAD）≈ 6–9GB（FP16）/ 4–5GB（量化）**。下文均按「FP16 管线 + 量化 LLM」估算，留 15–20% 余量防降频。
+
+> **基准值（2026-10-22 实测）**：单路管线实测占用 **4.6 GB**（4633 MiB），这是本目录所有路数推导的唯一基准
+> （`performance-assumptions.md` §4 的 `÷ 4.6`）。任何新镜像、新驱动或模型精度变化都需重新测量，
+> 并**同时**更新本表与假设表——只改一处会造成双源漂移。
 
 ### 本机实测（RTX 5070 Ti Laptop 12GB，2026-10-22）
 
@@ -53,23 +79,40 @@ pipeline `ChatCompletionsApiModelHandler` warmup 收到 `HTTP 200`；`Applicatio
 `Uvicorn running on :8765`、`OpenAI Realtime API starting on ws://0.0.0.0:8765/v1/realtime`。**全链路跑通。**
 （注：ghcr.io 的 `llama.cpp:server-cuda` 镜像在本机网络被限速，故改用主机 llama-server；compose 内已保留容器化 LLM 的注释方案。）
 
-## 四种方案索引
+## 六种方案索引
 
-| 方案 | LLM 来源 | 最低成本单盒 | 推荐单盒 | 多盒拆分 | 并发(单盒) | 详情 |
+| 方案 | LLM 来源 | 最低成本单盒 | 推荐单盒 | 多盒拆分 | 并发（单盒，槽位约束） | 定位 |
 |---|---|---|---|---|---|---|
-| [① 远程 LLM](./plan-1-remote-llm.md) | GPUStack 远程 | 4060 Ti 16G / 5070 12G（¥6k–10k） | 5070 12G | 管线盒可无限堆叠 | 20–40 路 | 最省、数据本机 |
-| [② Qwen3-8B 本地](./plan-2-qwen3-8b.md) | 本地 GGUF | 5070 Ti 16G（¥16k+） | 4090 24G | 4090(LLM)+4060Ti×N | 10–20 路 | 质量/成本均衡 |
-| [③ Qwen3.5-9B 本地](./plan-3-qwen3.5-9b.md) | 本地 GGUF | 4090 24G（¥22k+） | 5090 32G / L20 48G | 5090×N / L20 集群 | 10–20 路 | 质量最高、最吃显存 |
-| [④ Qwen3.5-4B 本地](./plan-4-qwen3.5-4b.md) | 本地 GGUF | 5070 12G（¥6k–8k） | 5070 Ti 16G | 同② | 15–30 路 | 并发最高、延迟最低 |
+| [① 远程 LLM](./plan-1-remote-llm.md) | GPUStack 远程 | `D-G01` 3060 12G（1 路） | `D-G04` 5070 12G（**纯管线 2 路**） | 管线盒可无限堆叠，LLM 集中一台 | 纯管线 12G→2 / 24G→4 / 48G→8 路 | 最省、数据本机 |
+| [② Qwen3-8B 本地](./plan-2-qwen3-8b.md) | 本地 GGUF | `D-G05` 5070 Ti 16G（1 路） | `D-G06` 4090 24G（3 路） | `D-G06`(LLM) + `D-G04`×N(管线) | 16G→1 / 24G→3 / 48G→7 路 | 质量/成本均衡 |
+| [③ Qwen3.5-9B 本地](./plan-3-qwen3.5-9b.md) | 本地 GGUF | `D-G06` 4090 24G（3 路） | `D-S01` L20 48G（7 路） | `D-S01` / `D-G07` × N | 24G→3 / 32G→4 / 48G→7 路 | 质量最高、最吃显存 |
+| [④ Qwen3.5-4B 本地](./plan-4-qwen3.5-4b.md) | 本地 GGUF | `D-G04` 5070 12G（1 路） | `D-G05` 5070 Ti 16G（2 路） | `D-G06`(LLM) + `D-G04`×N(管线) | 12G→1 / 16G→2 / 24G→3 / 48G→8 路 | 并发与延迟的最佳平衡 |
+| [⑤ Qwen3.5-2B 本地](./plan-5-qwen3.5-2b.md) | 本地 GGUF | `D-G01` 3060 12G（1 路） | `D-G02` 4060 Ti 16G（2 路，16G 档最便宜） | `D-G04`(LLM) + `D-G04`×N(管线) | 12G→1 / 16G→2 / 24G→3 / 48G→8 路 | 最低成本可用档 |
+| [⑥ Qwen3.5-0.8B 本地](./plan-6-qwen3.5-0.8b.md) | 本地 GGUF | `D-G01` 3060 12G（1 路） | `D-G06` 4090 24G（4 路，唯一比⑤多 1 路的档） | `D-G06` / `D-S01`(LLM) + `D-E01`(边缘，待验证) | 12G→1 / 16G→2 / 24G→**4** / 48G→8 路 | 边缘/单轮兜底 |
+
+> **并发列怎么读**：全部由 [`performance-assumptions.md`](./performance-assumptions.md) §4 的
+> `floor(可用显存 × 0.85 ÷ 4.6)` 推导，`可用显存 = 标称 − LLM 权重 − KV(8K) − 0.8GB 余量`。
+> **不是**吞吐上限——旧版本表里的"20–40 路"是纯管线盒的 STT/TTS 计算吞吐上限，
+> 而显存每路要 4.6 GB，12 GB 纯管线实际只有 2 路。报价时必须标明是"槽位"还是"吞吐"。
+>
+> 各档的完整算式、风险与调优见对应 `plan-N.md`；商品与价格见
+> [`procurement-list.md`](./procurement-list.md)（本表只引用 `D-xx` 编号）。
+> 质量排序：9B > 8B > 4B > 2B > 0.8B（见 `performance-assumptions.md` §6）。
 
 ## 多盒部署（必读）
 
 - [多盒 + 内网 LLM 端点部署清单](./deployment-multibox.md)
+- [边缘与国产算力盒可行性评估](./edge-box-feasibility.md)（ARM / ROCm / 统一内存的证据链与买前验证）
+- [到货实测验收方案](./acceptance-test-plan.md)（T0~T9 与三档判定）
 - [docker-compose.llm-box.yml](./docker-compose.llm-box.yml)（LLM 盒：llama.cpp 服务）
 - [docker-compose.pipeline-box.yml](./docker-compose.pipeline-box.yml)（管线盒：VAD/STT/TTS + 内网 LLM）
 
 ## 电商平台检索入口（1688）
 
+> **具体在售条目、价格区间与置信标注见 [procurement-list.md](./procurement-list.md)**
+> （检索日期 2026-10-22，每条带 SKU 状态；下单前必须复核）。
+> 本节只保留**兜底检索入口**——清单里某个型号缺货时，用这些链接重新找货。
+>
 > 点击即跳转 1688 搜索结果页，可筛选「整机 / 涡轮卡 / 工控机」。
 
 - RTX 4060 Ti 16G 整机：<https://s.1688.com/selloffer/offer_search.htm?keywords=RTX%204060Ti%2016G%20整机>
