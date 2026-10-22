@@ -185,8 +185,8 @@ RTX 5070 12GB + Qwen3.5-4B Q4 + KV 8K
 
 | 编号 | 假设 | 状态 | 解除方式 |
 |---|---|---|---|
-| HT1 | Qwen3.5-2B / 0.8B 存在可用 GGUF（Q4_K_M / Q8_0） | **已证实**：Qwen3.5 Small 系列 2026-03-02 开源；GGUF 见 unsloth/Qwen3.5-{2B,0.8B}-GGUF（2026-10-22） | 已解除；部署时核对文件体积与 SHA256 |
-| HT2 | llama.cpp 支持 Qwen3.5 架构 | **已证实**：qwen35 于 2026-05 合入（需 b8001+ 构建，旧版报 unknown architecture）（2026-10-22） | 已解除；镜像/二进制须 ≥2026-05 |
+| HT1 | Qwen3.5-2B / 0.8B 存在可用 GGUF（Q4_K_M / Q8_0） | **已证实**：Qwen3.5 Small 系列 2026-03-02 开源（Apache 2.0）；GGUF 见 [`unsloth/Qwen3.5-2B-GGUF`](https://huggingface.co/unsloth/Qwen3.5-2B-GGUF) 与 [`unsloth/Qwen3.5-0.8B-GGUF`](https://huggingface.co/unsloth/Qwen3.5-0.8B-GGUF)（2026-10-22） | 已解除；部署时核对文件体积与 SHA256 |
+| HT2 | llama.cpp 支持 Qwen3.5 架构 | **已证实**：`qwen35` 于 2026-05 合入（需 **b8001+** 构建，旧版报 `unknown architecture`），见 [`github.com/ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp)（2026-10-22） | 已解除；镜像/二进制须 ≥2026-05 |
 | HT3 | ARM 盒可跑一致的 Qwen3-ASR / Qwen3-TTS（torch / transformers） | **待验证（未解除）**：10 款盒子无一具备「1.7B + FP16 + transformers」的实测；Orin NX 16G 仅有 0.6B int4 方案级证据（Seeed，2026-09-07）；x86 的 Ultra 9 285H / Ryzen AI Max+ 395 与 DGX Spark 同为待验证（`edge-box-feasibility.md` §2/§3） | 按 `edge-box-feasibility.md` §5.2 买 1 台跑 T1/T2/T3；RTF>1 则整体否决 |
 | HT4 | 电商价格为 2026-10-22 快照 | 持续有效 | 下单前复核（`procurement-list.md` 每条带日期） |
 | HA1 | 单轮语音典型 3 s / P95 10 s | 假设 | 验收 T2 实测 |
