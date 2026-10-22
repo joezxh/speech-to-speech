@@ -8,7 +8,8 @@
 > `docs/hardware/docker-compose.pipeline-box.yml`、`src/speech_to_speech/arguments_classes/*.py`、
 > `docs/hardware/README.md` §本机实测）。
 >
-> 文档状态：**假设表 v1**。所有"推导值"必须由到货实测（`acceptance-test-plan.md` T1~T9）替换，
+> 文档状态：**假设表 v1.1**（v1.1 变更：回填 HT3 边缘盒结论，依据 `edge-box-feasibility.md`）。
+> 所有"推导值"必须由到货实测（`acceptance-test-plan.md` T1~T9）替换，
 > 替换时同步修改本文档与本表版本号。
 
 ---
@@ -186,7 +187,7 @@ RTX 5070 12GB + Qwen3.5-4B Q4 + KV 8K
 |---|---|---|---|
 | HT1 | Qwen3.5-2B / 0.8B 存在可用 GGUF（Q4_K_M / Q8_0） | **已证实**：Qwen3.5 Small 系列 2026-03-02 开源；GGUF 见 unsloth/Qwen3.5-{2B,0.8B}-GGUF（2026-10-22） | 已解除；部署时核对文件体积与 SHA256 |
 | HT2 | llama.cpp 支持 Qwen3.5 架构 | **已证实**：qwen35 于 2026-05 合入（需 b8001+ 构建，旧版报 unknown architecture）（2026-10-22） | 已解除；镜像/二进制须 ≥2026-05 |
-| HT3 | ARM 盒可跑一致的 Qwen3-ASR / Qwen3-TTS（torch / transformers） | **待 Task 4 证据链** | 逐盒评估卡（`edge-box-feasibility.md`） |
+| HT3 | ARM 盒可跑一致的 Qwen3-ASR / Qwen3-TTS（torch / transformers） | **待验证（未解除）**：10 款盒子无一具备「1.7B + FP16 + transformers」的实测；Orin NX 16G 仅有 0.6B int4 方案级证据（Seeed，2026-09-07）；x86 的 Ultra 9 285H / Ryzen AI Max+ 395 与 DGX Spark 同为待验证（`edge-box-feasibility.md` §2/§3） | 按 `edge-box-feasibility.md` §5.2 买 1 台跑 T1/T2/T3；RTF>1 则整体否决 |
 | HT4 | 电商价格为 2026-10-22 快照 | 持续有效 | 下单前复核（`procurement-list.md` 每条带日期） |
 | HA1 | 单轮语音典型 3 s / P95 10 s | 假设 | 验收 T2 实测 |
 | HA2 | 内网 RTT 10–80 ms | 假设 | 验收 T7 实测 |
