@@ -255,3 +255,12 @@ Assistant: 身份证和证据材料。
 
 > 若 0.8B 抽检不达标 → 升级方案⑤（2B）或方案④（4B），显存增量分别为 +0.7 GB / +2.0 GB（Q4）；
 > 若边缘盒 RTF >1 → 回退 `D-G04` / `D-G05` 的 x86 + NVIDIA 方案，见 `plan-5` §假设与待验证项。
+
+## 到货验收
+
+- 到货后按 [acceptance-test-plan.md](./acceptance-test-plan.md) 执行 T0~T9，判定线见 [performance-assumptions.md](./performance-assumptions.md)。
+- 本方案重点看 **T1（指纹一致）/ T2（STT、TTS 的 RTF 均 < 1.0）/ T4（显存偏差 ≤1.15）/ T6（0.8B 单流 tok/s）**。
+- **质量抽检不得代替验收**：即使 T0~T8 全 PASS，上线前仍必须完成§「上线必做的抽检」的四类
+  （长句 / 指代 / 超范围 / 连续 10 轮），任一类别错误率 >30% 则该场景不得上线。
+- 走边缘盒时，额外执行 `acceptance-test-plan.md` §13 的“ARM / 非 CUDA 一致性专项”，
+  并满足 §12 的退货条款：**换模型 = 不满足一致性**。

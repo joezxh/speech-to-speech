@@ -192,3 +192,10 @@ llama.cpp 的 `--prompt-cache` 与 `-fa on`（FlashAttention）建议保留；
 
 > 若 HT3 在 PoC 中失败，边缘路线回退到 `D-G04` / `D-G05` 的 x86 + NVIDIA 方案；
 > 若 2B 质量抽检不达标，升级到方案④（4B）或方案②（8B），显存算式见对应 `plan-N.md`。
+
+## 到货验收
+
+- 到货后按 [acceptance-test-plan.md](./acceptance-test-plan.md) 执行 T0~T9，判定线见 [performance-assumptions.md](./performance-assumptions.md)。
+- 本方案重点看 **T1（指纹一致）/ T2（STT、TTS 的 RTF 均 < 1.0）/ T4（显存偏差 ≤1.15）/ T6（2B 单流 tok/s 与 `-np` 吞吐）**。
+- 走边缘盒（`D-E01`/`D-E02`/`D-E08`）时，额外执行 `acceptance-test-plan.md` §13 的
+  「ARM / 非 CUDA 一致性专项」；若为跑通而换掉 Qwen3-ASR/TTS，按 §12 直接触发退货条款。

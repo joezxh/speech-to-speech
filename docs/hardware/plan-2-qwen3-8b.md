@@ -17,24 +17,57 @@
 
 > 16GB 卡跑 Q4 余量约 5GB（占 70%），可接受；若开启长上下文或多轮并发建议直接上 24GB。Q8 在 16GB 卡上会打满，必须 24GB。
 
-## 商品检索（1688 / 淘宝 / 京东，2026-10）
-| 推荐盒子 | 显卡 | 显存 | 参考价 | 检索/商品 |
+## 商品检索（条目与价格见采购清单）
+
+| 档位 | 条目编号 | 显卡 | 显存 | 一句话理由 |
 |---|---|---|---|---|
-| 最低成本单盒 | RTX 5070 Ti 16G | 16GB | 卡 ¥13,398–13,949（七彩虹/技嘉）；整机 ~¥16,000–20,000 | [1688 检索](https://s.1688.com/selloffer/offer_search.htm?keywords=RTX%205070Ti%2016G%20整机) / [京东 技嘉](https://union-click.jd.com/jdc?e=&p=JF8BASsJK1olXwELUldaAUweBV8IGlsSXwYCXVZeC0kQC19MRANLAjZbERscSkAJHTdNTwcKBlMdBgABFksWA2gKG1scVQUBVllVFxJSXzI4S1hTA3VGNRs4cDFOURh7UDllA0ZeElJROE8RAGkMGloUXjYCVV9cCUIfCmcKK18TMwdsVFdYZktFUW8MS1oTWgMLUgpaC08nA244WjUVWw8GUl9fD3sWM28OE1gSWwUEV1tcCk4nA2cMK4y889CO8orkopylgV84K1glbTYCZF1tViUWBGkKGF0QDWheEwUGCANNAgEAElIRXAACZFxcCUkVM184WAF1H0ZANT8lUz5cQRdNbgF-IFBJFiY8bx5fVjdodVkXWmJhDB8gSypgcRpqX1tIAzYCZFlbCXsWMw) |
-| 舒适单盒（推荐 Q8 / 长上下文） | RTX 4090 24G（涡轮） | 24GB | 涡轮卡 ¥30,681；单卡工作站整机 ¥22,000–28,000；服务器级整机 ¥45,000–55,000 | [1688 检索](https://s.1688.com/selloffer/offer_search.htm?keywords=RTX%204090%2024G%20整机) / [京东 涡轮卡](https://union-click.jd.com/jdc?e=&p=JF8BARQJK1olXDYCVV9eDksVAG4LGV8lGVlaCgFtUQ5SQi0DBUVNGFJeSwUIFxlJX3EIGloWWwYAV19eCk8IWipURmsLKnJlUBddYytNX2kIfj9UI112FyItBEcnB2kLHV8UXAcBZF5cCUoWCmcBE1klWQBsVTBdAU55A2YAEghHXAdVVVZZDU1HC18IGmteMwcyVW5dDkMUBGkLHVgXWQYFZF5VDHvAqsHel_3B5KzV5txtOHsUM184G2sWbVhsVVlbCUwSBjxmRxxOBgZKUAMzAEMfC2wOEmsXXAcAVm5tOAt_ChsLHx1HFARhNloafUpBamdQeV9GDlpWBCguASUVX2Z1cDMdCWV7PVojfxtOAC04G2slXDY) |
-| 备选 | RTX 5080 16G | 16GB | 卡 ¥10,000–11,000；整机 ¥18,000–24,000 | [1688 检索](https://s.1688.com/selloffer/offer_search.htm?keywords=RTX%205080%2016G%20整机) |
+| 最低成本（16G） | `D-G05` | RTX 5070 Ti 16G | 16GB | 896 GB/s，16G 档带宽最高；8B Q4 + 1 路管线刚好放下 |
+| 备选（16G） | `D-G02` | RTX 4060 Ti 16G | 16GB | 最便宜的 16G，但 288 GB/s 拖慢 8B 解码 |
+| 备选（16G） | `D-G03` | RTX 5060 Ti 16G | 16GB | 448 GB/s；溢价期，仅作缺货替代 |
+| **推荐（24G）** | `D-G06` | RTX 4090 24G | 24GB | 1008 GB/s，8B Q4 下 3 路同机 |
+| 高并发（32G） | `D-G07` | RTX 5090 32G | 32GB | 1792 GB/s，8B Q4 下 4 路同机 |
+| 高密度（48G） | `D-S01` | NVIDIA L20 48G | 48GB | 8B Q4 下 7 路同机 |
+
+> 价格与商品条目详情见 [procurement-list.md](./procurement-list.md)（检索日期 2026-10-22，下单前复核）。
 
 ## 并发与性能估算
-- **16GB 卡（Q4）**：约 **10–18 路**实时会话。Qwen3-8B Q4 在 5070 Ti 上单流 ~70–90 tok/s，短回复（60 token）~0.7–0.9s。
-- **24GB 卡（Q8 / 长上下文）**：约 **12–20 路**，生成更稳定、长上下文不降频。
-- 端到端 TTFA：~0.5–1.0s（同机 LLM，省去网络 RT）。
+
+> 以下路数按 [performance-assumptions.md](./performance-assumptions.md) §4 公式推导（每路管线实测 ≈4.6GB），
+> 含 LLM 同机时受槽位约束显著下降；原按吞吐给出的乐观值已标注为多盒模式上限。
+
+```
+可用显存 = 标称 − 5.0（8B Q4 权重） − 0.6（KV 8K / q8） − 0.8（余量）
+槽位路数 = floor(可用显存 × 0.85 ÷ 4.6)
+```
+
+| 单盒显存 | 可用显存 | 槽位路数 |
+|---|---|---|
+| 12 GB | 5.6 GB | **1 路**（本机实测 4B Q4 已占 11.6/12GB，8B 实际会超；不推荐） |
+| 16 GB | 9.6 GB | **1 路** |
+| 24 GB | 17.6 GB | **3 路** |
+| 32 GB | 25.6 GB | **4 路** |
+| 48 GB | 41.6 GB | **7 路** |
+
+- **修订说明**：原估「16GB 10–18 路 / 24GB 12–20 路」未计 `num_pipelines` 的显存约束
+  （每路独占一套 VAD/STT/LM/TTS handler，≈4.6GB），已按公式改写。
+  **同机跑 8B 时单盒最多 3 路**（24GB 档）。
+- **吞吐侧**：Qwen3-8B Q4 在 5070 Ti 上单流 ~70–90 tok/s，短回复（60 token）~0.7–0.9s——
+  这是**单路内**的生成耗时，与路数无关。
+- 端到端 TTFA：见假设表 §5。同机 LLM 省去网络往返（HA2 的 10–80 ms），但 700 ms 判停仍占预算大头。
 
 ## 多盒拆分（高并发推荐）
-- **1× LLM 盒（4090 24G 跑 Qwen3-8B Q8）+ N× 管线盒（4060 Ti 16G 跑 VAD/STT/TTS）**。
-- LLM 盒经内网 `chat-completions` 供多管线盒，线性扩展到 **50+ 路**，比堆单卡更省钱。
+- **1× LLM 盒（`D-G06` 24G 跑 Qwen3-8B Q4）+ N× 管线盒（`D-G04` 12G 跑 VAD/STT/TTS）**。
+- 管线盒侧：单盒 2 路（12G 纯管线），10 台 = 20 路。
+- LLM 盒侧：受 8B 解码吞吐约束，上限按 `acceptance-test-plan.md` T6 实测后回填；
+  系统总路数取两者较小值。要突破 LLM 侧，换 `D-G07` / `D-S01`，或加第二台 LLM 盒。
 - 详见 [deployment-multibox.md](./deployment-multibox.md)。
 
 ## 部署建议
 - 单盒：用 `docker-compose.llm-bundled.yml`（已含 Qwen3-8B GGUF + 同机 pipeline）。
 - 多盒：用 `docker-compose.llm-box.yml` + `docker-compose.pipeline-box.yml`（把 `LLM_BASE_URL` 指向 LLM 盒 IP）。
 - 关闭 Qwen3 思考链（`--reasoning-budget 0` + `enable_thinking=false`）以降低语音延迟。
+
+## 到货验收
+
+- 到货后按 [acceptance-test-plan.md](./acceptance-test-plan.md) 执行 T0~T9，判定线见 [performance-assumptions.md](./performance-assumptions.md)。
+- 本方案重点看 **T4（显存偏差 ≤1.15）/ T5（并发阶梯与饱和点）/ T6（本地 LLM 吞吐）**。
