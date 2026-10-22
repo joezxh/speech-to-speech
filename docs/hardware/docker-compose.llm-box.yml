@@ -1,0 +1,45 @@
+# LLM 盒：只跑 llama.cpp，对内暴露 OpenAI 兼容端点
+# 用法（在 LLM 盒上）：
+#   docker compose -f docker-compose.llm-box.yml up -d
+#   curl http://localhost:8080/v1/models
+#
+# 切换模型：把下面 -hf 换成目标 GGUF 仓库/文件：
+#   Qwen3.5-4B : Qwen/Qwen3.5-4B-Instruct-GGUF
+#   Qwen3-8B   : Qwen/Qwen3-8B-Instruct-GGUF   （默认）
+#   Qwen3.5-9B : Qwen/Qwen3.5-9B-Instruct-GGUF
+# -np 控制并行数（按并发目标调整）；-c 控制上下文长度
+
+services:
+  llama:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    command:
+      - -hf
+      - Qwen/Qwen3-8B-Instruct-GGUF
+      - -np
+      - "4"
+      - -c
+      - "16384"
+      - -fa
+      - "on"
+      - -ctk
+      - q8_0
+      - -ctv
+      - q8_0
+      - --reasoning-budget
+      - "0"
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    ports:
+      - 8080:8080/tcp
+    volumes:
+      - ./cache/:/root/.cache/
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]

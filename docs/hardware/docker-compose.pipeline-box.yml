@@ -1,0 +1,84 @@
+# 管线盒：只跑 VAD/STT/TTS，LLM 指向内网 LLM 盒（多盒架构中的每台语音节点）
+# 用法（在每台管线盒上）：
+#   export LLM_BASE_URL=http://<LLM盒IP>:8080/v1
+#   export LLM_MODEL=Qwen/Qwen3-8B-Instruct-GGUF   # 须与 LLM 盒 -hf 一致
+#   export PIPELINE_PORT=8765
+#   docker compose -f docker-compose.pipeline-box.yml up -d
+#   curl http://localhost:8765/v1/models
+#
+# 说明：
+#   - STT/TTS 与本地部署一致：Qwen3-ASR（CUDA）+ Qwen3-TTS（torch/cuda）+ Silero VAD。
+#   - LLM 走 chat-completions 后端，指向 LLM 盒，不在本机占显存。
+#   - 每台管线盒需自带 ./cache（qwen3-asr-model-hf、qwen3-tts-model）与 silero-vad 挂载。
+
+services:
+  pipeline:
+    build:
+      context: .
+      dockerfile: ${DOCKERFILE:-Dockerfile}
+    command:
+      - speech-to-speech
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+      # —— LLM：内网 LLM 盒（OpenAI 兼容，chat-completions 后端）——
+      - --llm_backend
+      - chat-completions
+      - --model_name
+      - "${LLM_MODEL:-Qwen/Qwen3-8B-Instruct-GGUF}"
+      - --responses_api_base_url
+      - "${LLM_BASE_URL:-http://llm-box:8080/v1}"
+      - --responses_api_api_key
+      - ""
+      - --responses_api_stream
+      - --responses_api_reasoning_effort
+      - none
+      # —— STT：Qwen3-ASR（与本地 pipeline 一致）——
+      - --stt
+      - qwen3-asr
+      - --qwen3_asr_model_name
+      - /root/.cache/qwen3-asr-model-hf
+      - --qwen3_asr_device
+      - auto
+      - --qwen3_asr_language
+      - auto
+      # —— TTS：Qwen3-TTS（torch / cuda / 句内流式，与本地 pipeline 一致）——
+      - --tts
+      - qwen3
+      - --qwen3_tts_model_name
+      - /root/.cache/qwen3-tts-model
+      - --qwen3_tts_backend
+      - torch
+      - --qwen3_tts_device
+      - cuda
+      - --qwen3_tts_non_streaming_mode
+      - "False"
+      - --qwen3_tts_streaming_chunk_size
+      - "4"
+      # —— VAD 判停：纯静音判停（与本地 pipeline 一致）——
+      - --min_silence_ms
+      - "700"
+      - --no_smart_turn
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
+    environment:
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - TOKENIZERS_PARALLELISM=false
+    ports:
+      - "${PIPELINE_PORT:-8765}:8765/tcp"
+    volumes:
+      - ./cache/:/root/.cache/
+      - ../.silero-dl2/silero-vad-master:/opt/silero-vad:ro
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
