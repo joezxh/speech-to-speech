@@ -6,6 +6,10 @@
 > 商品编号与 [procurement-list.md](./procurement-list.md) 保持一致（DGX Spark 在该表编号为 `D-G08` / `D-G09`）。
 >
 > **本文档回答假设 HT3**：ARM 盒能否跑与本地一致的 Qwen3-ASR-1.7B（transformers）+ Qwen3-TTS-1.7B（torch）。
+>
+> **来源与追溯**：证据链「来源」列给出 `域名/路径`，可点击链接按该标识补全（不确定深层路径时指向域名根），
+> 日期为该结论被检索确认的日期。只到站点级、没有页面路径的行（如“NVIDIA 开发者论坛 / Jetson 社区”），
+> 置信度已相应降级——**不接受“显存够就能跑”的口述作为证据**。
 
 ---
 
@@ -85,7 +89,7 @@
 
 | 结论 | 证据类型 | 来源 | 日期 |
 |---|---|---|---|
-| Orin NX 16GB 可跑 **Qwen3-ASR-0.6B int4 + Qwen3-TTS CustomVoice int4**（TensorRT-Edge-LLM v0.9.1） | 社区实测（方案级，含镜像版本） | `wiki.seeedstudio.com/cn/solutions/conversational-voice-ai` | 2026-09-07 |
+| Orin NX 16GB 可跑 **Qwen3-ASR-0.6B int4 + Qwen3-TTS CustomVoice int4**（TensorRT-Edge-LLM v0.9.1） | 社区实测（方案级，含镜像版本） | [`wiki.seeedstudio.com/cn/solutions/conversational-voice-ai`](https://wiki.seeedstudio.com/cn/solutions/conversational-voice-ai) | 2026-09-07 |
 | JetPack 6.2.3 + CUDA 12.6 + PyTorch 2.8 在 Orin 系列跑通 `torch.cuda` | 社区实测（多篇） | NVIDIA 开发者论坛 / Jetson 社区 | 2026 年内 |
 | Qwen3-ASR-1.7B / Qwen3-TTS-1.7B 在该 SoC 上的 transformers 实测 | **缺失** | — | — |
 
@@ -187,7 +191,7 @@
 
 | 结论 | 证据类型 | 来源 | 日期 |
 |---|---|---|---|
-| 128 GB 统一内存、273 GB/s、240 W、DGX OS 原生支持 PyTorch + CUDA + vLLM | 官方规格 | `nvidia.com/en-us/products/workstations/dgx-spark/` | 2026-10-22 |
+| 128 GB 统一内存、273 GB/s、240 W、DGX OS 原生支持 PyTorch + CUDA + vLLM | 官方规格 | [`nvidia.com/en-us/products/workstations/dgx-spark/`](https://www.nvidia.com/en-us/products/workstations/dgx-spark/) | 2026-10-22 |
 | 64 GB 版由六大 OEM 供货（2026-10-23 上市）；128 GB FE 在 8 个月内**涨价约 74%**（绝对价格见 procurement-list） | 官方定价 + 媒体 | NVIDIA 官网 / 渠道报价 | 2026-10-22 |
 | 本方案 x86_64 镜像与 `cache/` 在 ARM64 上不可直接复用 | 架构事实 | 本仓库 `Dockerfile` / `cache/` | 2026-10-22 |
 
@@ -240,7 +244,7 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 
 | 结论 | 证据类型 | 来源 | 日期 |
 |---|---|---|---|
-| 8 GB / 4 GB 内存、51.2 GB/s、310 算力单元 | 官方规格 | `hiascend.com/hardware`（Atlas 500 规格页） | 2026-10-22 |
+| 8 GB / 4 GB 内存、51.2 GB/s、310 算力单元 | 官方规格 | [`hiascend.com/hardware`](https://www.hiascend.com)（Atlas 500 规格页） | 2026-10-22 |
 | Qwen3-ASR / Qwen3-TTS 在该芯片的支持声明 | **缺失** | — | — |
 | 昇腾侧公开证据全部集中在 LLM（vLLM-Ascend / MindIE 支持 Qwen3-8B），无 ASR/TTS 适配记录 | 生态观察 | 昇腾社区 / ModelZoo | 2026-10-22 |
 
@@ -332,7 +336,7 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 
 | 结论 | 证据类型 | 来源 | 日期 |
 |---|---|---|---|
-| **RK3588 / RK3576 可跑 Qwen3-ASR**：RKNN 编码器 + RKLLM 解码器，W8A8 | 社区实测（方案级） | `wiki.seeedstudio.com/cn/solutions/conversational-voice-ai` | 2026-09-07 |
+| **RK3588 / RK3576 可跑 Qwen3-ASR**：RKNN 编码器 + RKLLM 解码器，W8A8 | 社区实测（方案级） | [`wiki.seeedstudio.com/cn/solutions/conversational-voice-ai`](https://wiki.seeedstudio.com/cn/solutions/conversational-voice-ai) | 2026-09-07 |
 | Qwen3-ASR 在 RK3588 + RK1828 算力棒上 **48 tokens / 316.94 ms ≈ 151 tokens/s** | 厂商实测 | 定昌 DC_M588 方案实测文 | 2026 年内 |
 | Qwen3.5-2B 在 8 GB RK3588 板跑通（RKNPU2 backend，Q8_0） | 社区实测 | 掘金实战文 | 2026-09-18 |
 | Qwen3-TTS 在 RK 平台的适配 | **缺失** | — | — |
@@ -385,7 +389,7 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 
 | 结论 | 证据类型 | 来源 | 日期 |
 |---|---|---|---|
-| 24 GB / 307.2 GB/s / 150 W 被动散热 | 官方规格 | `cambricon.com` 产品页 | 2026-10-22 |
+| 24 GB / 307.2 GB/s / 150 W 被动散热 | 官方规格 | [`cambricon.com`](https://www.cambricon.com) 产品页 | 2026-10-22 |
 | 官方仅把"语音处理"列为应用领域，**无具体模型清单** | 缺失 | 同上 | 2026-10-22 |
 | Qwen3-ASR / Qwen3-TTS 的落地案例 | **缺失** | — | — |
 
@@ -436,8 +440,8 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 
 | 结论 | 证据类型 | 来源 | 日期 |
 |---|---|---|---|
-| NPU 99 TOPS、SO-DIMM 可扩、x86_64 | 官方规格 | `intel.com` Core Ultra 200H 系列 | 2026-10-22 |
-| llama.cpp 官方后端表：OpenVINO → Intel CPU/GPU/NPU 标注 **In Progress** | 工具链状态 | `github.com/ggml-org/llama.cpp` `docs/backend/` | 2026-10-22 |
+| NPU 99 TOPS、SO-DIMM 可扩、x86_64 | 官方规格 | [`intel.com`](https://www.intel.com) Core Ultra 200H 系列 | 2026-10-22 |
+| llama.cpp 官方后端表：OpenVINO → Intel CPU/GPU/NPU 标注 **In Progress** | 工具链状态 | [`github.com/ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp) `docs/backend/` | 2026-10-22 |
 | Qwen3-ASR / Qwen3-TTS 在该平台的实测（RTF、audio 质量） | **缺失** | — | — |
 
 **置信度**：待验证（**速度存疑**）——G1 通过（x86 CPU 直跑），但 CPU/NPU 上跑 1.7B 双模型的 RTF 大概率 >1。
@@ -489,9 +493,9 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 
 | 结论 | 证据类型 | 来源 | 日期 |
 |---|---|---|---|
-| 128 GB 统一内存、可分配 96 GB、x86_64 | 官方规格 | `amd.com` Ryzen AI Max+ 395 | 2026-10-22 |
-| **LocalAI 兼容表：Qwen3-TTS 支持 CPU / CUDA 12-13 / ROCm / Intel SYCL / Metal / Jetson L4T** | 框架支持矩阵 | `localai.io/docs/model-compatibility` | 2026-07-30 |
-| llama.cpp 官方后端表含 **HIP → AMD ROCm** | 工具链状态 | `github.com/ggml-org/llama.cpp` `docs/backend/` | 2026-10-22 |
+| 128 GB 统一内存、可分配 96 GB、x86_64 | 官方规格 | [`amd.com`](https://www.amd.com) Ryzen AI Max+ 395 | 2026-10-22 |
+| **LocalAI 兼容表：Qwen3-TTS 支持 CPU / CUDA 12-13 / ROCm / Intel SYCL / Metal / Jetson L4T** | 框架支持矩阵 | [`localai.io/docs/model-compatibility`](https://localai.io) | 2026-07-30 |
+| llama.cpp 官方后端表含 **HIP → AMD ROCm** | 工具链状态 | [`github.com/ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp) `docs/backend/` | 2026-10-22 |
 | Qwen3-ASR-1.7B 在该平台的 transformers 实测（RTF） | **缺失** | — | — |
 
 **置信度**：待验证——三条独立线索都指向"可行"，但**没有一条是实测**；ROCm 对 transformers 自定义 attention 的覆盖是唯一不确定点。
