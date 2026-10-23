@@ -1,0 +1,42 @@
+# ============================================================================
+# speech-to-speech（s2s）镜像 B —— 自包含版 CUDA 13 变体
+#
+# 与 Dockerfile.baked 的唯一差别：基础镜像换成 cu130（torch 2.11.0+cu130）。
+# 其余（烤入 qwen3-asr / qwen3-tts 模型 + silero）完全一致。
+#
+# 构建：
+#   docker build -f Dockerfile.baked.cu130 \
+#     -t ccr.ccs.tencentyun.com/llm-basic/speech-to-speech-baked:cu130-1.0 .
+# ============================================================================
+ARG BASE_IMAGE=ccr.ccs.tencentyun.com/llm-basic/python-torch:cu130
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV UV_INDEX="https://download.pytorch.org/whl/cu130 https://pypi.org/simple"
+ENV UV_INDEX_STRATEGY=unsafe-best-match
+
+WORKDIR /usr/src/app
+
+COPY pyproject.toml ./
+# 见 Dockerfile 同名步骤说明：删除全部 optional-dependencies，仅解析 default 依赖。
+RUN /usr/bin/python3 - <<'PY'
+import re, pathlib
+p = pathlib.Path("pyproject.toml")
+t = p.read_text()
+t = re.sub(r"\[project\.optional-dependencies\][\s\S]*?(?=\n\[)", "", t, count=1)
+p.write_text(t)
+PY
+RUN uv sync --python /usr/bin/python3 --no-install-project --no-dev --inexact
+
+COPY src ./src
+RUN uv sync --python /usr/bin/python3 --no-dev --inexact
+
+COPY cache/qwen3-asr-model-hf /root/.cache/qwen3-asr-model-hf
+COPY cache/qwen3-tts-model /root/.cache/qwen3-tts-model
+RUN git clone --depth 1 https://github.com/snakers4/silero-vad /opt/silero-vad
+
+RUN python -c "import nltk; [nltk.download(p, quiet=True) for p in ('punkt','punkt_tab','averaged_perceptron_tagger_eng')]" || true
+
+RUN sed -i 's/^    base = config\.rope_theta$/    base = getattr(config, "rope_theta", 10000.0)/' \
+    /usr/src/app/.venv/lib/python3.12/site-packages/qwen_tts/_transformers_compat.py

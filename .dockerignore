@@ -1,7 +1,7 @@
 tmp
-cache
 .venv
 .git
+.gitignore
 .mypy_cache
 .pytest_cache
 .ruff_cache
@@ -14,4 +14,9 @@ build
 Dockerfile
 docker-compose.yml
 .dockerignore
-.gitignore
+
+# 模型权重：Image B 构建期会把下面两个目录 COPY 进镜像（离线、与本地逐字节一致），
+# 故保留在构建上下文内；其余大型运行时缓存排除以缩小上下文。
+cache/huggingface
+cache/qwen35-4b
+cache/smart-turn-v3.2-cpu.onnx

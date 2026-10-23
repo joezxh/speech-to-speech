@@ -1,30 +1,35 @@
-# python-torch 基础镜像（CUDA 12.8 版）——与基础镜像 nvidia/cuda:12.8.1 匹配的 torch 构建。
-# 与原 speech-to-speech/Dockerfile 的基础层一致；torch/torchaudio 走 PyTorCH cu128 源，
-# 装进 uv venv /usr/src/app/.venv（绕开 Ubuntu24.04 Python3.12 的 PEP668 限制）。
-FROM nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04
+# ============================================================================
+# speech-to-speech（s2s）镜像 A —— cu128 显式锁定版
+#
+# 与 Dockerfile 内容完全一致（均基于 python-dl-cu128）；此文件便于
+# `DOCKERFILE=Dockerfile.cu128` 显式选择 cu128 基座。见 Dockerfile 顶部说明。
+# ============================================================================
+ARG BASE_IMAGE=ccr.ccs.tencentyun.com/llm-basic/python-torch:cu128
+FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
-ENV PATH="/usr/src/app/.venv/bin:${PATH}"
+ENV UV_INDEX="https://download.pytorch.org/whl/cu128 https://pypi.org/simple"
+ENV UV_INDEX_STRATEGY=unsafe-best-match
 
 WORKDIR /usr/src/app
 
-# Install packages（与原 Dockerfile 基础层一致）
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        ca-certificates \
-        git \
-        libportaudio2 \
-        libsndfile1 \
-        python3 \
-        python3-pip \
-        python3-venv \
-    && rm -rf /var/lib/apt/lists/*
-RUN python3 -m pip install --no-cache-dir --break-system-packages uv
+COPY pyproject.toml ./
+# 见 Dockerfile 同名步骤说明：删除全部 optional-dependencies，仅解析 default 依赖，
+# 避免 uv 通用解析把 darwin-only 的 kokoro/mlx 等纳入导致 tqdm 冲突。
+RUN /usr/bin/python3 - <<'PY'
+import re, pathlib
+p = pathlib.Path("pyproject.toml")
+t = p.read_text()
+t = re.sub(r"\[project\.optional-dependencies\][\s\S]*?(?=\n\[)", "", t, count=1)
+p.write_text(t)
+PY
+RUN uv sync --python /usr/bin/python3 --no-install-project --no-dev --inexact
 
-# torch / torchaudio：锁定到 cu128 轮子，匹配 CUDA 12.8.1 基础镜像
-RUN uv venv /usr/src/app/.venv --python /usr/bin/python3 \
-    && uv pip install --python /usr/src/app/.venv/bin/python --no-cache-dir \
-        --index-url https://download.pytorch.org/whl/cu128 \
-        torch torchaudio
+COPY src ./src
+RUN uv sync --python /usr/bin/python3 --no-dev --inexact
+
+RUN python -c "import nltk; [nltk.download(p, quiet=True) for p in ('punkt','punkt_tab','averaged_perceptron_tagger_eng')]" || true
+
+RUN sed -i 's/^    base = config\.rope_theta$/    base = getattr(config, "rope_theta", 10000.0)/' \
+    /usr/src/app/.venv/lib/python3.12/site-packages/qwen_tts/_transformers_compat.py

@@ -1,0 +1,80 @@
+---
+# 镜像 B（自包含）部署：模型已烤进镜像，无需宿主机 ./cache 与 ./silero-vad 卷挂载。
+# 用法（本目录）：
+#   docker compose -f docker-compose.baked.yml --env-file .env.local up -d
+services:
+  pipeline:
+    image: ccr.ccs.tencentyun.com/llm-basic/speech-to-speech-baked:cu128-1.0
+    command:
+      - speech-to-speech
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+      # —— LLM:GPUStack Qwen3-8B（与本地 pipeline 一致）——
+      - --llm_backend
+      - chat-completions
+      - --model_name
+      - "${GPUSTACK_MODEL:-Qwen3-8B}"
+      - --responses_api_base_url
+      - "${GPUSTACK_BASE_URL:-http://192.168.40.30/v1-openai}"
+      - --responses_api_api_key
+      - "${GPUSTACK_API_KEY:-not-needed}"
+      - --responses_api_stream
+      - --responses_api_reasoning_effort
+      - ""
+      - --stream_batch_sentences
+      - "1"
+      # —— STT:Qwen3-ASR（模型已烤进镜像 /root/.cache/qwen3-asr-model-hf）——
+      - --stt
+      - qwen3-asr
+      - --qwen3_asr_model_name
+      - /root/.cache/qwen3-asr-model-hf
+      - --qwen3_asr_device
+      - auto
+      - --qwen3_asr_language
+      - auto
+      # —— TTS:Qwen3-TTS（模型已烤进镜像 /root/.cache/qwen3-tts-model）——
+      - --tts
+      - qwen3
+      - --qwen3_tts_model_name
+      - /root/.cache/qwen3-tts-model
+      - --qwen3_tts_backend
+      - torch
+      - --qwen3_tts_device
+      - cuda
+      - --qwen3_tts_non_streaming_mode
+      - "False"
+      - --qwen3_tts_streaming_chunk_size
+      - "4"
+      # —— VAD 判停：关闭 Smart Turn，纯静音判停（与本地 pipeline 一致）——
+      - --min_silence_ms
+      - "700"
+      - --no_smart_turn
+      - --speculative_reopen_ms
+      - "0"
+      - --unanswered_reopen_ms
+      - "0"
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
+      - --no_enable_live_transcription
+    environment:
+      # 模型已内置于镜像，离线运行。
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - TOKENIZERS_PARALLELISM=false
+    ports:
+      - "${PIPELINE_PORT:-8765}:8765/tcp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${PIPELINE_GPU_ID:-0}']
+              capabilities: [gpu]

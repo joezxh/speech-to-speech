@@ -1,0 +1,76 @@
+# ============================================================================
+# speech-to-speech（s2s）本地部署镜像 —— 继承自 ccr.ccs.tencentyun.com/llm-basic/python-torch
+#
+# 与仓库中 Dockerfile / Dockerfile.cu130 的关系：
+#   本文件是**面向本机（speech-to-speech-local 栈）**的专用构建文件，补齐基础镜像
+#   未固化的部分，并把入口点/默认命令显式化：
+#     1) 系统依赖：apt 装齐运行期音频/编译依赖；
+#     2) Python 依赖：uv sync 解析 default 依赖（qwen3-asr / qwen3-tts 均在 default 内），
+#        并把基础镜像已装好的 cuXX nvidia 轮子锁进 constraints，避免误装 cu13/cu12 变体；
+#     3) 运行时环境变量：离线 HF 镜像源、ModelScope 端点、PATH/PYTHONPATH 等；
+#     4) 源码：只 COPY src/ 与 pyproject.toml，**不 COPY . .**，避免把宿主 ./cache 模型塞进镜像；
+#     5) 显式 ENTRYPOINT + 默认 CMD：镜像可独立 docker run 起服务；
+#     6) 模型与 VAD 不入镜像，运行时由卷挂载提供（与当前本地部署完全一致）：
+#          ./cache      -> /root/.cache       (qwen3-asr-model-hf / qwen3-tts-model / smart-turn onnx)
+#          ./silero-vad -> /opt/silero-vad:ro
+#
+# 基础镜像选择（重要）：
+#   默认 cu128 —— torch 2.11.0+cu128 配 CUDA 12.8 runtime；
+#   宿主驱动 >= 580（具备 CUDA 13 能力）时可改用 :cu130 变体。
+#   驱动 < 580 必须用 cu128：cu130 轮子会 "driver too old"，表现为静默回退 CPU（RTF 约 3.7x）。
+#   Python 版本固定 3.12（基础镜像 venv 已是 3.12，uv sync 亦按 3.12 单版本解析）。
+#
+# 构建（上下文必须是本仓库根目录 speech-to-speech-src/）：
+#   cd speech-to-speech-src
+#   docker build -f Dockerfile.local \
+#     -t ccr.ccs.tencentyun.com/llm-basic/speech-to-speech-pipeline:local-1.0 .
+#
+# 部署（本地栈，见 docker-compose.local.yml）：
+#   docker compose -f docker-compose.local.yml --env-file .env.local up -d
+#   端口 8765:8765；卷挂载 ./cache、./silero-vad；GPU 由 deploy.resources 绑定 GPU0。
+#
+# 验证要求：
+#   1) 容器 Up 且日志出现 "Uvicorn running on http://0.0.0.0:8765"；
+#   2) GET http://127.0.0.1:8765/v1/pool 返回 {"size":1,...}（已监听、槽位就绪）；
+#   3) 容器内 torch.cuda.is_available() 为 True（未静默回退 CPU）；
+#   4) 容器内 nltk punkt 资源可用（sent_tokenize 不抛 LookupError）；
+#   5) WebSocket /v1/realtime 可建立连接并完成 session.update。
+# ============================================================================
+ARG BASE_IMAGE=ccr.ccs.tencentyun.com/llm-basic/python-torch:cu128
+FROM ${BASE_IMAGE}
+
+# —— 基础环境变量 ——
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/opt/cosyvoice-src:/opt/cosyvoice-src/third_party/Matcha-TTS \
+    PATH=/usr/src/app/.venv/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# —— 构建期索引配置 ——
+# PyTorch cu128 通道（只取 torch/torchaudio 的 +cuXXX 本地构建）
+#   -> 清华 tuna（国内，绝大多数包走这里，快）-> 官方 pypi.org（兜底）。
+# first-index：按包名取，不会跨索引误装 cu13 变体（unsafe-best-match 才会误配 CUDA 库）。
+ENV UV_INDEX="https://download.pytorch.org/whl/cu128 https://pypi.tuna.tsinghua.edu.cn/simple https://pypi.org/simple" \
+    UV_INDEX_STRATEGY=first-index \
+    UV_BUILD_ISOLATION=false
+
+WORKDIR /usr/src/app
+
+# —— 系统依赖 ——
+# build-essential：个别依赖无预编译轮子时需要编译；libportaudio2/libsndfile1：音频读写；
+# sox：可选音频处理工具（缺失只影响可选增强链路，不影响主流程）；
+# libgomp1：torch 运行时依赖；curl：健康检查/调试。
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        libgomp1 \
+        libportaudio2 \
+        libsndfile1 \
+        sox \
+    && rm -rf /var/lib/apt/lists/*
+
+# —— Python 依赖 ——
+# 先只复制 pyproject.toml：依赖层与源码层分离，改代码时不必重解析依赖。
+COPY pyproject.toml ./

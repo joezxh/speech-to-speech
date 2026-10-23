@@ -71,7 +71,7 @@
 | 低延迟 | `D-G04` | RTX 5070 12G | 12 GB | 672 GB/s 下 0.8B 解码可达数百 tok/s，延迟下限 |
 | 高并发 | `D-S01` | NVIDIA L20 48G | 48 GB | 0.8B 下同机 8 路（已触纯管线槽位上限，再加 LLM 无收益） |
 | 边缘可选 | `D-E01` | Jetson Orin NX 16G | 16 GB 统一 | **待验证**：15–40 W，0.8B Q4 下同机 1 路；需先跑 T3 验 RTF |
-| 边缘可选 | `D-E09` | Ryzen AI Max+ 395 | 128 GB 统一 | **待验证**：x86 + ROCm，槽位上限 17 路；需验 ROCm 覆盖 |
+| 边缘可选 | `D-E09` | Ryzen AI Max+ 395 | 128 GB 统一 | **高风险**：x86+ROCm 同权重可跑已证实，但 TTS RTF 2.25–3.00 慢于实时，需 RTF 复测翻案（见 edge-box-feasibility.md D-E09） |
 | 边缘可选 | `D-E06` | RK3588 盒 | 32 GB 上限 | **待验证（仅 LLM）**：官方 llama.cpp 无 RKNN 后端，需第三方 `rk-llama.cpp`；不能同机跑 STT/TTS |
 | 边缘可选 | `D-G08` | DGX Spark 128G | 128 GB 统一 | **待验证**：可同机跑大模型；ARM64 镜像需重建，273 GB/s 是瓶颈 |
 
@@ -85,7 +85,7 @@
 | 盒子 | 前置条件（不满足则不能进入 PoC） |
 |---|---|
 | `D-E01` Orin NX 16G | llama.cpp 需 **aarch64 + CUDA** 构建（≥ b8001）；确认 JetPack 6.2+；**T3 必须测 RTF ≤1**——102 GB/s 下 0.8B 尚可，但 STT/TTS 未必 |
-| `D-E09` Ryzen AI Max+ 395 | llama.cpp 需 **ROCm/HIP** 构建；`rocm-smi` 能识别 GPU；确认 ROCm 版 PyTorch 可加载 transformers 原样权重 |
+| `D-E09` Ryzen AI Max+ 395 | llama.cpp 需 **ROCm/HIP** 构建；`rocminfo \| grep gfx` 确认 gfx1151 识别（rocm-smi 在 APU 上恒显 0%，不可用作显存口径）；确认 ROCm 版 PyTorch 可加载 transformers 原样权重 |
 | `D-E06` RK3588 | 只能用第三方 `rk-llama.cpp`（官方后端表**无 RKNN**），且**只能跑 LLM**——STT/TTS 需另配 GPU 盒，属混合架构，需业务确认 |
 | `D-G08` DGX Spark | 需 **aarch64 + CUDA** 构建与 arm64 镜像；273 GB/s 下单路 RTF 必须实测 |
 

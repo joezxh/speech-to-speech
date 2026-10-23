@@ -58,6 +58,12 @@ OpenAI Realtime 兼容协议对外提供服务。本文档包含：组件说明�
 两种方案都只让 pipeline 容器负责 VAD/STT/TTS；区别仅在于 LLM 由外部 GPUStack 提供，还是
 由同 compose 内的 llama.cpp 提供。
 
+> **硬件选型与多盒部署**：上述方案在不同算力盒子上的显存占用、并发估算、1688/淘宝商品
+> 链接，以及「多盒 + 内网 LLM 端点」的拆分部署清单（含 `docker-compose.llm-box.yml` /
+> `docker-compose.pipeline-box.yml` 与 `latency_test.py` 压测参数），见
+> [docs/hardware/](./hardware/README.md)。覆盖 4 种 LLM 配置：
+> 远程 LLM / 本地 Qwen3-8B / 本地 Qwen3.5-9B / 本地 Qwen3.5-4B。
+
 ---
 
 ## 4. 方案一：LLM 使用 GPUStack 现有 Qwen3-8B

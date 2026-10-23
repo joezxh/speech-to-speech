@@ -9,7 +9,10 @@ name: speech-to-speech-local
 
 services:
   pipeline:
-    image: speech-to-speech-pipeline:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.sox
+    image: speech-to-speech-local:cu130-1.0-sox
     command:
       - speech-to-speech
       - serve
@@ -18,6 +21,8 @@ services:
       - --port
       - "8765"
       # —— LLM:GPUStack Qwen3-8B(OpenAI 兼容;chat-completions 后端兼容性最好)——
+      # §2 网络优化:LLM 与 pipeline 的 RTT 直接叠加进延迟,尽量同机/同局域网;
+      # 当前已指向局域网 192.168.40.30。如改为同机部署 LLM,把 BASE_URL 改成 http://127.0.0.1:port/v1-openai 可进一步降延迟。
       - --llm_backend
       - chat-completions
       - --model_name
@@ -27,17 +32,19 @@ services:
       - --responses_api_api_key
       - "${GPUSTACK_API_KEY:-not-needed}"
       - --responses_api_stream
-      - --responses_api_reasoning_effort
-      - ""
+      - --responses_api_disable_thinking
       - --stream_batch_sentences
       - "1"
+      # —— 缩短上下文长度以降低 LLM 计算量(§2:--chat_size);数值越小延迟越低、记忆越短 ——
+      - --chat_size
+      - "40"
       # —— STT:Qwen3-ASR-1.7B-hf(本地 ./cache/qwen3-asr-model-hf)——
       - --stt
       - qwen3-asr
       - --qwen3_asr_model_name
       - /root/.cache/qwen3-asr-model-hf
       - --qwen3_asr_device
-      - auto
+      - cuda
       - --qwen3_asr_language
       - auto
       # —— TTS:Qwen3-TTS(torch / cuda / 句内流式)——
@@ -53,9 +60,23 @@ services:
       - "False"
       - --qwen3_tts_streaming_chunk_size
       - "4"
-      # —— VAD 判停:关闭 Smart Turn,纯静音判停 ——
+      # —— VAD 判停:关闭 Smart Turn 去除二次确认等待(§2 优化)——
+      # min_silence_ms: 700→500(折中)。700 时实测捕获 75%、首音 3.9~6.7s;
+      #   500 少等 0.2s 判停,捕获率略降但首音更快。
+      #   注:short_segment_merge_ms 必须 >= min_silence_ms,否则 hold 会先于相邻片段到期。
       - --min_silence_ms
-      - "700"
+      - "500"
+      # min_speech_ms: 384→250。首段有效语音不足 384ms 的整段会被丢弃,
+      #   导致"嗯/好的/你好"这类短句完全捕捉不到。
+      - --min_speech_ms
+      - "250"
+      # short_segment_merge_ms: 0→800。把低于 min_speech_ms 的相邻碎片先 hold 再拼接,
+      #   而不是直接丢弃。必须 >= min_silence_ms,否则 hold 会在相邻片段到达前就到期。
+      - --short_segment_merge_ms
+      - "800"
+      # §2:VAD 置信阈值,调高(如 0.7)抗环境噪声/降误触发,调低(如 0.4)提灵敏度;默认 0.6
+      - --thresh
+      - "0.6"
       - --no_smart_turn
       - --speculative_reopen_ms
       - "0"
@@ -64,8 +85,11 @@ services:
       - --init_chat_role
       - system
       - --init_chat_prompt
-      - "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
-      - --no_enable_live_transcription
+      - "You are a concise spoken-language voice assistant. Reply in the user's language. Always answer in ONE short sentence (under 30 words); only give more detail if the user explicitly asks. Never ask a follow-up question. Never just repeat what the user said. If you don't know, say so in one sentence. Keep a friendly, natural tone."
+      # —— 开启实时字幕(§2:让字幕早出);间隔 0.5s ——
+      - --enable_live_transcription
+      - --live_transcription_update_interval
+      - "0.5"
       - --smart_turn_model_path
       - /root/.cache/smart-turn-v3.2-cpu.onnx
     ports:
@@ -77,6 +101,8 @@ services:
       - MODELSCOPE_ENDPOINT=https://modelscope.cn
     volumes:
       - ./cache/:/root/.cache/
+      # 注意:nltk_data 已烤进镜像(Dockerfile.sox)。不要在此挂载 nltk_data:
+      # Windows 挂载点权限为 777,nltk 会拒绝授权该目录并转去联网重下,导致启动卡死。
       - ./silero-vad:/opt/silero-vad:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"

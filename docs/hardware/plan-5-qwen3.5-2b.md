@@ -59,7 +59,7 @@
 | 高并发 | `D-S01` | NVIDIA L20 48G | 48 GB | 2B Q4 下同机 8 路，单路成本全表最低 |
 | 备选（缺货） | `D-G03` | RTX 5060 Ti 16G | 16 GB | 规格介于 D-G02/D-G05 之间，仅在 D-G05 缺货时选 |
 | 边缘可选 | `D-E01` | Jetson Orin NX 16G | 16 GB 统一 | **待验证**：CUDA 栈完整，但 102 GB/s 下 RTF 可能 >1，必须先跑 T3 |
-| 边缘可选 | `D-E09` | Ryzen AI Max+ 395 | 128 GB 统一 | **待验证**：x86 + ROCm 无需重建镜像，槽位上限高，需验 ROCm 覆盖 |
+| 边缘可选 | `D-E09` | Ryzen AI Max+ 395 | 128 GB 统一 | **高风险**：x86+ROCm 同权重可跑已证实，但 TTS RTF 2.25–3.00 慢于实时，需 RTF 复测翻案（见 edge-box-feasibility.md D-E09） |
 | 边缘可选 | `D-G08` | DGX Spark 128G | 128 GB 统一 | **待验证**：可同机跑大模型；ARM64 镜像需重建，273 GB/s 是瓶颈 |
 
 > 边缘三款的判定依据与买前验证清单见 [edge-box-feasibility.md](./edge-box-feasibility.md) §2 / §4。

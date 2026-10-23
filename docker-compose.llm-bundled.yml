@@ -1,58 +1,59 @@
-# 方案二：LLM 也一并部署（自带 llama.cpp 服务 Qwen3-8B，完全自包含，不依赖 GPUStack）
+# 方案二（本机验证版）：LLM 一并本地部署，本地运行 Qwen3.5-4B(Q4)，完全自包含
 #
-# 与 docker-compose.yml（原 Gemma 示例）结构一致，但把 LLM 换成 Qwen3-8B-Instruct GGUF：
-#   - llama   : llama.cpp 服务器，在 GPU 上提供 OpenAI 兼容接口，承载 Qwen3-8B
-#   - pipeline: speech-to-speech 的 VAD/STT/TTS，LLM 指向同 compose 内的 llama 服务
+# 本机适配说明（2026-10-22，RTX 5070 Ti Laptop 12GB）：
+#   - 本机 ghcr.io 拉取被限速，故 LLM 直接复用主机已装的 llama.cpp（LM Studio 自带
+#     llama-server.exe，CUDA 版）来服务本地已缓存的 ./cache/qwen35-4b/Qwen3.5-4B-Q4_K_M.gguf。
+#   - pipeline 容器通过 host.docker.internal:8080 访问主机 llama-server（已在 extra_hosts 映射）。
+#   - STT/TTS 对齐本地部署：Qwen3-ASR + Qwen3-TTS（权重已缓存），VAD 用本机优化参数。
 #
-# 用法：
-#   docker compose -f docker-compose.llm-bundled.yml up -d --build
+# 启动步骤：
+#   1) 先启动主机 llama-server（示例，CUDA 版路径按你 LM Studio 实际目录调整）：
+#      & "C:\Users\joezxh\.lmstudio\extensions\backends\llama.cpp-win-x86_64-nvidia-cuda12-avx2-2.56.0\llama-server.exe" `
+#        --model "D:\work\qwen-audio-agent\speech-to-speech-src\cache\qwen35-4b\Qwen3.5-4B-Q4_K_M.gguf" `
+#        --alias Qwen3.5-4B-Instruct-GGUF --host 0.0.0.0 --port 8080 -c 8192 -np 1 --reasoning-budget 0
+#   2) 启动 pipeline（本 compose，仅 pipeline 服务；llama 服务已注释掉）：
+#      docker compose -f docker-compose.llm-bundled.yml up -d pipeline
+#   3) 验证：
+#      curl http://127.0.0.1:8080/v1/models
+#      docker compose -f docker-compose.llm-bundled.yml logs -f pipeline
 #
-# 说明：
-#   - 默认 Qwen3-8B-Instruct GGUF（HF 多文件仓库，llama.cpp 会拉取默认量化）。
-#     如需指定量化（如 Q4_K_M / Q8_0），把 -hf 换成具体文件，例如：
-#       -hf unsloth/Qwen3-8B-Instruct-GGUF
-#     并自行在 HuggingFace 上挑选对应 .gguf；--model_name 需与 -hf 一致。
-#   - 关闭 Qwen3 思考链以降低语音延迟：llama.cpp 较新版本支持 --reasoning-budget 0；
-#     同时 pipeline 侧仍发送 chat_template_kwargs.enable_thinking=false（vLLM 生效）。
-#   - llama 与 pipeline 都占用 GPU 0，请确认显存足够（Qwen3-8B q8 ≈ 8.5GB + STT/TTS）。
+# 完全自包含（容器化 LLM，无需主机 llama-server）的替代方案——取消下面 llama 服务注释，
+# 并把 pipeline 的 responses_api_base_url 改回 http://llama:8080/v1、恢复 depends_on: [llama] 即可：
+#   llama:
+#     image: ghcr.io/ggml-org/llama.cpp:server-cuda
+#     command:
+#       - -m
+#       - /root/.cache/qwen35-4b/Qwen3.5-4B-Q4_K_M.gguf
+#       - --alias
+#       - Qwen3.5-4B-Instruct-GGUF
+#       - -np
+#       - "1"
+#       - -c
+#       - "8192"
+#       - -fa
+#       - "on"
+#       - --reasoning-budget
+#       - "0"
+#       - --host
+#       - 0.0.0.0
+#       - --port
+#       - "8080"
+#     ports:
+#       - 8080:8080/tcp
+#     volumes:
+#       - ./cache/:/root/.cache/
+#     restart: unless-stopped
+#     deploy:
+#       resources:
+#         reservations:
+#           devices:
+#             - driver: nvidia
+#               device_ids: ['0']
+#               capabilities: [gpu]
 
 services:
-  llama:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
-    command:
-      - -hf
-      - Qwen/Qwen3-8B-Instruct-GGUF
-      - -np
-      - "2"
-      - -c
-      - "65536"
-      - -fa
-      - "on"
-      - --reasoning-budget
-      - "0"
-      - --host
-      - 0.0.0.0
-      - --port
-      - "8080"
-    ports:
-      - 8080:8080/tcp
-    volumes:
-      - ./cache/:/root/.cache/
-    restart: unless-stopped
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['0']
-              capabilities: [gpu]
-
   pipeline:
-    depends_on:
-      - llama
-    build:
-      context: .
-      dockerfile: ${DOCKERFILE:-Dockerfile}
+    image: ccr.ccs.tencentyun.com/llm-basic/speech-to-speech:cu130-1.0
     command:
       - speech-to-speech
       - serve
@@ -60,36 +61,73 @@ services:
       - 0.0.0.0
       - --port
       - "8765"
-      # —— LLM 指向同 compose 内的 llama.cpp（OpenAI 兼容，chat-completions 后端）——
+      # —— LLM 指向主机 llama-server（OpenAI 兼容，chat-completions 后端）——
       - --llm_backend
       - chat-completions
       - --model_name
-      - Qwen/Qwen3-8B-Instruct-GGUF
+      - Qwen3.5-4B-Instruct-GGUF
       - --responses_api_base_url
-      - http://llama:8080/v1
+      - http://host.docker.internal:8080/v1
       - --responses_api_api_key
       - ""
       - --responses_api_stream
       - --responses_api_reasoning_effort
       - none
-      # —— STT / TTS（默认在容器内 GPU 上运行）——
+      - --stream_batch_sentences
+      - "1"
+      - --chat_size
+      - "20"
+      # —— STT:Qwen3-ASR（本地 ./cache/qwen3-asr-model-hf，与本地部署一致）——
       - --stt
-      - parakeet-tdt
+      - qwen3-asr
+      - --qwen3_asr_model_name
+      - /root/.cache/qwen3-asr-model-hf
+      - --qwen3_asr_device
+      - auto
+      - --qwen3_asr_language
+      - auto
+      # —— TTS:Qwen3-TTS（torch / cuda / 句内流式，与本地部署一致）——
       - --tts
       - qwen3
+      - --qwen3_tts_model_name
+      - /root/.cache/qwen3-tts-model
+      - --qwen3_tts_backend
+      - torch
+      - --qwen3_tts_device
+      - cuda
+      - --qwen3_tts_non_streaming_mode
+      - "False"
+      - --qwen3_tts_streaming_chunk_size
+      - "4"
       - --qwen3_tts_speaker
       - Aiden
       - --qwen3_tts_language
       - auto
+      # —— VAD 判停:关闭 Smart Turn 去除二次确认;缩短尾静音加速断句;适配环境噪声 ——
+      - --min_silence_ms
+      - "64"
+      - --thresh
+      - "0.6"
+      - --no_smart_turn
+      - --speculative_reopen_ms
+      - "0"
+      - --unanswered_reopen_ms
+      - "0"
       - --init_chat_role
       - system
       - --init_chat_prompt
-      - "You are a helpful voice assistant. Reply concisely and in the user's language."
+      - "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
       - --enable_live_transcription
     ports:
       - "${PIPELINE_PORT:-8765}:8765/tcp"
     volumes:
       - ./cache/:/root/.cache/
+      - ./silero-vad:/opt/silero-vad:ro
+    environment:
+      - HF_HUB_OFFLINE=1
+      - HF_ENDPOINT=https://hf-mirror.com
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped
     deploy:
       resources:

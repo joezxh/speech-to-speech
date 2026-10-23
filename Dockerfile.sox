@@ -1,0 +1,14 @@
+# 在官方预构建镜像 cu130-1.0 之上仅补充 sox，修复运行期 "sox: not found" 警告。
+# 并把 nltk 资源固化进镜像，原因有二：
+#   1) 容器网络到 nltk 源不稳定：punkt_tab.zip 常卡死在 2.1MB（实测每次重建必现），
+#      导致启动要等 5 分钟以上，甚至反复重试；
+#   2) 用 bind mount 把 nltk_data 挂进去时，Windows 挂载点权限是 777，
+#      nltk 会拒绝授权该目录（"world- or group-writable"）→ 加载失败 → 转去联网重下 → 卡死。
+# 烤进镜像后是 root:root 755，nltk 合法使用本地副本，启动零网络依赖。
+FROM ccr.ccs.tencentyun.com/llm-basic/speech-to-speech:cu130-1.0
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends sox \
+    && rm -rf /var/lib/apt/lists/*
+COPY cache/nltk_data /root/nltk_data
+RUN chmod -R 755 /root/nltk_data && chown -R root:root /root/nltk_data

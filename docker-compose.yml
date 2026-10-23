@@ -33,7 +33,7 @@ services:
               capabilities: [gpu]
 
   pipeline:
-    # 端侧 LLM（llama）已停用，仅用云端 LLM（百炼）；如需回退端侧，
+    # 端侧 LLM（llama）已停用，仅用云端 LLM（GPUStack）；如需回退端侧，
     # 取消注释 depends_on 并 `docker compose up -d llama`
     # depends_on:
     #   llama:
@@ -48,60 +48,57 @@ services:
       - 0.0.0.0
       - --port
       - "8765"
+      # —— LLM:GPUStack Qwen3-8B（OpenAI 兼容；chat-completions 后端，与本地 pipeline 一致）——
       - --llm_backend
-      - responses-api
-      # --- 云端 LLM 对比（百炼开源模型；回退端侧 llama.cpp 用注释里的原值）---
-      # 端侧基线: --model_name Qwen3.5-4B-Q4_K_M / --responses_api_base_url http://llama:8080/v1 / --responses_api_api_key ""
+      - chat-completions
       - --model_name
-      - qwen3-8b
+      - "${GPUSTACK_MODEL:-Qwen3-8B}"
       - --responses_api_base_url
-      - https://dashscope.aliyuncs.com/compatible-mode/v1
+      - "${GPUSTACK_BASE_URL:-http://192.168.40.30/v1-openai}"
       - --responses_api_api_key
-      - ${DASHSCOPE_API_KEY}
-      # 关闭推理/thinking：DashScope 的 /responses 兼容层忽略 reasoning.effort，
-      # 默认 enable_thinking=true 会与 assistant response prefill 冲突报 400；
-      # 代码层已对这类 provider 显式下发 chat_template_kwargs.enable_thinking=false。
+      - "${GPUSTACK_API_KEY:-not-needed}"
+      - --responses_api_stream
       - --responses_api_reasoning_effort
-      - "none"
-      - --init_chat_role
-      - system
-      - --init_chat_prompt
-      - "You are a helpful assistant"
+      - ""
+      - --stream_batch_sentences
+      - "1"
+      # —— STT:Qwen3-ASR（本地 ./cache/qwen3-asr-model-hf，与本地 pipeline 一致）——
+      - --stt
+      - qwen3-asr
+      - --qwen3_asr_model_name
+      - /root/.cache/qwen3-asr-model-hf
+      - --qwen3_asr_device
+      - auto
+      - --qwen3_asr_language
+      - auto
+      # —— TTS:Qwen3-TTS（torch / cuda / 句内流式，与本地 pipeline 一致）——
+      - --tts
+      - qwen3
+      - --qwen3_tts_model_name
+      - /root/.cache/qwen3-tts-model
       - --qwen3_tts_backend
       - torch
       - --qwen3_tts_device
       - cuda
-      - --stream_batch_sentences
-      - "1"
-      - --stt
-      - paraformer
-      - --paraformer_stt_device
-      - cuda
-      # --- 性能优化：降低首包延迟(TTFA)，对体感延迟最有效 ---
-      # Qwen3-TTS 实测 throughput 已 >1x 实时(eager 在长音频上 speedup≈2.2)，
-      # 不是瓶颈；真正影响"用户说完到助手开口"的是首包延迟。
-      # 开启句内流式解码 + 更小音频块(默认8→4, 每块~320ms)，让第一块更早送出。
       - --qwen3_tts_non_streaming_mode
       - "False"
       - --qwen3_tts_streaming_chunk_size
       - "4"
-      # --- VAD / Smart-Turn 重开宽限调优（降低首响延迟 + 抑制 speculative reopen 抖动）---
-      # 原默认：speculative_reopen_ms=800, unanswered_reopen_ms=7000,
-      #         smart_turn_max_wait_ms=2000, smart_turn_incomplete_delay_ms=600, min_silence_ms=64
-      # 实测 live 会话中 Smart Turn 判定 complete(p~0.98) 后仍保留 800ms 重开宽限，且
-      # unanswered_reopen_ms=7000 让未提交 turn 在 7s 内可反复重开，单句被拆成数十次
-      # STT/LLM（大量 cancel task），首响被拖到 19s+。收紧后用户说完→开口 ≈
-      # grace(250) + STT(~2.5) + LLM(~0.8) + TTFA(0.5) ≈ 4s 量级。
+      # —— VAD 判停：关闭 Smart Turn，纯静音判停（与本地 pipeline 一致）——
       - --min_silence_ms
-      - "200"
+      - "700"
+      - --no_smart_turn
       - --speculative_reopen_ms
-      - "250"
+      - "0"
       - --unanswered_reopen_ms
-      - "1500"
-      - --smart_turn_max_wait_ms
-      - "1000"
-      - --smart_turn_incomplete_delay_ms
-      - "300"
+      - "0"
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
+      - --no_enable_live_transcription
+      - --smart_turn_model_path
+      - /root/.cache/smart-turn-v3.2-cpu.onnx
     environment:
       # 容器内 HuggingFace 出口不稳（SSL EOF），而模型权重/配置已完整缓存
       # 在本地 ./cache。离线模式避免启动时对 processor_config.json 等「本就

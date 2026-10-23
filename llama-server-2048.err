@@ -1,0 +1,67 @@
+0.00.009.297 I srv  llama_server: initializing ...
+0.00.084.007 W srv  llama_server: security: no API key is set and CORS allows all origins (see https://github.com/ggml-org/llama.cpp/pull/25655)
+0.00.098.452 I srv    load_model: loading model 'D:\work\qwen-audio-agent\speech-to-speech-src\cache\qwen35-4b\Qwen3.5-4B-Q4_K_M.gguf'
+0.06.190.603 I cmn          init: llama threadpool init, n_threads = 12
+0.06.691.408 I srv    load_model: initializing, n_slots = 1, n_ctx_slot = 2048, kv_unified = 'false'
+0.06.706.791 I srv  llama_server: model loaded
+0.06.706.809 I srv  llama_server: listening on http://0.0.0.0:8080
+5.49.801.717 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = -1
+5.49.802.575 I slot launch_slot_: id  0 | task 0 | processing task, is_child = 0
+5.49.802.609 E srv    send_error: task id = 0, error: request (6463 tokens) exceeds the available context size (2048 tokens), try increasing it
+5.49.802.625 I slot      release: id  0 | task 0 | stop processing: n_tokens = 0, truncated = 0
+5.49.802.652 W srv          stop: cancel task, id_task = 0
+6.40.022.705 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 349793315
+6.40.023.476 I slot launch_slot_: id  0 | task 3 | processing task, is_child = 0
+6.40.023.500 E srv    send_error: task id = 3, error: request (6470 tokens) exceeds the available context size (2048 tokens), try increasing it
+6.40.023.517 I slot      release: id  0 | task 3 | stop processing: n_tokens = 0, truncated = 0
+6.40.023.579 W srv          stop: cancel task, id_task = 3
+7.00.508.539 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 400014208
+7.00.509.243 I slot launch_slot_: id  0 | task 6 | processing task, is_child = 0
+7.00.509.259 E srv    send_error: task id = 6, error: request (6475 tokens) exceeds the available context size (2048 tokens), try increasing it
+7.00.509.274 I slot      release: id  0 | task 6 | stop processing: n_tokens = 0, truncated = 0
+7.00.509.300 W srv          stop: cancel task, id_task = 6
+7.09.289.892 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 420499964
+7.09.290.649 I slot launch_slot_: id  0 | task 9 | processing task, is_child = 0
+7.09.290.667 E srv    send_error: task id = 9, error: request (6482 tokens) exceeds the available context size (2048 tokens), try increasing it
+7.09.290.682 I slot      release: id  0 | task 9 | stop processing: n_tokens = 0, truncated = 0
+7.09.290.703 W srv          stop: cancel task, id_task = 9
+7.15.294.555 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 429281373
+7.15.295.445 I slot launch_slot_: id  0 | task 12 | processing task, is_child = 0
+7.15.295.470 E srv    send_error: task id = 12, error: request (6485 tokens) exceeds the available context size (2048 tokens), try increasing it
+7.15.295.487 I slot      release: id  0 | task 12 | stop processing: n_tokens = 0, truncated = 0
+7.15.295.525 W srv          stop: cancel task, id_task = 12
+7.24.156.173 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 435286178
+7.24.157.089 I slot launch_slot_: id  0 | task 15 | processing task, is_child = 0
+7.24.157.106 E srv    send_error: task id = 15, error: request (6492 tokens) exceeds the available context size (2048 tokens), try increasing it
+7.24.157.119 I slot      release: id  0 | task 15 | stop processing: n_tokens = 0, truncated = 0
+7.24.157.142 W srv          stop: cancel task, id_task = 15
+7.26.078.217 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 444147809
+7.26.079.003 I slot launch_slot_: id  0 | task 18 | processing task, is_child = 0
+7.26.079.021 E srv    send_error: task id = 18, error: request (6498 tokens) exceeds the available context size (2048 tokens), try increasing it
+7.26.079.037 I slot      release: id  0 | task 18 | stop processing: n_tokens = 0, truncated = 0
+7.26.079.066 W srv          stop: cancel task, id_task = 18
+7.35.246.724 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 446069728
+7.35.247.374 I slot launch_slot_: id  0 | task 21 | processing task, is_child = 0
+7.35.247.387 E srv    send_error: task id = 21, error: request (6504 tokens) exceeds the available context size (2048 tokens), try increasing it
+7.35.247.399 I slot      release: id  0 | task 21 | stop processing: n_tokens = 0, truncated = 0
+7.35.247.415 W srv          stop: cancel task, id_task = 21
+7.42.197.073 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 455238090
+7.42.198.198 I slot launch_slot_: id  0 | task 24 | processing task, is_child = 0
+7.42.198.223 E srv    send_error: task id = 24, error: request (6507 tokens) exceeds the available context size (2048 tokens), try increasing it
+7.42.198.237 I slot      release: id  0 | task 24 | stop processing: n_tokens = 0, truncated = 0
+7.42.198.257 W srv          stop: cancel task, id_task = 24
+7.44.030.216 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 462188927
+7.44.031.026 I slot launch_slot_: id  0 | task 27 | processing task, is_child = 0
+7.44.031.051 E srv    send_error: task id = 27, error: request (6511 tokens) exceeds the available context size (2048 tokens), try increasing it
+7.44.031.062 I slot      release: id  0 | task 27 | stop processing: n_tokens = 0, truncated = 0
+7.44.031.085 W srv          stop: cancel task, id_task = 27
+9.11.611.078 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 464021753
+9.11.611.895 I slot launch_slot_: id  0 | task 30 | processing task, is_child = 0
+9.11.611.910 E srv    send_error: task id = 30, error: request (6522 tokens) exceeds the available context size (2048 tokens), try increasing it
+9.11.611.925 I slot      release: id  0 | task 30 | stop processing: n_tokens = 0, truncated = 0
+9.11.611.944 W srv          stop: cancel task, id_task = 30
+11.04.277.846 I slot get_availabl: id  0 | task -1 | selected slot by LRU, t_last = 551602615
+11.04.278.699 I slot launch_slot_: id  0 | task 33 | processing task, is_child = 0
+11.04.278.719 E srv    send_error: task id = 33, error: request (6530 tokens) exceeds the available context size (2048 tokens), try increasing it
+11.04.278.737 I slot      release: id  0 | task 33 | stop processing: n_tokens = 0, truncated = 0
+11.04.278.755 W srv          stop: cancel task, id_task = 33

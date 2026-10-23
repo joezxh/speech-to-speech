@@ -476,16 +476,17 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 
 | 项 | 规格 |
 |---|---|
-| CPU / GPU | 16 核 Zen 5 + Radeon 8060S（40 CU） |
-| 统一内存 | **128 GB / 256 bit**，可分配约 96 GB 作显存 |
+| CPU / GPU | 16C/32T Zen 5 + Radeon 8060S（40 CU，RDNA 3.5）+ XDNA2 NPU 50 TOPS |
+| 统一内存 | **128 GB LPDDR5X-8000 / 256 bit**，理论 256 GB/s；**实测带宽 200–240 GB/s 量级**（sysbench 多线程读 ~238 GB/s；另一来源 AIDA64 读 120.15 / 写 212.38 GB/s，读值偏低待交叉验证） |
+| UMA 分配 | BIOS `UMA Frame Buffer Size`（各厂商叫法：Dedicated Graphics Memory / iGPU Memory 等），128 GB 机型最大 **96 GB**；Linux 侧 amdgpu 走 GTT 动态映射（`amdgpu.gttsize`）；Windows 区分"专用 GPU 内存"与"共享 GPU 内存"；已知限制：单进程 GPU 虚拟地址空间上限约 256 GiB（ROCm 7.14 + 驱动 32.0.31035.1003） |
 | 存储 / 功耗 | 标配 2 TB；**120–140 W** |
 | 形态 / 系统 | 迷你主机；**x86_64 + ROCm** |
-| 代表商品 | 极摩客 EVO-X2 / 零刻 GTR9 Pro / 铭凡 MS-S1 MAX（`D-E09`） |
+| 代表商品 | 极摩客 EVO-X2 / 零刻 GTR9 Pro / 铭凡 MS-S1 MAX（`D-E09`）；HP Z2 Mini G1a。型号纠偏：铭凡 MS-A2 是 9955HX 非 Strix Halo；Beelink 无 GTR3 Pro；HP 无 OMEN Max Strix Halo 机型 |
 
 **推理栈**
 
 - PyTorch（CPU）：✅ x86_64 直跑原样权重
-- ROCm：✅ HIP 后端在 llama.cpp 官方表中；PyTorch ROCm wheel 可用
+- ROCm：✅ HIP 后端在 llama.cpp 官方表中；PyTorch 走 CUDA 风格代码经 HIP 透明运行，但**无官方 gfx1151 wheel**（用 TheRock nightly `rocm.nightlies.amd.com/v2/gfx1151`）
 - LocalAI：✅ 兼容表把 **Qwen3-TTS 列在 ROCm** 支持列表
 - OpenVINO / CANN / RKNN：✗
 
@@ -494,34 +495,61 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 | 结论 | 证据类型 | 来源 | 日期 |
 |---|---|---|---|
 | 128 GB 统一内存、可分配 96 GB、x86_64 | 官方规格 | [`amd.com`](https://www.amd.com) Ryzen AI Max+ 395 | 2026-10-22 |
+| 规格：16C/32T Zen 5 + Radeon 8060S 40 CU RDNA 3.5 + XDNA2 50 TOPS + LPDDR5X-8000 256-bit 理论 256 GB/s | 社区实测/规格页 | [`cpu-monkey.com/en/cpu-amd_ryzen_ai_max_plus_395`](https://www.cpu-monkey.com/en/cpu-amd_ryzen_ai_max_plus_395) | 2026-10-22 |
+| 实测内存带宽 200–240 GB/s（sysbench 多线程读 ~238 GB/s；AIDA64 读 120.15 / 写 212.38 GB/s，读值偏低待交叉验证） | 社区实测 | [`blog.csdn.net/weixin_27741699/article/details/166916547`](https://blog.csdn.net/weixin_27741699/article/details/166916547) 与 [`baike.baidu.com/item/LPDDR5X-8000`](https://baike.baidu.com/item/LPDDR5X-8000) | 2026-10-22 |
+| UMA 上限 96 GB（128 GB 机型）+ Windows 单进程 GPU 虚拟地址空间上限约 256 GiB | 社区实测 + issue | [`post.m.smzdm.com/p/a6z0nvre`](https://post.m.smzdm.com/p/a6z0nvre/) 与 [`github.com/ROCm/rocm-systems/issues/9823`](https://github.com/ROCm/rocm-systems/issues/9823) | 2026-10-22 |
+| ROCm 对 gfx1151：官方支持矩阵截至 2026-02 未列，但 ROCm 7.2 实测可用（PyTorch 2.9.1+rocm7.2.0）；TheRock 2026-08 将 RDNA3.5 Linux 支持标 Release-Ready，ROCm 7.14 有官方 gfx1151 包；2026-10 社区稳定工具箱用 ROCm 10.0 | 社区实测 | [`tinycomputers.io/posts/upgrading-rocm-7.0-to-7.2-on-amd-strix-halo-gfx1151`](https://tinycomputers.io/posts/upgrading-rocm-7.0-to-7.2-on-amd-strix-halo-gfx1151.html) 与 [`github.com/kyuz0/amd-strix-halo-toolboxes`](https://github.com/kyuz0/amd-strix-halo-toolboxes) | 2026-10-22 |
+| PyTorch+transformers：CUDA 风格代码经 HIP 透明运行（`torch.cuda` 接口不变）；PyTorch 2.10 将 GFX1151 加入 hipBLASLt GEMM 与 AOTriton SDPA；已知坑：AOTriton flash-attention 曾静默失效、vLLM aiter 不支持 gfx1151、无官方 gfx1151 wheel（用 TheRock nightly `rocm.nightlies.amd.com/v2/gfx1151`） | 社区实测 | 同上 tinycomputers + [`21cto.com/article/9146049624087441`](https://www.21cto.com/article/9146049624087441) + [`localaimaster.com/blog/comfyui-amd-rocm-image-generation`](https://localaimaster.com/blog/comfyui-amd-rocm-image-generation) | 2026-10-22 |
+| llama.cpp 后端：HIP 与 Vulkan（RADV）均支持，Vulkan 为社区推荐最稳（Q4 量化下 Vulkan 常快于 ROCm）；SYCL 不支持（warp size 限制） | 社区实测 | [`github.com/kyuz0/amd-strix-halo-toolboxes`](https://github.com/kyuz0/amd-strix-halo-toolboxes) 与 [`llama.cpp docs/backend/SYCL.md`](https://raw.githubusercontent.com/ggml-org/llama.cpp/master/docs/backend/SYCL.md) | 2026-10-22 |
 | **LocalAI 兼容表：Qwen3-TTS 支持 CPU / CUDA 12-13 / ROCm / Intel SYCL / Metal / Jetson L4T** | 框架支持矩阵 | [`localai.io/docs/model-compatibility`](https://localai.io) | 2026-07-30 |
-| llama.cpp 官方后端表含 **HIP → AMD ROCm** | 工具链状态 | [`github.com/ggml-org/llama.cpp`](https://github.com/ggml-org/llama.cpp) `docs/backend/` | 2026-10-22 |
-| Qwen3-ASR-1.7B 在该平台的 transformers 实测（RTF） | **缺失** | — | — |
+| **关键实测：Qwen3-TTS-12Hz-1.7B-CustomVoice（本项目同款模型同款路径）在 PyTorch + ROCm 7.2（128 GB 机型）平均 RTF 3.00（最佳 2.25，首轮 4.20 属 kernel 编译冷启动），即慢于实时** | 社区实测 | [`tinycomputers.io/posts/the-real-cost-of-running-qwen-tts-locally-three-machines-compared`](https://tinycomputers.io/posts/the-real-cost-of-running-qwen-tts-locally-three-machines-compared.html) | 2026-10-22 |
+| 参考上界（G1 下不可用的自研引擎）：Gufo 引擎 Qwen3-ASR-1.7B 15.27×实时、Qwen3-TTS-1.7B 2.54×实时 / 首音频 201 ms——仅作优化空间上界，不改变本卡判定 | 社区实测 | [`github.com/gufo-org/gufo`](https://github.com/gufo-org/gufo) | 2026-10-22 |
+| Qwen3-ASR 0.6B Q8_0 GGUF Vulkan 转写通过（b10107）；1.7B 未验证 | 社区实测 | [`github.com/hogeheer499-commits/strix-halo-guide`](https://github.com/hogeheer499-commits/strix-halo-guide) | 2026-10-22 |
+| Qwen3-ASR-1.7B / Qwen3-TTS-1.7B 在该 SoC 上的 transformers 实测（TTFT / 常驻显存）——TTS RTF 一条已由上表部分填补，ASR TTFT / 常驻显存仍缺失 | **缺失** | — | — |
+| Ollama：Linux 曾静默回退 CPU（issue #13589），Windows ROCm 路径崩溃（#9553）；LM Studio Windows 推荐 Vulkan（ROCm 路径慢 ~37%） | 社区实测 | [`github.com/ollama/ollama/issues/13589`](https://github.com/ollama/ollama/issues/13589) 与 [`163.com/dy/article/L8LDD0RF0553TKK8`](https://www.163.com/dy/article/L8LDD0RF0553TKK8.html) | 2026-10-22 |
 
-**置信度**：待验证——三条独立线索都指向"可行"，但**没有一条是实测**；ROCm 对 transformers 自定义 attention 的覆盖是唯一不确定点。
+**置信度**：高风险——G1（同家族原样权重可跑）已被证实：Qwen3-TTS-12Hz-1.7B-CustomVoice 在 PyTorch + ROCm 7.2 下用同款权重实测成功（数值未经替换后端）；G2（内存）在 96 GB UMA 下极度充裕。但**唯一 G1 合规路径（PyTorch+transformers）的 TTS RTF 2.25–3.00（慢于实时）**，意味着单路 TTS 稳态吞吐不足，TTFA 大概率超 2.0 s 可用档；F5-TTS 同机 RTF 0.64 说明差距来自模型架构与 ROCm 算子路径，不是硬件绝对上限。翻案路径：换 ROCm 10.0/更新构建 + 复测 RTF<1，否则本盒只能进"待 T5/T6 实测后复议"。
 
 **全栈本地可行性**
 
+| UMA 档 | 对应机型 | 状态 |
+|---|---|---|
+| 96 GB | 128 GB 机型 | 已证实（BIOS `UMA Frame Buffer Size` 最大 96 GB） |
+| 48 GB | 64 GB 机型 | 按 75% 比例外推，**待验证** |
+| 24 GB | 32 GB 机型 | 按 75% 比例外推，**待验证** |
+
 ```
-按可分配 96 GB 计
-纯管线：floor(96 × 0.85 ÷ 4.6) = floor(17.74) = 17 路（槽位上限）
-① 远程 LLM：合格
-② 8B Q4：96 − 5.0 − 0.6 − 0.8 = 89.6 → floor(16.55) = 16 路（槽位上限）
-③ 9B Q4：96 − 5.7 − 0.7 − 0.8 = 88.8 → floor(16.41) = 16 路（槽位上限）
-④ 4B Q4：96 − 2.6 − 0.4 − 0.8 = 92.2 → floor(17.03) = 17 路（槽位上限）
-⑤ 2B Q4：96 − 1.3 − 0.3 − 0.8 = 93.6 → 17 路
-⑥ 0.8B Q4：96 − 0.6 − 0.2 − 0.8 = 94.4 → 17 路
+① 纯管线盒：floor(96×0.85÷4.6)=17 / floor(48×0.85÷4.6)=8 / floor(24×0.85÷4.6)=4（槽位上限）
+② 8B：96−5.0−0.6−0.8=89.6→16 路；48−5.0−0.6−0.8=41.6→7 路；24−5.0−0.6−0.8=17.6→3 路
+③ 9B：96−5.7−0.7−0.8=88.8→16 路；48−5.7−0.7−0.8=40.8→7 路；24−5.7−0.7−0.8=16.8→3 路
+④ 4B：96−2.6−0.4−0.8=92.2→17 路；48−2.6−0.4−0.8=44.2→8 路；24−2.6−0.4−0.8=20.2→3 路
+⑤ 2B：96−1.3−0.3−0.8=93.6→17 路；48−1.3−0.3−0.8=45.6→8 路；24−1.3−0.3−0.8=21.6→3 路
+⑥ 0.8B：96−0.6−0.2−0.8=94.4→17 路；48−0.6−0.2−0.8=46.4→8 路；24−0.6−0.2−0.8=22.4→4 路
 ```
 
-> 带宽未公开标注（LPDDR5X 256 bit），实际吞吐必须由 T5 实测给出；
+> 算式固定写法（① 远程 LLM 方案下本盒即纯管线盒，按 ① 行取槽位）：`可用 = UMA − LLM权重 − KV(8K/q8) − 0.8GB 余量`，
+> `槽位 = floor(可用 × 0.85 ÷ 4.6)`；纯管线盒不减 LLM 项。
 > **4.6 GB/路是 CUDA 实测值，跨到 ROCm 不可直接外推**——这是本卡最大的方法论风险。
+
+**约束声明（必须与槽位一并读）**：以上全部是**槽位（内存）上限，不是实际可承载路数**——本盒 TTS RTF>1 使吞吐约束先于槽位约束生效，实际多路并发大概率 ≤1 路，直至 RTF 复测 <1。
+
+**延迟档位判定（TTFA）**
+
+按假设表 §5：舒适 P95≤1.0 s / 可用 P95≤2.0 s。判停窗口 700 ms 已占 0.7 s；STT 在 ROCm 下 TTFT 无公开数据（**待验证**，Gufo 15.27×实时仅自研引擎上界）；LLM 侧 8B Q4 decode 约 40–50 tok/s（带宽 200–240 GB/s 推算，8B Q4 理论 decode 上限 ≈52 tok/s），TTFT 约 0.2–0.5 s 量级（**待验证**）；TTS 首帧在 RTF 2.25–3.00 下预计 0.6–1.0 s+（**待验证**）。结论：**舒适档不成立；可用档在 TTS RTF 降至 <1 前大概率超档**。TTFA 报告必须用 `Latency after speech end + min_silence_ms/1000` 修正口径，只报日志值视为无效证据。
+
+**瓶颈归因**
+
+第一瓶颈：ROCm 算子路径下 TTS 生成吞吐（RTF>1，算子覆盖 / AOTriton 性能问题，非硬件上限——F5-TTS 同机 RTF 0.64 为证）；第二瓶颈：实测 200–240 GB/s 带宽限制 LLM decode 与多路聚合（对比：DGX Spark 273 GB/s、Jetson Orin NX 102 GB/s）；内存容量不是瓶颈（96 GB UMA 下槽位极其充裕）。横向对比：与 D-G08/D-G09 相比带宽低约 12–27% 且 ROCm 生态按构建生效、复现性差；相比 D-E01 是 x86_64 无需重建镜像、槽位高一个数量级。
 
 **买前验证步骤**
 
-1. 128 GB 统一内存**焊死不可扩**——是否接受"扩容 = 再买一台"？
-2. `rocm-smi` 是否识别 GPU？PyTorch ROCm wheel 版本与 ROCm 驱动如何对应？
-3. 有无 **Qwen3-ASR-1.7B / Qwen3-TTS-1.7B 在该平台的 transformers 实测**（RTF、audio 质量）？给链接。
-4. iGPU 可分配显存如何设置（BIOS / 驱动）？96 GB 是不是稳定上限？
+1. `rocminfo | grep gfx` 确认 gfx1151 识别；确认 ROCm 版本 ≥7.2（优先 10.0 / TheRock 构建记录）
+2. BIOS 设 `UMA Frame Buffer Size`=96 GB 并记录实际可用（Windows 任务管理器"专用 GPU 内存"；Linux `amdgpu.gttsize`）
+3. 单路 ASR+TTS 常驻显存采样：注意 `rocm-smi` 在 APU 上恒显 0%，改用 `torch.cuda.mem_get_info()` 或 `/sys/class/drm` 卡片显存口径采样
+4. llama.cpp HIP 与 Vulkan 双后端分别跑 Qwen3.5-4B / 9B Q4_K_M：`llama-bench -p 512 -n 128 -fa 1` 记录 pp/tg tok/s 与 TTFT（Vulkan 需 `-fa 1 --load-mode none`）
+5. TTS RTF 复测：Qwen3-TTS-12Hz-1.7B-CustomVoice，预热 3 轮（首轮 kernel 编译不计），**RTF<1 才翻案**；同场补测 Qwen3-ASR-1.7B 的 TTFT / 常驻显存（仍缺失）
+6. `num_pipelines` 阶梯压测 1→2→4 路，TTFA 用 `Latency after speech end + min_silence_ms/1000` 修正口径记录并标注 min_silence_ms
+7. 128 GB 统一内存**焊死不可扩**——是否接受"扩容 = 再买一台"？（采购决策项）
 
 **代表商品**：`D-E09`（procurement-list §4）
 
@@ -585,11 +613,12 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 | **D-E06** RK3588 | 高风险 | 高风险 | 不适用 | 已证实 | 已证实 | 待验证 |
 | **D-E07** MLU370-X4 | 高风险 | 高风险 | 高风险 | 已证实 | 高风险 | 高风险 |
 | **D-E08** Ultra 9 285H | 已证实 | 待验证 | 待验证 | 已证实 | 已证实 | 已证实 |
-| **D-E09** Ryzen AI Max+ 395 | 已证实 | 待验证 | 待验证 | 已证实 | 待验证 | 待验证 |
+| **D-E09** Ryzen AI Max+ 395 | 已证实 | 待验证 | 高风险 | 已证实 | 待验证 | 待验证 |
 | **D-E10** RDK X5 | 高风险 | 不适用 | 不适用 | 已证实 | 不适用 | 高风险 |
 
 > **总述**：本次评估的 10 款盒子中，"全栈本地（VAD + STT + TTS 同机）"达到 **已证实 / 待验证** 的只有
-> **5 款**（D-E01、D-E02、D-G08/G09、D-E08、D-E09），且**没有一款是"已证实"**——全部缺 Qwen3-ASR/TTS-1.7B 的实测。
+> **5 款**（D-E01、D-E02、D-G08/G09、D-E08、D-E09），且**没有一款是"已证实"**；其中 D-E09 的 TTS 列已因同权重
+> Qwen3-TTS RTF 2.25–3.00（PyTorch + ROCm 第三方实测）升为**高风险**（见其评估卡），其余盒子仍缺 TTS 实测。
 > 其余 5 款为高风险或不适用。**HT3 无法解除，只能转为"待验证 + PoC 实测"**。
 >
 > 另一条必须传播的事实：**边缘盒的算力密度远低于同价桌面卡**。D-E04 / D-E06 / D-E10 的有效推理能力
@@ -648,7 +677,7 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 
 - [ ] 内存是 SO-DIMM 可换还是板载焊死？
 - [ ] Linux 下 NPU / iGPU / ROCm 驱动是否可用？（Windows 可用 ≠ Linux 可用）
-- [ ] D-E08：OpenVINO 版本、能否 PyTorch 前端直跑？D-E09：ROCm 版本、`rocm-smi` 是否识别？
+- [ ] D-E08：OpenVINO 版本、能否 PyTorch 前端直跑？D-E09：ROCm 版本、`rocminfo` 确认 gfx1151 识别（`rocm-smi` 在 APU 上恒显 0%，不可用作显存口径）
 - [ ] 有 Qwen3-TTS 在该平台的实测（RTF、audio 质量）吗？
 
 ### D-E10（RDK X5）
@@ -677,7 +706,7 @@ D-G09（可用 56 GB）：纯管线 10 路；② 8B 9 路；③ 9B 9 路；④ 4
 | 优先 | 条目 | 理由 | 必做专项验收 |
 |---|---|---|---|
 | **P0** | `D-E01` Jetson Orin NX 16G | 最便宜的一致栈 PoC；CUDA 生态完整；15–40 W | **T1**（模型指纹）+ **T2**（音频质量）+ **T3**（TTFA/RTF）；额外验证 102 GB/s 下 RTF 是否 ≤1 |
-| **P1** | `D-E09` Ryzen AI Max+ 395 | x86_64 无需重建镜像；128 GB 统一内存；LocalAI 明确列 Qwen3-TTS/ROCm | T1/T2/T3 + **T6**（ROCm 下 9B 解码速度）；重点验 ROCm 对自定义 attention 的覆盖 |
+| **P1** | `D-E09` Ryzen AI Max+ 395 | x86_64 无需重建镜像；128 GB 统一内存；LocalAI 明确列 Qwen3-TTS/ROCm。但 2026-10 检索发现同权重 TTS RTF 2.25–3.00（PyTorch + ROCm 7.2 实测，慢于实时），判**高风险**，仅保留为"RTF 复测翻案"候选 | T1/T2/T3 + **T6**（ROCm 下 9B 解码速度）；重点验 ROCm 对自定义 attention 的覆盖 + **TTS RTF 复测（RTF<1 才翻案）** |
 | **P2** | `D-G08` DGX Spark 128G | 唯一"一台机器同时是 LLM 盒 + 管线盒"的形态；可承载 27B 级 | T1/T2/T3 + **T5**（阶梯并发，273 GB/s 的真实上限）+ arm64 镜像构建 |
 | **P3** | `D-E02` AGX Orin 64G | 内存最宽裕的边缘盒；但涨价后已逼近桌面 4090 盒 | 同 P0，重点验 60 W 持续功耗 |
 
