@@ -1,0 +1,4 @@
+node_modules/
+dist/
+# copy-vendors.mjs writes these at build time; they are binaries, not source.
+public/vendor/
