@@ -33,3 +33,28 @@ export interface DiscardResponse {
   revertedTo: string
   auditId: string
 }
+
+export interface VersionRow {
+  version: number
+  status: string
+  author: string
+  note: string | null
+  createdAt: string | null
+  durationS: number | null
+  rolledBackTo: number | null
+}
+
+/** A.8：`fields` 是字段名清单，不是值。 */
+export interface AuditRow {
+  auditId: string
+  at: string | null
+  actor: string
+  role: string
+  action: string
+  version: number | null
+  fields: string[]
+  result: string
+  errorCode: string | null
+  durationS: number | null
+  requestId: string
+}

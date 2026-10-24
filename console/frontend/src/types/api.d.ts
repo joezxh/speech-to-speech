@@ -49,3 +49,26 @@ export interface StatusSnapshot {
   pipeline: 'ok' | 'unreachable'
   internalTokenConfigured: boolean
 }
+
+export interface PoolUnit {
+  index: number | null
+  state: string | null
+  sessionId: string | null
+}
+
+/** A.10。`pool` 为 `null` 表示探不到，不是「没有 unit」。 */
+export interface InstanceSnapshot {
+  profile: string
+  version: number | null
+  container: {
+    name: string
+    status: string
+    startedAt: string | null
+    image: string
+    pid: number | null
+    detail: string
+  }
+  pool: { size: number; inUse: number; units: PoolUnit[] } | null
+  usage: Record<string, unknown> | null
+  alerts: string[]
+}

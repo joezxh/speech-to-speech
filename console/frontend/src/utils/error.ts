@@ -53,6 +53,22 @@ export const ERROR_TEXT: Record<string, string> = {
   unknown: '未知错误'
 }
 
+/**
+ * `/instances` 的 `alerts` 也是机器码（A.10）。与 `ERROR_TEXT` 分开，因为一个是
+ * 「你的操作失败了」，一个是「系统现状不佳」——语气和位置都不同。
+ */
+export const ALERT_TEXT: Record<string, string> = {
+  pool_unreachable: '无法连接 pipeline 池',
+  pool_stuck: '有 unit 卡在 stuck，需要重启 pipeline',
+  pipeline_stopped: 'pipeline 进程未运行',
+  usage_unavailable: '用量数据不可读'
+}
+
+/** 未知码原样返回：宁可让运维看到一个英文码，也不要让一条告警消失。 */
+export function describeAlert(code: string): string {
+  return ALERT_TEXT[code] ?? code
+}
+
 export const FALLBACK_TEXT = '操作失败，请查看审计记录'
 
 export function translate(code: string): string {

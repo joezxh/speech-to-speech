@@ -32,7 +32,10 @@ export const routes: RouteRecordRaw[] = [
         children: [
           { path: '', redirect: { name: 'params' } },
           { path: 'params', name: 'params', component: () => import('@/views/ParamsView.vue') },
-          { path: 'voices', name: 'voices', component: () => import('@/views/VoicesView.vue') }
+          { path: 'voices', name: 'voices', component: () => import('@/views/VoicesView.vue') },
+          { path: 'versions', name: 'versions', component: () => import('@/views/VersionsView.vue') },
+          { path: 'audit', name: 'audit', component: () => import('@/views/AuditView.vue') },
+          { path: 'instances', name: 'instances', component: () => import('@/views/InstancesView.vue') }
         ]
       }
     ]
