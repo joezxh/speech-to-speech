@@ -8,10 +8,10 @@ from app.config import app as app_settings
 from app.config import console as console_settings
 from app.core.errors import ApiError, api_error_handler
 from app.core.logging import configure_logging
+from app.core.router_registry import register_api_routers
 from app.core.spa import mount_spa
 from app.middleware.request_id import RequestIdMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.routers import health
 
 configure_logging(app_settings.log_level)
 
@@ -28,7 +28,7 @@ def create_app() -> FastAPI:
     app.add_exception_handler(ApiError, api_error_handler)
 
     # Order matters: every API prefix first, SPA last (spec §10.2.3).
-    app.include_router(health.router)
+    register_api_routers(app)
 
     mount_spa(app, console_settings.static_dir)
     return app
