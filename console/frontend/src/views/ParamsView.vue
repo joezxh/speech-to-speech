@@ -7,20 +7,24 @@ import DiffTable from '@/components/DiffTable.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import ParamField from '@/components/ParamField.vue'
 import ParamTree from '@/components/ParamTree.vue'
+import VoicePicker from '@/components/VoicePicker.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { useAuthStore } from '@/stores/auth'
 import { useCatalogStore } from '@/stores/catalog'
 import { useConsoleStore } from '@/stores/console'
 import { useDraftStore } from '@/stores/draft'
+import { useVoicesStore } from '@/stores/voices'
 import type { CatalogEntry, Exposure } from '@/types/catalog'
 import { countLabel, dedupe, groupByStage, isReadOnlyRow } from '@/utils/catalog-view'
 import { baseline, buildPatch, resetValue, type Values } from '@/utils/draft-patch'
 import { formatTime } from '@/utils/format'
+import { bindings, slotKey, voiceIdIn, voiceSlot, type VoiceSlot } from '@/utils/voice-refs'
 
 const auth = useAuthStore()
 const consoleStore = useConsoleStore()
 const catalogStore = useCatalogStore()
 const draftStore = useDraftStore()
+const voicesStore = useVoicesStore()
 const {
   open: confirmOpen,
   title: confirmTitle,
@@ -72,6 +76,66 @@ const folded = computed(() =>
 )
 const opsCount = computed(() => folded.value.filter((entry) => entry.exposure === 'ops').length)
 
+/** 音色路径的默认缓存目录：catalog 里取不到时的兜底值（§3.11.2）。 */
+const CACHE_DIR_FALLBACK = '/app/data/voices'
+
+type RenderRow =
+  | { kind: 'field'; entry: CatalogEntry }
+  | { kind: 'voice'; entry: CatalogEntry; slot: VoiceSlot }
+
+/**
+ * 音色字段按「后端 × 来源」收成三个控件位：同一个槽位的后续字段不再各渲染一次
+ * （14 条字段 → 每个后端最多 3 个选择器，§3.11.1）。非音色字段原样逐个渲染，
+ * 所以它们仍是 `ParamField`，草稿与 diff 的形状不变。
+ */
+function planRows(entries: CatalogEntry[]): RenderRow[] {
+  const seen = new Set<string>()
+  const rows: RenderRow[] = []
+  for (const entry of entries) {
+    const slot = voiceSlot(entry.name)
+    const key = slotKey(entry.backend, entry.name)
+    if (slot === null || key === null) {
+      rows.push({ kind: 'field', entry })
+      continue
+    }
+    if (seen.has(key)) continue
+    seen.add(key)
+    rows.push({ kind: 'voice', entry, slot })
+  }
+  return rows
+}
+
+const directRows = computed(() => planRows(direct.value))
+const foldedRows = computed(() => planRows(folded.value))
+
+const cacheDir = computed(() => {
+  const entry = items.value.find((item) => item.name === 'qwen3_tts_ref_cache_dir')
+  const value = entry ? values.value[entry.key] : null
+  return typeof value === 'string' && value.trim() ? value.trim() : CACHE_DIR_FALLBACK
+})
+
+/** 槽位当前值：优先拿带 `/voices/<id>/` 的那个字段，其次第一个非空字段。 */
+function slotCurrent(entry: CatalogEntry, slot: VoiceSlot): unknown {
+  const fields = bindings(slot, entry.backend ?? '')
+  if (!fields) return null
+  const keys = Object.values(fields).map((name) => `${entry.stage}.${name}`)
+  for (const key of keys) {
+    if (voiceIdIn(values.value[key])) return values.value[key]
+  }
+  for (const key of keys) {
+    const value = values.value[key]
+    if (value !== null && value !== undefined && value !== '') return value
+  }
+  return null
+}
+
+/** `bindPatch` 给的是不带 stage 的字段名，这里补回 `key` 形状再并进表单。 */
+function applyVoicePatch(stage: string, patch: Record<string, unknown>): void {
+  const keyed: Values = {}
+  for (const [name, value] of Object.entries(patch)) keyed[`${stage}.${name}`] = value
+  values.value = { ...values.value, ...keyed }
+}
+
 const patch = computed(() => buildPatch(items.value, values.value, draftStore.draft))
 const dirty = computed(() => Object.keys(patch.value).length > 0)
 /**
@@ -91,6 +155,9 @@ async function reload(): Promise<void> {
   } catch (error) {
     saveError.value = error instanceof AppError ? error : new AppError('unknown', '草稿读取失败')
   }
+  // 音色库是旁路：读失败不影响参数页，只让选择器少几个选项。
+  void voicesStore.load()
+  void voicesStore.loadBackends()
   values.value = baseline(items.value, draftStore.draft)
   // 切 profile 会改变分组集合，但不能把用户刚选中的组默默换掉。
   if (!groups.value.some((item) => item.key === group.value)) group.value = groups.value[0]?.key ?? ''
@@ -209,39 +276,68 @@ async function discard(): Promise<void> {
 
     <div class="params__body">
       <aside class="params__tree">
-        <ParamTree :entries="catalogStore.entries" :selected="group" @select="(value: string) => (group = value)" />
+        <ParamTree
+          :entries="catalogStore.entries"
+          :selected="group"
+          :uncatalogued="voicesStore.uncatalogued"
+          @select="(value: string) => (group = value)"
+        />
       </aside>
 
       <section class="params__form">
-        <ParamField
-          v-for="entry in direct"
-          :key="entry.key"
-          :entry="entry"
-          :model-value="values[entry.key]"
-          :masked="isMasked(entry.key)"
-          :in-draft="inDraft(entry.key)"
-          :suggested="entry.exposure === 'advanced' && entry.default != null ? entry.default : undefined"
-          :disabled="isDisabled(entry)"
-          @update:model-value="(value: unknown) => (values = { ...values, [entry.key]: value })"
-          @reset="reset(entry.key)"
-        />
+        <template v-for="row in directRows" :key="row.entry.key">
+          <VoicePicker
+            v-if="row.kind === 'voice'"
+            :entry="row.entry"
+            :backend="row.entry.backend ?? ''"
+            :voices="voicesStore.rows"
+            :current="slotCurrent(row.entry, row.slot)"
+            :cache-dir="cacheDir"
+            :in-draft="inDraft(row.entry.key)"
+            :disabled="isDisabled(row.entry)"
+            @update:model-value="(patch: Record<string, unknown>) => applyVoicePatch(row.entry.stage, patch)"
+          />
+          <ParamField
+            v-else
+            :entry="row.entry"
+            :model-value="values[row.entry.key]"
+            :masked="isMasked(row.entry.key)"
+            :in-draft="inDraft(row.entry.key)"
+            :suggested="row.entry.exposure === 'advanced' && row.entry.default != null ? row.entry.default : undefined"
+            :disabled="isDisabled(row.entry)"
+            @update:model-value="(value: unknown) => (values = { ...values, [row.entry.key]: value })"
+            @reset="reset(row.entry.key)"
+          />
+        </template>
 
         <a-collapse v-if="folded.length" class="params__fold" ghost>
           <a-collapse-panel
             key="expert-ops"
             :header="`expert / ops ${folded.length} 条（含 ${opsCount} 条仅运维可见）—— 展开前先读完警告`"
           >
-            <ParamField
-              v-for="entry in folded"
-              :key="entry.key"
-              :entry="entry"
-              :model-value="values[entry.key]"
-              :masked="isMasked(entry.key)"
-              :in-draft="inDraft(entry.key)"
-              :disabled="isDisabled(entry)"
-              @update:model-value="(value: unknown) => (values = { ...values, [entry.key]: value })"
-              @reset="reset(entry.key)"
-            />
+            <template v-for="row in foldedRows" :key="row.entry.key">
+              <VoicePicker
+                v-if="row.kind === 'voice'"
+                :entry="row.entry"
+                :backend="row.entry.backend ?? ''"
+                :voices="voicesStore.rows"
+                :current="slotCurrent(row.entry, row.slot)"
+                :cache-dir="cacheDir"
+                :in-draft="inDraft(row.entry.key)"
+                :disabled="isDisabled(row.entry)"
+                @update:model-value="(patch: Record<string, unknown>) => applyVoicePatch(row.entry.stage, patch)"
+              />
+              <ParamField
+                v-else
+                :entry="row.entry"
+                :model-value="values[row.entry.key]"
+                :masked="isMasked(row.entry.key)"
+                :in-draft="inDraft(row.entry.key)"
+                :disabled="isDisabled(row.entry)"
+                @update:model-value="(value: unknown) => (values = { ...values, [row.entry.key]: value })"
+                @reset="reset(row.entry.key)"
+              />
+            </template>
           </a-collapse-panel>
         </a-collapse>
 

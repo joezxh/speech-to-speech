@@ -31,7 +31,8 @@ export const routes: RouteRecordRaw[] = [
         meta: { face: 'console', requiresAuth: true },
         children: [
           { path: '', redirect: { name: 'params' } },
-          { path: 'params', name: 'params', component: () => import('@/views/ParamsView.vue') }
+          { path: 'params', name: 'params', component: () => import('@/views/ParamsView.vue') },
+          { path: 'voices', name: 'voices', component: () => import('@/views/VoicesView.vue') }
         ]
       }
     ]

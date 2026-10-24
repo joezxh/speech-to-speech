@@ -15,3 +15,13 @@ class ConsoleSettings(BaseSettings):
     supervisor_program: str = "pipeline"
     restart_mode: str = "supervisor"
     verifier_mode: str = "reject"
+
+    # Voice library (A.18). The audio never leaves this volume, and nothing here
+    # is on the publish path: a voice is picked, then written as a draft value.
+    voice_data_dir: str = "/app/data/voices"
+    voice_max_bytes: int = 10 * 1024 * 1024
+    voice_max_seconds: float = 30.0
+    voice_min_seconds: float = 1.0
+    voice_retention_max_days: int = 180
+    voice_precompute_concurrency: int = 1
+    voice_precompute_timeout_s: float = 300.0

@@ -28,6 +28,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: '部署',
     items: [
       { name: 'params', label: '参数' },
+      { name: 'voices', label: '音色库' },
       { name: 'sessions', label: '活跃会话' },
       { name: 'versions', label: '版本' },
       { name: 'instances', label: '实例' },

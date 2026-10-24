@@ -23,7 +23,13 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="s2s-console", docs_url=None, redoc_url=None, lifespan=lifespan)
-    app.add_middleware(SecurityHeadersMiddleware, max_body_bytes=app_settings.max_body_bytes)
+    app.add_middleware(
+        SecurityHeadersMiddleware,
+        max_body_bytes=app_settings.max_body_bytes,
+        # A voice upload is capped by its own endpoint (10 MiB), plus multipart
+        # overhead; the 2 MiB guard is for JSON payloads.
+        upload_body_bytes=console_settings.voice_max_bytes + 1024 * 1024,
+    )
     app.add_middleware(RequestIdMiddleware)
     app.add_exception_handler(ApiError, api_error_handler)
 

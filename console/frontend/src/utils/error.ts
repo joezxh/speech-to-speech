@@ -35,6 +35,17 @@ export const ERROR_TEXT: Record<string, string> = {
   unsupported_field: '该字段不支持热更新',
   asset_missing: '静态资源缺失',
   not_implemented: '功能尚未启用',
+  // voices (§3.11 / A.18)
+  voice_not_found: '音色不存在',
+  voice_name_taken: '音色名已被占用（不区分大小写）',
+  voice_audio_invalid: '参考音频不合格：需要 16 kHz 单声道 PCM16、1–30 秒',
+  voice_too_large: '音频超过 10 MiB 上限',
+  voice_consent_required: '上传音色前需勾选生物特征授权',
+  voice_in_use: '音色正被配置引用，无法删除',
+  voice_expired: '音频已按留存期限自动删除',
+  voice_precompute_failed: '预计算失败',
+  voice_precompute_busy: '已有一次预计算在进行',
+  voice_binding_conflict: '音色字段互相冲突：ref_audio 与 ref_spk 只能选一套',
   // ours, never sent by the backend
   network_error: '网络不可达，请检查连接',
   timeout: '请求超时',

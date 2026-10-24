@@ -16,6 +16,7 @@ def register_api_routers(app: FastAPI) -> None:
         instances,
         profiles,
         status,
+        voices,
     )
 
     app.include_router(health.router)
@@ -23,4 +24,5 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(catalog.router)
     app.include_router(profiles.router)
     app.include_router(instances.router)
+    app.include_router(voices.router)
     app.include_router(status.router)
