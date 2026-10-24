@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from app.services import supervisor_client
+
 
 @dataclass(frozen=True)
 class ProcessInfo:
@@ -48,6 +50,24 @@ def set_probe(probe: ProcessProbe | None) -> None:
     _probe = probe
 
 
+class SupervisorProbe:
+    """read-only：问 supervisor「这个 program 现在什么状态」（§10.3）。"""
+
+    def state(self, name: str) -> ProcessInfo:
+        try:
+            info = supervisor_client.state(name)
+        except supervisor_client.SupervisorError as exc:
+            return ProcessInfo(name=name, running=False, state="unknown", detail=str(exc))
+        statename = str(info.get("statename", "unknown")).lower()
+        pid = info.get("pid")
+        return ProcessInfo(
+            name=name,
+            running=statename == "running",
+            pid=pid if isinstance(pid, int) and pid > 0 else None,
+            state=statename,
+            detail=str(info.get("spawnerr") or ""),
+        )
+
+
 def _build() -> ProcessProbe:
-    # Task 14 replaces this body with the XML-RPC-over-unix-socket probe.
-    return NullProbe("supervisor probe not installed")
+    return SupervisorProbe()
