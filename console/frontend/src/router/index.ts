@@ -25,11 +25,14 @@ export const routes: RouteRecordRaw[] = [
       },
       {
         // 无组件记录只是命名空间：`hasRoute` 与 `addRoute` 需要一个挂点，
-        // 子路由由 Task 12/13 注册进来。`meta` 会被子路由继承。
+        // 其余子路由由 Task 13 注册进来。`meta` 会被子路由继承。
         path: 'console',
         name: 'console',
         meta: { face: 'console', requiresAuth: true },
-        children: []
+        children: [
+          { path: '', redirect: { name: 'params' } },
+          { path: 'params', name: 'params', component: () => import('@/views/ParamsView.vue') }
+        ]
       }
     ]
   },

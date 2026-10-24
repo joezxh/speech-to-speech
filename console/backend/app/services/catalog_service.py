@@ -16,6 +16,7 @@ import yaml
 from loguru import logger
 
 from app.config import console
+from app.schemas.common import json_safe
 
 # Ordered least to most privileged. `filtered()` treats a level as cumulative:
 # requesting `advanced` returns basic + advanced.
@@ -62,8 +63,8 @@ class Entry:
             "backend": self.backend,
             "name": self.name,
             "type": self.type,
-            "default": self.default,
-            "choices": list(self.choices),
+            "default": json_safe(self.default),
+            "choices": [json_safe(choice) for choice in self.choices],
             "required": self.required,
             "effect": self.effect,
             "exposure": self.exposure,

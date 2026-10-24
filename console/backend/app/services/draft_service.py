@@ -79,6 +79,11 @@ def save_draft(
     existing = dict(stored.patch) if stored is not None else {}
     skipped = [key for key, value in patch.items() if value == MASK]
     merged = {**existing, **{key: value for key, value in patch.items() if value != MASK}}
+    # `null` means "back to the catalog default" (A.3). A draft is a patch, so a
+    # stored `key: null` would be a key that reads as default yet still counts as
+    # "in draft": the page keeps its badge on, sees no dirty field, and the row
+    # can never be cleared again.
+    merged = {key: value for key, value in merged.items() if value is not None}
 
     started = time.monotonic()
     rendered = publish_flow_service.render(profile, merged)

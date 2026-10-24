@@ -110,6 +110,26 @@ def test_resending_the_mask_does_not_store_the_literal(client, db_session):
     assert DraftRepository(db_session).get("prod").patch == {"llm.api_key": "sk-real"}
 
 
+def test_null_drops_the_key_instead_of_storing_it(client, db_session):
+    """A null patch value means "back to the catalog default" (A.3).
+
+    A draft is a patch, so keeping `key: null` in the row would leave a key that
+    reads as default, still counts as "in draft", and can never be cleared again
+    — nor can it be discarded, because the page sees no dirty field.
+    """
+    headers = _auth(client)
+    client.post(
+        "/api/v1/profiles/prod/draft", json={"patch": {"vad.min_silence_ms": 900}}, headers=headers
+    )
+
+    data = client.post(
+        "/api/v1/profiles/prod/draft", json={"patch": {"vad.min_silence_ms": None}}, headers=headers
+    ).json()["data"]
+
+    assert data["draft"] == {}
+    assert DraftRepository(db_session).get("prod").patch == {}
+
+
 def test_structural_mode_is_reported_to_the_caller(client, monkeypatch):
     monkeypatch.setattr(
         publish_flow_service,

@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 
@@ -45,3 +46,26 @@ def test_missing_file_is_unavailable_not_an_exception(tmp_path):
     loaded = catalog_service.load(tmp_path / "nope.yaml")
     assert loaded.available is False
     assert loaded.hint
+
+
+def test_non_finite_defaults_survive_the_json_boundary():
+    """`vad.max_speech_ms` 的默认值是 `inf`（YAML `.inf`），JSON 没有无穷大。
+
+    原值直接进 `JSONResponse` 会 500（`Out of range float values are not JSON
+    compliant`），所以边界上把非有限浮点折成 `null`——与 parameter-catalog.md
+    的「`inf`（YAML `null` 等价）」口径一致。
+    """
+    entry = catalog_service.Entry(
+        stage="vad",
+        backend=None,
+        name="max_speech_ms",
+        type="float",
+        default=float("inf"),
+        choices=(float("nan"), 900),
+    )
+
+    payload = entry.as_json()
+
+    assert payload["default"] is None
+    assert payload["choices"] == [None, 900]
+    json.dumps(payload)
