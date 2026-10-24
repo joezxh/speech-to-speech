@@ -41,30 +41,31 @@ services:
     build:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile}
-    # 配置全部来自 /app/config/prod.yaml。文件模式只接受 -f 与 --name
-    # （cli.py:_run_file_command），因此其余开关只能写进 YAML——这就是这里
-    # 从四十多项缩到六项的原因。
-    command:
-      - speech-to-speech
-      - serve
-      - -f
-      - /app/config/prod.yaml
-      - --name
-      - prod
+    # No `command` on purpose: it would override the image ENTRYPOINT, and
+    # supervisord would never start. What runs is decided by supervisord.conf:
+    # console on :8000, pipeline on loopback :8765.
     # 环境变量整体交给参数平台渲染的 prod.env。任何一项若同时写在
     # environment 下，会以更高优先级覆盖它（Compose: environment > env_file），
     # 平台就再也改不动那个值了。
     env_file:
       - ./config/prod.env
-    expose:
-      - 8765/tcp
     ports:
-      - 8765:8765/tcp
+      - "8000:8000"          # the only published port (spec §13.4)
+    expose:
+      - 8765/tcp            # loopback only: never published
     volumes:
       - ./cache/:/root/.cache/
       - ../.silero-dl2/silero-vad-master:/opt/silero-vad:ro
-      # 参数平台写这里；:ro 保证容器不能回写，配置只有一个写入方。
-      - ./config:/app/config:ro
+      # console is the only writer of /app/config; pipeline only reads it.
+      - ./config:/app/config
+      - ./data:/app/data
+      - ./docs/parameter-catalog.yaml:/app/catalog/parameter-catalog.yaml:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
     deploy:
       resources:
         reservations:

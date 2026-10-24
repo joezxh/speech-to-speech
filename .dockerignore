@@ -20,3 +20,7 @@ docker-compose.yml
 cache/huggingface
 cache/qwen35-4b
 cache/smart-turn-v3.2-cpu.onnx
+
+# The frontend stage installs its own deps and builds in-image.
+console/frontend/node_modules
+console/frontend/dist

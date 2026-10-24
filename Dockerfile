@@ -23,6 +23,18 @@
 #   docker build -f Dockerfile -t ccr.ccs.tencentyun.com/llm-basic/speech-to-speech:cu128-1.0 .
 # ============================================================================
 ARG BASE_IMAGE=ccr.ccs.tencentyun.com/llm-basic/python-torch:cu128
+
+# ---------------------------------------------------------------------------
+# Frontend build stage (spec §13.3). Emits dist/ only; node never reaches the
+# runtime image, so the container carries no node_modules (D10).
+# ---------------------------------------------------------------------------
+FROM node:20-alpine AS frontend-build
+WORKDIR /build
+COPY console/frontend/package.json console/frontend/package-lock.json ./
+RUN npm ci
+COPY console/frontend/ ./
+RUN npm run build
+
 FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -82,6 +94,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     UV_INDEX_STRATEGY=first-index UV_TIMEOUT=180 UV_CONNECT_TIMEOUT=60 UV_RETRIES=8 \
     uv sync --python /usr/bin/python3 --no-install-project --no-dev --inexact
 
+# Console backend deps go into the *same* venv: one image, one dependency tree
+# (D9). Ordered before the source copy so editing code does not re-resolve pip.
+COPY console/backend/requirements.txt /tmp/console-requirements.txt
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python /usr/src/app/.venv/bin/python -r /tmp/console-requirements.txt
+
 # 仅复制源码（不 COPY . .，避免把宿主 ./cache 模型塞进镜像——权重由运行时卷挂载提供）。
 COPY src ./src
 
@@ -95,6 +113,16 @@ RUN --mount=type=cache,target=/root/.cache/uv echo "[build] upgrading packaging/
     UV_TIMEOUT=120 uv pip install --index-strategy unsafe-best-match --python /usr/src/app/.venv/bin/python --upgrade "packaging>=24.2" "setuptools>=77.0.3" "wheel"
 RUN --mount=type=cache,target=/root/.cache/uv echo "[build] installing project (editable, no-deps, no-build-isolation)" && \
     uv pip install -e . --python /usr/src/app/.venv/bin/python --no-deps --no-build-isolation
+
+# Console app + built SPA + supervisor config.
+COPY console/backend /app/console
+COPY --from=frontend-build /build/dist /app/console/static
+COPY console/deploy/supervisord.conf /etc/supervisor/supervisord.conf
+COPY console/deploy/entrypoint.sh /usr/local/bin/s2s-entrypoint
+RUN chmod 0755 /usr/local/bin/s2s-entrypoint \
+ && mkdir -p /var/log/supervisor /run/s2s-console /app/data
+ENV PYTHONPATH=/app/console
+EXPOSE 8000
 
 # nltk.sent_tokenize 需要旧版 'punkt' 分词资源（不只是 'punkt_tab'）；
 # 缺失会抛 LookupError，pipeline 退化成兜底文案。下载 best-effort；
@@ -111,3 +139,6 @@ RUN sed -i 's/^    base = config\.rope_theta$/    base = getattr(config, "rope_t
 RUN rm -rf /root/.cache/uv && \
     find /usr/src/app/.venv -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null; \
     true
+
+# supervisord owns both programs; compose must not pass a `command` (spec §13.4).
+ENTRYPOINT ["/usr/local/bin/s2s-entrypoint"]
