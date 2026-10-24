@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from loguru import logger
 
 from app.config import app as app_settings
 from app.config import console as console_settings
+from app.config import demo as demo_settings
 from app.core.errors import ApiError, api_error_handler
 from app.core.logging import configure_logging
 from app.core.router_registry import register_api_routers
@@ -14,9 +16,19 @@ from app.core.spa import mount_spa
 from app.db.database import SessionLocal
 from app.middleware.request_id import RequestIdMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.services import publish_flow_service
+from app.services import identity_service, metering_service, publish_flow_service
 
 configure_logging(app_settings.log_level)
+
+
+async def _usage_sweeper() -> None:
+    """回收静默掉的计量会话（崩了 / 关页没发 beacon）（demo/server.py:227-233）。"""
+    while True:
+        await asyncio.sleep(metering_service.REAP_AFTER_SEC)
+        try:
+            await asyncio.to_thread(metering_service.sweep)
+        except Exception as exc:  # noqa: BLE001 - 一次 sweep 失败不该杀掉后台任务
+            logger.warning("usage sweep failed: {}", exc)
 
 
 @asynccontextmanager
@@ -32,7 +44,21 @@ async def lifespan(app: FastAPI):
         logger.error("startup recovery skipped: {}", exc)
     finally:
         session.close()
-    yield
+
+    # Order matters: the sweeper depends on the metering tables existing (§9.1).
+    # The parameter tree is already up; the usage store is bare sqlite3 (D11).
+    sweeper: asyncio.Task | None = None
+    if demo_settings.limiter_enabled:
+        metering_service.init()
+        sweeper = asyncio.create_task(_usage_sweeper())
+
+    try:
+        yield
+    finally:
+        if sweeper is not None:
+            sweeper.cancel()
+            with suppress(asyncio.CancelledError):
+                await sweeper
 
 
 def create_app() -> FastAPI:
@@ -46,6 +72,12 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(RequestIdMiddleware)
     app.add_exception_handler(ApiError, api_error_handler)
+
+    # OAuth routes are appended by attach(), so this has to happen before
+    # mount_spa registers the catch-all; otherwise /oauth/huggingface/login
+    # would receive index.html instead of a redirect.
+    if demo_settings.auth_enabled:
+        identity_service.attach(app)
 
     # Order matters: every API prefix first, SPA last (spec §10.2.3).
     register_api_routers(app)

@@ -1,7 +1,7 @@
 """The demo face: byte-compatible with `demo/server.py` (A.13), never enveloped."""
 
-from . import config
+from . import config, me
 
-ROUTERS = (config.router,)
+ROUTERS = (config.router, me.router)
 
-__all__ = ["ROUTERS", "config"]
+__all__ = ["ROUTERS", "config", "me"]

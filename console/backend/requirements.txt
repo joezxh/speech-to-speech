@@ -8,6 +8,8 @@ PyYAML>=6,<7
 pydantic>=2.7.4
 pydantic-settings>=2.1.0
 websockets>=12.0
+# [oauth] extra 带进 authlib；没有它 attach_huggingface_oauth 只是一段被跳过的 import。
+huggingface-hub[oauth]>=0.34.0
 # Console-only: exact pins.
 # 2.0.36 stringifies `Mapped[datetime | None]` in a way Python 3.14 refuses;
 # 2.0.44 keeps the same API and still runs on the image's 3.12.
