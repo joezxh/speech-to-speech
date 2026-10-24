@@ -19,6 +19,7 @@ def register_api_routers(app: FastAPI) -> None:
         status,
         voices,
     )
+    from app.routers.demo import ROUTERS as DEMO_ROUTERS  # noqa: PLC0415
 
     app.include_router(health.router)
     app.include_router(auth.router)
@@ -28,3 +29,8 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(voices.router)
     app.include_router(sessions.router)
     app.include_router(status.router)
+
+    # The demo face is anonymous and unenveloped (A.13), so it goes last among the
+    # API groups but still before the SPA catch-all.
+    for router in DEMO_ROUTERS:
+        app.include_router(router)

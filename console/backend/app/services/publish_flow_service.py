@@ -534,7 +534,7 @@ def _revert(
     db,
     profile: str,
     row,
-    snapshot: "_Snapshot",
+    snapshot: _Snapshot,
     *,
     actor: str,
     role: str,

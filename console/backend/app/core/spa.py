@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.services import asset_service
+
 # Built assets carry a content hash in the filename, so they can be cached hard;
 # index.html must not be cached or a browser keeps an old bundle across deploys
 # (spec R16).
@@ -43,6 +45,19 @@ def mount_spa(app: FastAPI, dist_dir: str | Path) -> None:
         directory = dist / name
         if directory.is_dir():
             app.mount(f"/{name}", _ImmutableStaticFiles(directory=directory), name=name)
+
+    # Two pinned asset routes (A.13). They are registered before the catch-all so
+    # that a missing file is a 503 the frontend can read, not a silent index.html.
+    @app.get("/vendor/openai-realtime-agents.umd.js", include_in_schema=False)
+    def agents_sdk() -> FileResponse:
+        return FileResponse(
+            asset_service.agents_sdk_path(), media_type="text/javascript", headers=_IMMUTABLE
+        )
+
+    @app.get("/vendor/local-vad/{filename}", include_in_schema=False)
+    def local_vad(filename: str) -> FileResponse:
+        path, media_type = asset_service.vad_path(filename)
+        return FileResponse(path, media_type=media_type, headers=_IMMUTABLE)
 
     index = dist / "index.html"
 

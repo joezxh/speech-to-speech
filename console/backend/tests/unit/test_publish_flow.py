@@ -1,14 +1,11 @@
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 import pytest
 
 from app.config import console as console_settings
 from app.core.errors import ApiError
-from app.db.database import SessionLocal
-from app.models import ParamVersion
 from app.repositories.draft_repository import DraftRepository
 from app.repositories.version_repository import VersionRepository
 from app.services import pool, publish_flow_service, restart_runner

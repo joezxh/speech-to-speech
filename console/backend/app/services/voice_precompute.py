@@ -41,7 +41,7 @@ def _stage(name: str, percent: int) -> None:
     print(f"stage={name} progress={percent}", flush=True)
 
 
-def progress(row: "Voice") -> tuple[str, int]:
+def progress(row: Voice) -> tuple[str, int]:
     """What the detail endpoint shows: `queued → loading → spk → rvq → done`."""
     if row.id in PROGRESS:
         return PROGRESS[row.id]
@@ -106,7 +106,7 @@ def _main(argv: list[str]) -> int:
     if len(argv) != 3:
         print("usage: python -m app.services.voice_precompute <ref.wav> <out_dir>", file=sys.stderr)
         return 2
-    ref_wav, out_dir = Path(argv[1]), Path(argv[2])
+    ref_wav, out_dir = Path(argv[1]), Path(argv[2])  # noqa: F841 - where spk.npy/rvq.npy land once the encoder exists
     _stage("loading", 10)
     try:
         with wave.open(str(ref_wav)) as handle:

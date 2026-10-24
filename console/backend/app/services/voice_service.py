@@ -165,7 +165,11 @@ def validate_wav(data: bytes) -> float:
             "voice_audio_invalid",
             "expected mono 16-bit PCM at 16 kHz",
             400,
-            detail=[{"field": "channels", "value": channels}, {"field": "sampleWidth", "value": width}, {"field": "sampleRate", "value": rate}],
+            detail=[
+                {"field": "channels", "value": channels},
+                {"field": "sampleWidth", "value": width},
+                {"field": "sampleRate", "value": rate},
+            ],
         )
     seconds = frames / rate if rate else 0.0
     if seconds <= 0 or seconds > console.voice_max_seconds:
