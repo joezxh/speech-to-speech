@@ -1,9 +1,53 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 
-export default createRouter({
-  history: createWebHistory(),
-  routes: [
-    { path: '/', name: 'voice', component: () => import('@/views/PlaceholderView.vue') },
-    { path: '/console/:pathMatch(.*)*', name: 'console', component: () => import('@/views/PlaceholderView.vue') }
-  ]
+import { pinia } from '@/stores'
+import { useAuthStore } from '@/stores/auth'
+
+// 导出这张表本身：`router.spec.ts`（Task 20 Step 20）用 `createMemoryHistory`
+// 建一个不进浏览器的同构实例来断言 matched 链，不依赖 DOM。
+export const routes: RouteRecordRaw[] = [
+  {
+    path: '/console/login',
+    name: 'login',
+    component: () => import('@/views/LoginView.vue')
+  },
+  {
+    // 一个外壳两个面（§3.2.4）：`/` 与 `/console/*` 是同一个 `ConsoleLayout` 的
+    // 子路由。只有 console 面要求登录；对话页匿名可开，与旧页一致。
+    path: '/',
+    component: () => import('@/layouts/ConsoleLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'voice',
+        component: () => import('@/views/VoicePlaceholderView.vue'),
+        meta: { face: 'voice' }
+      },
+      {
+        // 无组件记录只是命名空间：`hasRoute` 与 `addRoute` 需要一个挂点，
+        // 子路由由 Task 12/13 注册进来。`meta` 会被子路由继承。
+        path: 'console',
+        name: 'console',
+        meta: { face: 'console', requiresAuth: true },
+        children: []
+      }
+    ]
+  },
+  { path: '/:pathMatch(.*)*', redirect: '/' }
+]
+
+const router = createRouter({ history: createWebHistory(), routes })
+
+router.beforeEach((to) => {
+  const auth = useAuthStore(pinia)
+  // 只看合并后的 `requiresAuth`：外壳自己不上锁，否则对话页也被拦在登录页外。
+  if (to.meta.requiresAuth && !auth.signedIn) {
+    return { name: 'login', query: { next: to.fullPath } }
+  }
+  if (to.name === 'login' && auth.signedIn) {
+    return { path: '/console' }
+  }
+  return true
 })
+
+export default router
