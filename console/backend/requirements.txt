@@ -9,7 +9,9 @@ pydantic>=2.7.4
 pydantic-settings>=2.1.0
 websockets>=12.0
 # Console-only: exact pins.
-SQLAlchemy==2.0.36
+# 2.0.36 stringifies `Mapped[datetime | None]` in a way Python 3.14 refuses;
+# 2.0.44 keeps the same API and still runs on the image's 3.12.
+SQLAlchemy==2.0.44
 alembic==1.13.1
 psycopg2-binary==2.9.10
 python-jose[cryptography]==3.3.0
