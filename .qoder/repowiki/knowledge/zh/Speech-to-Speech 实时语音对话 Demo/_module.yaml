@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: demo
-title: Speech-to-Speech 实时语音对话 Demo
-scope:
-    - demo/
-source_files: []
-depends_on: []
-related_to:
-    - path: examples

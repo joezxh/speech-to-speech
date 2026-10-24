@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: silero_vad_vendor
+title: Silero VAD 语音活动检测 Python 包
+scope:
+    - silero-vad/
+source_files: []
+depends_on: []
+related_to:
+    - path: core_library

@@ -1,0 +1,16 @@
+schema_version: 1
+module_path: core_library/speech_core_entrypoints
+title: Speech-to-Speech 入口与配置运行时
+scope:
+    - src/speech_to_speech/__init__.py
+    - src/speech_to_speech/baseHandler.py
+    - src/speech_to_speech/config.py
+    - src/speech_to_speech/cli.py
+    - src/speech_to_speech/backend_registry.py
+    - src/speech_to_speech/configured_runtime.py
+    - src/speech_to_speech/s2s_pipeline.py
+    - src/speech_to_speech/_config_yaml.py
+source_files: []
+depends_on: []
+related_to:
+    - path: demo_app

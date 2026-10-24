@@ -1,8 +1,0 @@
-schema_version: 1
-module_path: docs
-title: OpenAI 兼容 STT/TTS 接口文档
-scope:
-    - docs/
-source_files: []
-depends_on: []
-related_to: []

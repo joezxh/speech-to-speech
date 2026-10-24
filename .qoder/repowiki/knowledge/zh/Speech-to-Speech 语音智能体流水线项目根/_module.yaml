@@ -1,0 +1,46 @@
+schema_version: 1
+module_path: ""
+title: Speech-to-Speech 语音智能体流水线项目根
+scope:
+    - README.md
+    - README-CN.md
+    - AGENTS.md
+    - pyproject.toml
+    - .gitignore
+    - .dockerignore
+    - Dockerfile*
+    - docker-compose*.yml
+    - llm-proxy.py
+    - diag_import.py
+    - latency_test.py
+    - .env.cu130
+    - .env.gpustack
+    - .env.gpustack.example
+    - .env.local
+    - AGENTS-CN.md
+    - Dockerfile
+    - Dockerfile.arm64
+    - Dockerfile.baked
+    - Dockerfile.baked.cu130
+    - Dockerfile.cu128
+    - Dockerfile.cu130
+    - Dockerfile.local
+    - Dockerfile.sox
+    - Dockerfile.torch-base
+    - LICENSE
+    - MANIFEST.in
+    - docker-compose.baked.yml
+    - docker-compose.cu130.yml
+    - docker-compose.gpustack.yml
+    - docker-compose.llm-bundled.yml
+    - docker-compose.local.yml
+    - docker-compose.vn.ms.llm-bundled.yml
+    - docker-compose.yml
+    - llama-server-2048.err
+    - llama-server-2048.out
+    - llama-server.err
+    - logo.png
+    - mypy.ini
+source_files: []
+depends_on: []
+related_to: []

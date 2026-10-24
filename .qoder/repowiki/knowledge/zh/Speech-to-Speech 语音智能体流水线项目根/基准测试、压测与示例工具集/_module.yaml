@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: scripts_and_examples
+title: 基准测试、压测与示例工具集
+scope:
+    - scripts/
+    - examples/
+    - example_configs/
+source_files: []
+depends_on: []
+related_to:
+    - path: core_library

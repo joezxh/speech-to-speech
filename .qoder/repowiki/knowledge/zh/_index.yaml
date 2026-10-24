@@ -2,308 +2,150 @@
 schema_version: 1
 locale: zh-CN
 branch: main
-exported_at: "2026-09-23T15:48:18Z"
+nodes_managed: true
+exported_at: "2026-10-24T12:19:30Z"
 modules:
     "":
-        dir_name: Speech-to-Speech 低延迟语音转语音管道
-        title: Speech-to-Speech 低延迟语音转语音管道
+        dir_name: Speech-to-Speech 语音智能体流水线项目根
+        title: Speech-to-Speech 语音智能体流水线项目根
         scope:
             - README.md
             - README-CN.md
             - AGENTS.md
             - pyproject.toml
-            - Dockerfile
-            - Dockerfile.arm64
-            - docker-compose.yml
             - .gitignore
             - .dockerignore
-            - mypy.ini
-            - .github/
-            - .github\dependabot.yml
-            - .github\scripts\star_history.py
-            - .github\workflows\ci.yml
-            - .github\workflows\publish.yml
-            - .github\workflows\star-history.yml
+            - Dockerfile*
+            - docker-compose*.yml
+            - llm-proxy.py
+            - diag_import.py
+            - latency_test.py
+            - .env.cu130
+            - .env.gpustack
+            - .env.gpustack.example
+            - .env.local
             - AGENTS-CN.md
+            - Dockerfile
+            - Dockerfile.arm64
+            - Dockerfile.baked
+            - Dockerfile.baked.cu130
+            - Dockerfile.cu128
+            - Dockerfile.cu130
+            - Dockerfile.local
+            - Dockerfile.sox
+            - Dockerfile.torch-base
             - LICENSE
             - MANIFEST.in
-            - archive\README-CN.md
-            - archive\README.md
-            - archive\STT\__init__.py
-            - archive\STT\moonshine_handler.py
-            - archive\TTS\__init__.py
-            - archive\TTS\melo_handler.py
-            - archive\TTS\parler_handler.py
-            - archive\__init__.py
-            - archive\arguments_classes\__init__.py
-            - archive\arguments_classes\melo_tts_arguments.py
-            - archive\arguments_classes\parler_tts_arguments.py
-            - assets\star-history.svg
-            - demo\.dockerignore
-            - demo\.gitignore
-            - demo\.npmrc
-            - demo\CONTEXT-CN.md
-            - demo\CONTEXT.md
-            - demo\DESIGN-CN.md
-            - demo\DESIGN.md
-            - demo\Dockerfile
-            - demo\README-CN.md
-            - demo\README.md
-            - demo\auth.py
-            - demo\docs\adr\0001-docker-space-with-search-proxy-CN.md
-            - demo\docs\adr\0001-docker-space-with-search-proxy.md
-            - demo\index.html
-            - demo\limiter.py
-            - demo\main.js
-            - demo\package-lock.json
-            - demo\package.json
-            - demo\requirements.txt
-            - demo\s2s-realtime-client.js
-            - demo\server.py
-            - demo\style.css
-            - demo\tests\agents-adapter.test.mjs
-            - demo\tests\agents-webrtc.test.mjs
-            - demo\tests\agents-websocket.test.mjs
-            - demo\tests\helpers.mjs
-            - demo\ui\account.js
-            - demo\ui\chat.js
-            - demo\ui\dom.js
-            - demo\worklets\audio-playback.js
-            - demo\worklets\mic-capture.js
-            - demo\ws\codec.js
-            - demo\ws\orb-visualizer.js
-            - demo\ws\user-audio-recorder.js
-            - docs\assets\endpoint-swap-dark.gif
-            - docs\assets\endpoint-swap-light.gif
-            - docs\openai-compatible-stt-CN.md
-            - docs\openai-compatible-stt.md
-            - docs\openai-compatible-tts-CN.md
-            - docs\openai-compatible-tts.md
-            - examples\gemma4-12b-macos\README-CN.md
-            - examples\gemma4-12b-macos\README.md
-            - examples\realtime_web_search_tool.py
+            - docker-compose.baked.yml
+            - docker-compose.cu130.yml
+            - docker-compose.gpustack.yml
+            - docker-compose.llm-bundled.yml
+            - docker-compose.local.yml
+            - docker-compose.vn.ms.llm-bundled.yml
+            - docker-compose.yml
+            - llama-server-2048.err
+            - llama-server-2048.out
+            - llama-server.err
             - logo.png
-            - scripts\benchmark_stt.py
-            - scripts\benchmark_tts.py
-            - scripts\synthetic_conversation_realtime_client.py
-            - src\speech_to_speech\LLM\README-CN.md
-            - src\speech_to_speech\LLM\README.md
-            - src\speech_to_speech\LLM\__init__.py
-            - src\speech_to_speech\LLM\audio_input_notifier.py
-            - src\speech_to_speech\LLM\base_openai_compatible_language_model.py
-            - src\speech_to_speech\LLM\chat.py
-            - src\speech_to_speech\LLM\chat_completions_language_model.py
-            - src\speech_to_speech\LLM\compaction_prompt.py
-            - src\speech_to_speech\LLM\language_model.py
-            - src\speech_to_speech\LLM\lm_output_processor.py
-            - src\speech_to_speech\LLM\responses_api_language_model.py
-            - src\speech_to_speech\LLM\text_prompt.py
-            - src\speech_to_speech\LLM\tool_call\function_call.py
-            - src\speech_to_speech\LLM\tool_call\function_tool.py
-            - src\speech_to_speech\LLM\tool_call\signature_from_schema.py
-            - src\speech_to_speech\LLM\tool_call\tool_prompt.py
-            - src\speech_to_speech\LLM\utils.py
-            - src\speech_to_speech\LLM\voice_prompt.py
-            - src\speech_to_speech\STT\README-CN.md
-            - src\speech_to_speech\STT\README.md
-            - src\speech_to_speech\STT\__init__.py
-            - src\speech_to_speech\STT\base_stt_handler.py
-            - src\speech_to_speech\STT\faster_whisper_handler.py
-            - src\speech_to_speech\STT\lightning_whisper_mlx_handler.py
-            - src\speech_to_speech\STT\mlx_audio_whisper_handler.py
-            - src\speech_to_speech\STT\openai_compatible_handler.py
-            - src\speech_to_speech\STT\paraformer_handler.py
-            - src\speech_to_speech\STT\parakeet_tdt_handler.py
-            - src\speech_to_speech\STT\smart_progressive_streaming.py
-            - src\speech_to_speech\STT\transcription_notifier.py
-            - src\speech_to_speech\STT\whisper_stt_handler.py
-            - src\speech_to_speech\TTS\README-CN.md
-            - src\speech_to_speech\TTS\README.md
-            - src\speech_to_speech\TTS\__init__.py
-            - src\speech_to_speech\TTS\chatTTS_handler.py
-            - src\speech_to_speech\TTS\facebookmms_handler.py
-            - src\speech_to_speech\TTS\kokoro_handler.py
-            - src\speech_to_speech\TTS\omnivoice_handler.py
-            - src\speech_to_speech\TTS\openai_compatible_handler.py
-            - src\speech_to_speech\TTS\pocket_tts_handler.py
-            - src\speech_to_speech\TTS\qwen3_tts_handler.py
-            - src\speech_to_speech\TTS\ref_audio.wav
-            - src\speech_to_speech\TTS\supertonic_tts_handler.py
-            - src\speech_to_speech\VAD\__init__.py
-            - src\speech_to_speech\VAD\smart_turn.py
-            - src\speech_to_speech\VAD\vad_handler.py
-            - src\speech_to_speech\VAD\vad_iterator.py
-            - src\speech_to_speech\__init__.py
-            - src\speech_to_speech\api\__init__.py
-            - src\speech_to_speech\api\openai_realtime\README-CN.md
-            - src\speech_to_speech\api\openai_realtime\README.md
-            - src\speech_to_speech\api\openai_realtime\__init__.py
-            - src\speech_to_speech\api\openai_realtime\audio_client.py
-            - src\speech_to_speech\api\openai_realtime\handlers\__init__.py
-            - src\speech_to_speech\api\openai_realtime\handlers\audio.py
-            - src\speech_to_speech\api\openai_realtime\handlers\base.py
-            - src\speech_to_speech\api\openai_realtime\handlers\conversation.py
-            - src\speech_to_speech\api\openai_realtime\handlers\response.py
-            - src\speech_to_speech\api\openai_realtime\handlers\session.py
-            - src\speech_to_speech\api\openai_realtime\input_state.py
-            - src\speech_to_speech\api\openai_realtime\llm_proxy.py
-            - src\speech_to_speech\api\openai_realtime\pipeline_unit.py
-            - src\speech_to_speech\api\openai_realtime\runtime_config.py
-            - src\speech_to_speech\api\openai_realtime\server.py
-            - src\speech_to_speech\api\openai_realtime\service.py
-            - src\speech_to_speech\api\openai_realtime\transports.py
-            - src\speech_to_speech\api\openai_realtime\utils.py
-            - src\speech_to_speech\api\openai_realtime\webrtc_session.py
-            - src\speech_to_speech\api\openai_realtime\websocket_router.py
-            - src\speech_to_speech\arguments_classes\__init__.py
-            - src\speech_to_speech\arguments_classes\chat_completions_language_model_arguments.py
-            - src\speech_to_speech\arguments_classes\chat_tts_arguments.py
-            - src\speech_to_speech\arguments_classes\facebookmms_tts_arguments.py
-            - src\speech_to_speech\arguments_classes\faster_whisper_stt_arguments.py
-            - src\speech_to_speech\arguments_classes\kokoro_tts_arguments.py
-            - src\speech_to_speech\arguments_classes\language_model_arguments.py
-            - src\speech_to_speech\arguments_classes\language_model_base_arguments.py
-            - src\speech_to_speech\arguments_classes\local_audio_arguments.py
-            - src\speech_to_speech\arguments_classes\mlx_audio_whisper_arguments.py
-            - src\speech_to_speech\arguments_classes\module_arguments.py
-            - src\speech_to_speech\arguments_classes\omnivoice_tts_arguments.py
-            - src\speech_to_speech\arguments_classes\openai_stt_arguments.py
-            - src\speech_to_speech\arguments_classes\openai_tts_arguments.py
-            - src\speech_to_speech\arguments_classes\paraformer_stt_arguments.py
-            - src\speech_to_speech\arguments_classes\parakeet_tdt_arguments.py
-            - src\speech_to_speech\arguments_classes\pocket_tts_arguments.py
-            - src\speech_to_speech\arguments_classes\qwen3_tts_arguments.py
-            - src\speech_to_speech\arguments_classes\realtime_server_arguments.py
-            - src\speech_to_speech\arguments_classes\responses_api_language_model_arguments.py
-            - src\speech_to_speech\arguments_classes\supertonic_tts_arguments.py
-            - src\speech_to_speech\arguments_classes\vad_arguments.py
-            - src\speech_to_speech\arguments_classes\whisper_stt_arguments.py
-            - src\speech_to_speech\backend_registry.py
-            - src\speech_to_speech\baseHandler.py
-            - src\speech_to_speech\cli.py
-            - src\speech_to_speech\pipeline\__init__.py
-            - src\speech_to_speech\pipeline\cancel_scope.py
-            - src\speech_to_speech\pipeline\control.py
-            - src\speech_to_speech\pipeline\events.py
-            - src\speech_to_speech\pipeline\handler_types.py
-            - src\speech_to_speech\pipeline\log_context.py
-            - src\speech_to_speech\pipeline\messages.py
-            - src\speech_to_speech\pipeline\queue_types.py
-            - src\speech_to_speech\pipeline\speculative_turns.py
-            - src\speech_to_speech\pipeline\transcript_logging.py
-            - src\speech_to_speech\s2s_pipeline.py
-            - src\speech_to_speech\utils\__init__.py
-            - src\speech_to_speech\utils\mlx_lock.py
-            - src\speech_to_speech\utils\thread_manager.py
-            - src\speech_to_speech\utils\utils.py
-            - tests\__init__.py
-            - tests\install_smoke.py
-            - tests\openai_realtime\__init__.py
-            - tests\openai_realtime\agents_sdk_server.py
-            - tests\openai_realtime\conftest.py
-            - tests\openai_realtime\test_audio_client.py
-            - tests\openai_realtime\test_llm_proxy.py
-            - tests\openai_realtime\test_openai_client.py
-            - tests\openai_realtime\test_pipeline_builder.py
-            - tests\openai_realtime\test_realtime_service.py
-            - tests\openai_realtime\test_runtime_config.py
-            - tests\openai_realtime\test_web_search_tool_example.py
-            - tests\openai_realtime\test_webrtc.py
-            - tests\openai_realtime\test_websocket_router.py
-            - tests\test_audio_input_notifier.py
-            - tests\test_backend_registry.py
-            - tests\test_chat.py
-            - tests\test_chat_completions_backend.py
-            - tests\test_chat_turn_order.py
-            - tests\test_cli_defaults.py
-            - tests\test_demo_agents_adapter.py
-            - tests\test_demo_input_transcription.py
-            - tests\test_demo_server.py
-            - tests\test_demo_user_audio.py
-            - tests\test_facebookmms_language_map.py
-            - tests\test_faster_whisper_language_code.py
-            - tests\test_faster_whisper_language_reporting.py
-            - tests\test_handler_logging_hygiene.py
-            - tests\test_language_prompt.py
-            - tests\test_llm_utils.py
-            - tests\test_lm_output_processor.py
-            - tests\test_mlx_audio_whisper_handler.py
-            - tests\test_omnivoice_tts_handler.py
-            - tests\test_openai_stt_handler.py
-            - tests\test_openai_tts_handler.py
-            - tests\test_paraformer_transcription_events.py
-            - tests\test_parakeet_language_detection.py
-            - tests\test_parakeet_transcription_events.py
-            - tests\test_pipeline_messages.py
-            - tests\test_pocket_tts_handler.py
-            - tests\test_qwen3_tts_handler_backend.py
-            - tests\test_response_overrides.py
-            - tests\test_responses_api_language_model.py
-            - tests\test_smart_turn.py
-            - tests\test_speculative_turns.py
-            - tests\test_stt_stale_filter.py
-            - tests\test_supertonic_tts_handler.py
-            - tests\test_text_prompt.py
-            - tests\test_transcript_log_hygiene.py
-            - tests\test_transcription_notifier.py
-            - tests\test_tts_input_coalescing.py
-            - tests\test_vad_iterator.py
-            - tests\test_voice_prompt.py
-            - tests\test_whisper_language_detection.py
-            - tests\test_whisper_progressive_transcription.py
-            - tests\tool_call\__init__.py
-            - tests\tool_call\test_function_parser.py
-            - tests\tool_call\test_signature_from_schema.py
+            - mypy.ini
+        source_files: []
+        children:
+            - archive
+            - core_library
+            - demo_app
+            - docs
+            - scripts_and_examples
+            - silero_vad_vendor
+            - tests
+        depends_on: []
+        related_to: []
+    archive:
+        dir_name: 历史语音模型归档（STT_TTS 旧实现）
+        title: 历史语音模型归档（STT/TTS 旧实现）
+        scope:
+            - archive/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    demo:
-        dir_name: Speech-to-Speech 实时语音对话 Demo
-        title: Speech-to-Speech 实时语音对话 Demo
+    core_library:
+        dir_name: Speech-to-Speech 语音对话核心库
+        title: Speech-to-Speech 语音对话核心库
+        scope:
+            - src/
+        source_files: []
+        children:
+            - core_library/speech_core_entrypoints
+        depends_on: []
+        related_to:
+            - path: scripts_and_examples
+            - path: silero_vad_vendor
+            - path: tests
+    core_library/speech_core_entrypoints:
+        dir_name: Speech-to-Speech 入口与配置运行时
+        title: Speech-to-Speech 入口与配置运行时
+        scope:
+            - src/speech_to_speech/__init__.py
+            - src/speech_to_speech/baseHandler.py
+            - src/speech_to_speech/config.py
+            - src/speech_to_speech/cli.py
+            - src/speech_to_speech/backend_registry.py
+            - src/speech_to_speech/configured_runtime.py
+            - src/speech_to_speech/s2s_pipeline.py
+            - src/speech_to_speech/_config_yaml.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: demo_app
+    demo_app:
+        dir_name: Speech-to-Speech 实时语音演示应用
+        title: Speech-to-Speech 实时语音演示应用
         scope:
             - demo/
         source_files: []
         children: []
         depends_on: []
         related_to:
-            - path: examples
+            - path: core_library/speech_core_entrypoints
     docs:
-        dir_name: OpenAI 兼容 STT_TTS 接口文档
-        title: OpenAI 兼容 STT/TTS 接口文档
+        dir_name: Speech-to-Speech 项目文档与部署手册
+        title: Speech-to-Speech 项目文档与部署手册
         scope:
             - docs/
         source_files: []
         children: []
         depends_on: []
         related_to: []
-    examples:
-        dir_name: 示例与演示脚本
-        title: 示例与演示脚本
-        scope:
-            - examples/
-        source_files: []
-        children: []
-        depends_on: []
-        related_to:
-            - path: demo
-    scripts:
-        dir_name: 语音处理基准测试与实时对话压测脚本集
-        title: 语音处理基准测试与实时对话压测脚本集
+    scripts_and_examples:
+        dir_name: 基准测试、压测与示例工具集
+        title: 基准测试、压测与示例工具集
         scope:
             - scripts/
+            - examples/
+            - example_configs/
         source_files: []
         children: []
         depends_on: []
         related_to:
-            - path: tests
+            - path: core_library
+    silero_vad_vendor:
+        dir_name: Silero VAD 语音活动检测 Python 包
+        title: Silero VAD 语音活动检测 Python 包
+        scope:
+            - silero-vad/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: core_library
     tests:
-        dir_name: 语音转语音项目测试套件
-        title: 语音转语音项目测试套件
+        dir_name: 语音到语音代理套件测试集
+        title: 语音到语音代理套件测试集
         scope:
             - tests/
         source_files: []
         children: []
         depends_on: []
         related_to:
-            - path: scripts
+            - path: core_library

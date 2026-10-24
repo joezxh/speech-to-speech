@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: core_library
+title: Speech-to-Speech 语音对话核心库
+scope:
+    - src/
+source_files: []
+depends_on: []
+related_to:
+    - path: scripts_and_examples
+    - path: silero_vad_vendor
+    - path: tests

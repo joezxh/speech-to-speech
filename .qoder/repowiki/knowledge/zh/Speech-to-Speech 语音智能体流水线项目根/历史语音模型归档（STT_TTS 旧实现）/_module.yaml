@@ -1,0 +1,8 @@
+schema_version: 1
+module_path: archive
+title: 历史语音模型归档（STT/TTS 旧实现）
+scope:
+    - archive/
+source_files: []
+depends_on: []
+related_to: []
