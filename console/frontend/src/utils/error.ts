@@ -33,6 +33,8 @@ export const ERROR_TEXT: Record<string, string> = {
   version_not_rollbackable: '该版本不可回滚',
   no_draft: '没有草稿',
   unsupported_field: '该字段不支持热更新',
+  invalid_request_error: 'pipeline 不接受这次热更新：语言不被支持，或 auto 不可重置',
+  invalid_session_type: '该会话不是 realtime 类型，无法热更新',
   asset_missing: '静态资源缺失',
   not_implemented: '功能尚未启用',
   // voices (§3.11 / A.18)

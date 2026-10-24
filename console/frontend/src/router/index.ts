@@ -35,7 +35,8 @@ export const routes: RouteRecordRaw[] = [
           { path: 'voices', name: 'voices', component: () => import('@/views/VoicesView.vue') },
           { path: 'versions', name: 'versions', component: () => import('@/views/VersionsView.vue') },
           { path: 'audit', name: 'audit', component: () => import('@/views/AuditView.vue') },
-          { path: 'instances', name: 'instances', component: () => import('@/views/InstancesView.vue') }
+          { path: 'instances', name: 'instances', component: () => import('@/views/InstancesView.vue') },
+          { path: 'sessions', name: 'sessions', component: () => import('@/views/SessionsView.vue') }
         ]
       }
     ]
