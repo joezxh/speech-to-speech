@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+# Built assets carry a content hash in the filename, so they can be cached hard;
+# index.html must not be cached or a browser keeps an old bundle across deploys
+# (spec R16).
+_IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable"}
+_NO_STORE = {"Cache-Control": "no-store"}
+
+
+class _ImmutableStaticFiles(StaticFiles):
+    """StaticFiles with the one header a hashed bundle needs.
+
+    Mounted sub-apps answer before the SPA fallback, so the header has to be
+    attached here as well; otherwise `GET /assets/app-<hash>.js` reaches the
+    browser without a Cache-Control at all (spec R16).
+    """
+
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        response.headers.update(_IMMUTABLE)
+        return response
+
+
+def mount_spa(app: FastAPI, dist_dir: str | Path) -> None:
+    """Serve the built SPA. Call this **after** every API router is registered.
+
+    Starlette matches routes in registration order, so a catch-all registered
+    first would answer /api/config with index.html.
+    """
+    dist = Path(dist_dir)
+    if not dist.is_dir():
+        # A missing dist is a broken image, not a runtime condition worth
+        # pretending to survive: fail loudly at boot.
+        raise RuntimeError(f"static dir {dist} is missing; the image was built without the frontend")
+
+    for name in ("assets", "worklets"):
+        directory = dist / name
+        if directory.is_dir():
+            app.mount(f"/{name}", _ImmutableStaticFiles(directory=directory), name=name)
+
+    index = dist / "index.html"
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def spa_fallback(full_path: str) -> FileResponse:
+        candidate = dist / full_path
+        if full_path and candidate.is_file() and dist.resolve() in candidate.resolve().parents:
+            return FileResponse(candidate, headers=_IMMUTABLE)
+        return FileResponse(index, headers=_NO_STORE)
