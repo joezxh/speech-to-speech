@@ -442,6 +442,14 @@ class RealtimeService:
                 self.total_usage.audio_duration_s,
             )
 
+    def active_connection_ids(self) -> list[str]:
+        """Session ids of live connections, for the console's fanout endpoint.
+
+        Read-only by design: the console enumerates connections to push a
+        ``session.update``, it never mutates ``_conns`` itself (spec §9.1).
+        """
+        return list(self._conns.keys())
+
     def _state(self, conn_id: str) -> ConnState:
         return self._conns[conn_id]
 

@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from queue import Empty, Queue
 from threading import Event as ThreadingEvent
-from typing import Any, Callable, TypeVar
+from typing import Any, Callable, Literal, TypeVar
 
 import numpy as np
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
@@ -23,7 +23,7 @@ from openai.types.realtime import (
     ResponseCreateEvent,
     SessionUpdateEvent,
 )
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from speech_to_speech.api.openai_realtime.llm_proxy import LLMProxyConfig, mount_llm_proxy
 from speech_to_speech.api.openai_realtime.pipeline_unit import PipelineUnit, SessionState
@@ -693,6 +693,67 @@ def create_app(
             "in_use": sum(1 for u in pool if u.session is not None),
             "units": [_state(u) for u in pool],
         }
+
+    class _InternalPayload(BaseModel):
+        scope: Literal["all", "pipeline", "session"] = "all"
+        target: int | str | None = None
+        session: dict[str, Any]
+
+    def _internal_error(status: int, code: str, message: str) -> JSONResponse:
+        return JSONResponse({"error": {"code": code, "message": message}}, status_code=status)
+
+    def _bearer(request: Request) -> str:
+        header = request.headers.get("authorization", "")
+        return header[7:].strip() if header.lower().startswith("bearer ") else ""
+
+    @app.post("/internal/sessions/update", include_in_schema=False)
+    async def internal_sessions_update(request: Request) -> JSONResponse:
+        """Fan a ``session.update`` out to live connections (console-only).
+
+        Fail closed: with no token configured the route refuses everything, so a
+        stripped-down deploy cannot accidentally expose an unauthenticated
+        config push on loopback.
+        """
+        expected = os.environ.get("S2S_INTERNAL_TOKEN", "").strip()
+        if not expected:
+            return _internal_error(503, "internal_token_missing", "S2S_INTERNAL_TOKEN is not configured")
+        if not hmac.compare_digest(_bearer(request).encode(), expected.encode()):
+            return _internal_error(401, "unauthorized", "invalid internal token")
+
+        try:
+            payload = _InternalPayload.model_validate(await request.json())
+            # `type` is the union's only discriminator, so a partial session has
+            # to be labelled before it can be parsed (same shape the console
+            # sends through `/admin/sessions/update`).
+            event = SessionUpdateEvent(
+                type="session.update", session={"type": "realtime", **payload.session}
+            )
+        except ValidationError as exc:
+            detail = exc.errors()[0] if exc.errors() else {}
+            return _internal_error(400, "invalid_request_error", str(detail.get("msg", "invalid payload")))
+
+        if payload.scope == "pipeline" and payload.target is None:
+            return _internal_error(400, "invalid_request_error", "scope=pipeline requires target")
+
+        only = str(payload.target) if payload.scope == "session" and payload.target is not None else None
+        if payload.scope == "session" and only is None:
+            return _internal_error(400, "invalid_request_error", "scope=session requires target")
+
+        updated: list[str] = []
+        failed: list[dict[str, str]] = []
+        for unit in pool:
+            if payload.scope == "pipeline" and unit.index != int(payload.target):
+                continue
+            for session_id in unit.service.active_connection_ids():
+                if only is not None and session_id != only:
+                    continue
+                error = unit.service.session.handle_session_update(session_id, event)
+                if error is None:
+                    updated.append(session_id)
+                else:
+                    code = getattr(getattr(error, "error", None), "code", None) or "invalid_request_error"
+                    failed.append({"session_id": session_id, "error": str(code)})
+        return JSONResponse({"updated": updated, "failed": failed})
 
     def _live_units(scope: Any, target: Any) -> tuple[list[PipelineUnit], JSONResponse | None]:
         """Which units a fanout reaches (spec §5.3's three scopes).
