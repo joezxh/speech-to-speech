@@ -1,0 +1,4 @@
+# Shell entrypoints run inside Linux containers: a CRLF shebang fails there
+# with a bare "not found", which looks like a missing file.
+*.sh text eol=lf
+console/deploy/* text eol=lf

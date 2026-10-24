@@ -4,7 +4,8 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.config import app as app_settings, console as console_settings
+from app.config import app as app_settings
+from app.config import console as console_settings
 from app.core.errors import ApiError, api_error_handler
 from app.core.logging import configure_logging
 from app.core.spa import mount_spa

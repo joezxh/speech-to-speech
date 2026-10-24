@@ -247,3 +247,7 @@ config/*.env.tmp
 config/*.yaml.tmp
 config/*.bak.*
 demo/s2s-params.sqlite3*
+
+# console backend local dev database
+console/backend/dev.db
+console/backend/*.sqlite3
