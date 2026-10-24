@@ -15,6 +15,7 @@ def register_api_routers(app: FastAPI) -> None:
         health,
         instances,
         profiles,
+        realtime,
         sessions,
         status,
         voices,
@@ -34,3 +35,6 @@ def register_api_routers(app: FastAPI) -> None:
     # API groups but still before the SPA catch-all.
     for router in DEMO_ROUTERS:
         app.include_router(router)
+
+    # /v1 反代最后注册：它只开两条精确路径，不和 /api 抢前缀。
+    app.include_router(realtime.router)
