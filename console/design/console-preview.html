@@ -1,0 +1,2970 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>S2S 控制台 · 样式预览</title>
+<style>
+  /* ── Design tokens ────────────────────────────────────────────────────────
+     与 console/frontend/src/styles/variables.less 同一套值。这里多出来的
+     surface-2 / border / 语义色，是 antd darkAlgorithm 落地时需要的映射表。 */
+  :root {
+    --bg: #0b1020;
+    --surface: #141a2e;
+    --surface-2: #1a2138;
+    --surface-3: #212a45;
+    --border: #232b45;
+    --border-strong: #2e3856;
+    --text: #e6e8f0;
+    --muted: #8b93a7;
+    --faint: #5b6478;
+    --accent: #5b8cff;
+    --accent-soft: rgba(91, 140, 255, 0.16);
+    --success: #35c48a;
+    --warning: #e8b339;
+    --danger: #f0655c;
+    --purple: #a78bfa;
+    --orange: #f0a05c;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --font: -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+    --mono: 'Geist Mono', ui-monospace, Consolas, 'Courier New', monospace;
+
+    /* 对话页（demo 对齐）：底色沿用 demo 的 #0a0b10，语音强调色与九态光色
+       逐字取自 demo/style.css 的 .circle.state-* 段。运维台不含这些值。 */
+    --voice-bg: #0a0b10;
+    --voice-surface: #13151c;
+    --voice-surface-2: #1b1e29;
+    --voice-border: rgba(255, 255, 255, 0.08);
+    --voice-border-strong: rgba(255, 255, 255, 0.16);
+    --voice-text: #f5f6fa;
+    --voice-dim: rgba(245, 246, 250, 0.65);
+    --voice-faint: rgba(245, 246, 250, 0.42);
+    --voice-accent: #8b7dff;
+    --voice-listening: #22d3ee;
+    --voice-speaking: #8b7dff;
+    --voice-processing: #f59e0b;
+    --voice-error: #ff6a75;
+    --voice-ready: #34d399;
+    --voice-queued: #94a3b8;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body { height: 100%; margin: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  /* ── 外壳（§3.2.4）：一个应用、一套外壳、两个面 ──────────────────────────
+     `.shell` 是 flex 列：`.shell__top` 固定 56px，`.shell__body` 吃掉剩余高度；
+     `.shell__body` 里横排 `.shell__nav` 与 `.shell__content`。每一层都必须写
+     `min-height: 0`，否则子元素的内容会把 1fr 顶开——对话页的页脚就是这样被
+     挤出视口的。类名与 `layouts/ConsoleLayout.vue` 逐字一致。 */
+  .shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .shell__top {
+    align-items: center;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex: none;
+    gap: 14px;
+    height: 56px;
+    padding: 0 20px;
+    position: relative;
+    z-index: 20;
+  }
+
+  .shell__body { display: flex; flex: 1 1 auto; min-height: 0; position: relative; }
+
+  /* 对话页把账号 chip 与三枚按钮 Teleport 到这里（§3.2.4）；运维面它是空的，
+     `:empty` 时不留占位。 */
+  .shell__actions { align-items: center; display: flex; gap: 4px; }
+  .shell__actions:empty { display: none; }
+
+  /* 顶栏左侧汉堡：只在 `< DRAWER_BREAKPOINT(980)` 出现。 */
+  .shell__burger {
+    align-items: center; background: none; border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm); color: var(--muted); cursor: pointer;
+    display: none; flex: none; height: 28px; justify-content: center; width: 28px;
+  }
+
+  .shell__brand {
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+  }
+
+  .shell__brand span { color: var(--accent); }
+
+  .spacer { flex: 1; }
+
+  .who { color: var(--muted); font-size: 12px; }
+
+  .divider-v { background: var(--border); height: 18px; width: 1px; }
+
+  /* ── Status pill ────────────────────────────────────────────────────────── */
+  .status {
+    align-items: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+    display: inline-flex;
+    font-size: 12px;
+    gap: 7px;
+    padding: 3px 11px 3px 9px;
+    white-space: nowrap;
+  }
+
+  .status i {
+    background: var(--success);
+    border-radius: 50%;
+    box-shadow: 0 0 0 3px rgba(53, 196, 138, 0.16);
+    height: 6px;
+    width: 6px;
+  }
+
+  .status.warn i { background: var(--warning); box-shadow: 0 0 0 3px rgba(232, 179, 57, 0.16); }
+  .status.bad i { background: var(--danger); box-shadow: 0 0 0 3px rgba(240, 101, 92, 0.16); }
+
+  /* ── Shell 侧栏 ─────────────────────────────────────────────────────────── */
+  .shell__nav {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 200px;
+    padding: 12px 8px;
+    gap: 2px;
+    overflow-y: auto;
+    z-index: 30;
+  }
+
+  /* 折叠到 56px：只留图标。`siderCollapsed` 写在 localStorage 里（不是密钥）。 */
+  .shell.is-collapsed .shell__nav { flex-basis: 56px; width: 56px; }
+  .shell.is-collapsed .shell__nav-label { display: none; }
+  .shell.is-collapsed .shell__nav .nav span { display: none; }
+  .shell.is-collapsed .shell__nav .nav { justify-content: center; }
+
+  .shell__nav-label {
+    color: var(--faint);
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    padding: 8px 10px 6px;
+    text-transform: uppercase;
+  }
+
+  .nav {
+    align-items: center;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    gap: 9px;
+    padding: 8px 10px;
+    text-align: left;
+    transition: background 0.15s, color 0.15s;
+    width: 100%;
+  }
+
+  .nav:hover { background: var(--surface-2); color: var(--text); }
+
+  .nav[aria-current='true'] {
+    background: var(--accent-soft);
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .nav svg { flex: none; opacity: 0.85; }
+
+  .shell__content { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; padding: 20px; }
+
+  /* 抽屉态的遮罩：侧栏平移出屏时盖住内容，不锁滚动（它不是 a-drawer）。 */
+  .shell__scrim {
+    background: rgba(5, 7, 14, 0.55);
+    inset: 0;
+    position: absolute;
+    z-index: 25;
+  }
+
+  .view[hidden] { display: none; }
+
+  /* ── Page header ────────────────────────────────────────────────────────── */
+  .page-head { margin-bottom: 14px; }
+
+  .page-head h1 { font-size: 17px; font-weight: 600; margin: 0 0 2px; }
+
+  .page-head p { color: var(--muted); font-size: 12px; margin: 0; }
+
+  /* ── Toolbar ────────────────────────────────────────────────────────────── */
+  .toolbar {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    margin: 14px 0 12px;
+    flex-wrap: wrap;
+  }
+
+  .meta { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  /* ── Controls ───────────────────────────────────────────────────────────── */
+  .btn {
+    align-items: center;
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    cursor: pointer;
+    display: inline-flex;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    transition: background 0.15s, border-color 0.15s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: var(--surface-3); border-color: #3a4666; }
+
+  .btn--primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 500;
+  }
+
+  .btn--primary:hover { background: #6f9bff; border-color: #6f9bff; }
+
+  .btn--ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn--ghost:hover { background: var(--surface-2); color: var(--text); }
+  .btn--sm { height: 26px; padding: 0 9px; font-size: 12px; }
+  .btn--danger { color: var(--danger); border-color: rgba(240, 101, 92, 0.4); background: rgba(240, 101, 92, 0.08); }
+  .btn--danger:hover { background: rgba(240, 101, 92, 0.16); }
+  .btn[disabled] { cursor: not-allowed; opacity: 0.45; }
+
+  .select, .input, .textarea {
+    background: var(--surface-2);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    height: 30px;
+    outline: none;
+    padding: 0 10px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+  }
+
+  .textarea { height: auto; padding: 7px 10px; resize: vertical; }
+
+  .select:focus, .input:focus, .textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+
+  .select {
+    appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position: calc(100% - 14px) 13px, calc(100% - 9px) 13px;
+    background-repeat: no-repeat;
+    background-size: 5px 5px, 5px 5px;
+    padding-right: 26px;
+  }
+
+  .switch { cursor: pointer; display: inline-flex; }
+  .switch i {
+    background: var(--surface-3);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    display: block;
+    height: 20px;
+    position: relative;
+    transition: background 0.18s, border-color 0.18s;
+    width: 36px;
+  }
+  .switch i::after {
+    background: var(--muted);
+    border-radius: 50%;
+    content: '';
+    height: 14px;
+    left: 2px;
+    position: absolute;
+    top: 2px;
+    transition: transform 0.18s, background 0.18s;
+    width: 14px;
+  }
+  .switch[aria-checked='true'] i { background: var(--accent); border-color: var(--accent); }
+  .switch[aria-checked='true'] i::after { background: #fff; transform: translateX(16px); }
+
+  /* ── Tags ───────────────────────────────────────────────────────────────── */
+  .tag {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    display: inline-block;
+    font-size: 11px;
+    line-height: 18px;
+    padding: 0 6px;
+    white-space: nowrap;
+  }
+
+  .tag--basic { color: var(--muted); }
+  .tag--advanced { border-color: rgba(91, 140, 255, 0.45); color: var(--accent); background: var(--accent-soft); }
+  .tag--expert { border-color: rgba(167, 139, 250, 0.45); color: var(--purple); background: rgba(167, 139, 250, 0.12); }
+  .tag--ops { border-color: rgba(240, 160, 92, 0.45); color: var(--orange); background: rgba(240, 160, 92, 0.12); }
+  .tag--live { border-color: rgba(53, 196, 138, 0.5); color: var(--success); background: rgba(53, 196, 138, 0.12); }
+  .tag--rolled { border-color: rgba(232, 179, 57, 0.5); color: var(--warning); background: rgba(232, 179, 57, 0.12); }
+  .tag--hot { border-color: rgba(91, 140, 255, 0.4); color: var(--accent); }
+  /* 运行时监控卡头的「not loaded」：与 `.tag--live` 成对。 */
+  .tag--down { border-color: rgba(240, 101, 92, 0.5); color: var(--danger); background: rgba(240, 101, 92, 0.12); }
+
+  /* ── Alert ──────────────────────────────────────────────────────────────── */
+  .alert {
+    align-items: flex-start;
+    background: rgba(232, 179, 57, 0.08);
+    border: 1px solid rgba(232, 179, 57, 0.32);
+    border-radius: var(--radius-sm);
+    color: #f0d79a;
+    display: flex;
+    gap: 9px;
+    margin-bottom: 12px;
+    padding: 9px 12px;
+  }
+
+  .alert strong { color: var(--warning); font-weight: 600; }
+
+  .alert--info {
+    background: var(--accent-soft);
+    border-color: rgba(91, 140, 255, 0.3);
+    color: #b9ccff;
+  }
+
+  .alert--info strong { color: var(--accent); }
+
+  /* ── Params layout ──────────────────────────────────────────────────────── */
+  .params-body {
+    display: grid;
+    gap: 16px;
+    grid-template-columns: 210px minmax(320px, 1fr) 300px;
+    align-items: start;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  .panel__head {
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    display: flex;
+    font-size: 11px;
+    gap: 8px;
+    letter-spacing: 0.5px;
+    padding: 9px 12px;
+    text-transform: uppercase;
+  }
+
+  .panel__body { padding: 10px; }
+
+  /* Tree */
+  .tree__item {
+    align-items: center;
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    gap: 8px;
+    padding: 6px 8px;
+    text-align: left;
+    width: 100%;
+  }
+
+  .tree__item:hover { background: var(--surface-2); color: var(--text); }
+  .tree__item[aria-current='true'] { background: var(--accent-soft); color: var(--text); }
+  .tree__count { color: var(--faint); font-size: 11px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .tree__dot { background: var(--faint); border-radius: 2px; height: 6px; width: 6px; flex: none; }
+
+  /* Fields */
+  .fields { display: flex; flex-direction: column; gap: 2px; padding: 4px 6px 10px; }
+
+  .field {
+    align-items: start;
+    border-radius: var(--radius-sm);
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 176px minmax(0, 1fr) 22px;
+    padding: 9px 8px;
+  }
+
+  .field:hover { background: rgba(255, 255, 255, 0.018); }
+
+  .field__name {
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .field__name small { color: var(--faint); display: block; font-family: var(--font); font-size: 11px; }
+
+  .field__reset {
+    background: none;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--faint);
+    cursor: pointer;
+    height: 22px;
+    line-height: 1;
+    padding: 0;
+  }
+
+  .field__reset:hover { background: var(--surface-3); color: var(--text); }
+
+  .field--dirty .field__name { color: var(--accent); }
+  .field--dirty .input, .field--dirty .select { border-color: rgba(91, 140, 255, 0.55); }
+
+  .inline { align-items: center; display: flex; gap: 8px; }
+  .hint { color: var(--faint); font-size: 11px; }
+
+  /* Diff preview */
+  .diff { display: flex; flex-direction: column; gap: 8px; }
+
+  .diff__row {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 7px 9px;
+  }
+
+  .diff__key { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .diff__val { display: flex; font-family: var(--mono); font-size: 12px; gap: 6px; margin-top: 2px; }
+  .diff__val s { color: var(--faint); text-decoration-color: rgba(240, 101, 92, 0.6); }
+  .diff__val em { color: var(--success); font-style: normal; }
+  .diff__empty { color: var(--faint); padding: 14px 4px; text-align: center; }
+
+  /* ── Table ──────────────────────────────────────────────────────────────── */
+  table { border-collapse: collapse; width: 100%; }
+
+  th {
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.4px;
+    padding: 8px 12px;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  td {
+    border-bottom: 1px solid rgba(35, 43, 69, 0.6);
+    padding: 9px 12px;
+    vertical-align: middle;
+  }
+
+  tbody tr:hover { background: rgba(255, 255, 255, 0.018); }
+  tbody tr:last-child td { border-bottom: 0; }
+
+  .mono { font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .num { font-variant-numeric: tabular-nums; text-align: right; }
+  th.num { text-align: right; }
+
+  /* 路径不参与大写转换：/run/... 大小写敏感，被转成 /RUN/... 是错的 */
+  .path { font-family: var(--mono); letter-spacing: 0; text-transform: none; }
+
+  .dot-ok { color: var(--success); }
+
+  /* ── Cards / stat ───────────────────────────────────────────────────────── */
+  .stats { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 14px; }
+
+  .stat {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+  }
+
+  .stat__k { color: var(--muted); font-size: 11px; letter-spacing: 0.4px; text-transform: uppercase; }
+  .stat__v { font-size: 20px; font-variant-numeric: tabular-nums; font-weight: 600; margin-top: 3px; }
+  .stat__v small { color: var(--muted); font-size: 12px; font-weight: 400; }
+
+  /* ── Login ──────────────────────────────────────────────────────────────── */
+  .login-wrap {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-height: calc(100vh - 56px - 40px);
+  }
+
+  .login {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+    padding: 28px;
+    width: 340px;
+  }
+
+  .login h1 { font-size: 16px; font-weight: 600; margin: 0 0 4px; }
+  .login p { color: var(--muted); font-size: 12px; margin: 0 0 20px; }
+  .login label { color: var(--muted); display: block; font-size: 12px; margin: 14px 0 6px; }
+  .login .btn { height: 34px; justify-content: center; margin-top: 20px; width: 100%; }
+
+  /* ── Section title ──────────────────────────────────────────────────────── */
+  .section { margin-top: 16px; }
+  .section__title {
+    align-items: center;
+    color: var(--muted);
+    display: flex;
+    font-size: 11px;
+    gap: 8px;
+    letter-spacing: 0.5px;
+    margin: 0 0 8px;
+    text-transform: uppercase;
+  }
+  .section__title::after { background: var(--border); content: ''; flex: 1; height: 1px; }
+
+  /* ── 目录搜索 / 分组 / 计数（对齐 demo 的 catalog-tools + tree-group） ───── */
+  .catalog__tools { display: flex; gap: 8px; padding: 10px 10px 6px; }
+  .catalog__count { color: var(--faint); font-size: 11px; padding: 0 12px 6px; }
+
+  .group { border-top: 1px solid var(--border); }
+  .group:first-of-type { border-top: 0; }
+
+  .group > summary {
+    align-items: center;
+    color: var(--muted);
+    cursor: pointer;
+    display: flex;
+    font-size: 11px;
+    gap: 6px;
+    letter-spacing: 0.4px;
+    list-style: none;
+    padding: 7px 10px;
+    text-transform: uppercase;
+  }
+
+  .group > summary::-webkit-details-marker { display: none; }
+  .group > summary::before { color: var(--faint); content: '▸'; font-size: 9px; }
+  .group[open] > summary::before { content: '▾'; }
+  .group > summary b { color: var(--faint); font-variant-numeric: tabular-nums; font-weight: 400; margin-left: auto; }
+  .group__body { padding: 0 6px 6px; }
+
+  .tree__item .tag { margin-left: auto; transform: scale(0.92); transform-origin: right center; }
+  .tree__item--draft { background: var(--accent-soft); color: var(--text); }
+  .tree__item--draft .tree__dot { background: var(--accent); }
+
+  /* 字段徽标行与行内双按钮 */
+  .field__meta { min-width: 0; }
+  .field__badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+  .field__actions { display: flex; flex-direction: column; gap: 2px; }
+  .field__actions .field__reset { width: 22px; }
+
+  /* 校验区（对齐 demo 的 validation ok/bad） */
+  .validation {
+    background: rgba(53, 196, 138, 0.08);
+    border: 1px solid rgba(53, 196, 138, 0.34);
+    border-radius: var(--radius-sm);
+    color: #a9e6cb;
+    font-size: 12px;
+    padding: 9px 12px;
+  }
+
+  .validation--bad { background: rgba(240, 101, 92, 0.08); border-color: rgba(240, 101, 92, 0.34); color: #f3b1ac; }
+  .validation ul { margin: 6px 0 0; padding-left: 18px; }
+  .validation .hint { color: inherit; opacity: 0.8; }
+
+  /* 约束列表（对齐 demo 的 .constraints） */
+  .constraints { color: var(--muted); font-size: 12px; margin: 12px 0 0; padding-left: 18px; }
+  .constraints li { margin: 4px 0; }
+  .constraints code { color: var(--text); font-family: var(--mono); font-size: 11px; }
+
+  /* 实例页 alerts 与七宫格 */
+  .alerts { color: #f0d79a; font-size: 12px; margin: 0 0 12px; padding-left: 18px; }
+  .alerts li { margin: 3px 0; }
+  .stats--7 { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+  /* 审计详情（对齐 demo 的 <details><summary>N 项</summary>） */
+  details.detail > summary { color: var(--muted); cursor: pointer; font-size: 12px; }
+  details.detail code { color: var(--text); display: block; font-family: var(--mono); font-size: 11px; margin-top: 4px; white-space: pre-wrap; }
+
+  /* 登录页是唯一不在 `ConsoleLayout` 里的路由（`/console/login`，`meta.layout=false`）：
+     侧栏与顶栏的身份/状态全不出现，只留品牌与切换按钮。对话页不是这样——
+     它与运维台共用外壳（§3.2.4）。 */
+  body[data-view='login'] .shell__nav { display: none; }
+  body[data-view='login'] #profile,
+  body[data-view='login'] #pipeline-status,
+  body[data-view='login'] #who,
+  body[data-view='login'] .divider-v,
+  body[data-view='login'] #logout,
+  body[data-view='login'] #nav-collapse { display: none; }
+
+  /* ── 对话页（对齐 demo/index.html + demo/style.css）───
+     对话页嵌在 `ConsoleLayout` 的 `.shell__content` 里（§3.2.4），**不再独占全屏**：
+     顶栏与侧栏始终在外壳里，这里只画舞台内部（identity 头部 / 球体 / 气泡 /
+     相机 PiP / 页脚）。画法与 demo 一致：配色只属于声音（`--glow`）；
+     弹层里的控件由根 App.vue 的 <a-config-provider> 统一主题。 */
+
+  /* 高度契约：`.shell__content` 是 `flex: 1 1 auto; min-height: 0`，所以这里写
+     `height: 100%` 而不是 `min-height: 100vh`——后者会把页脚推到视口外。 */
+  .v-page {
+    background: var(--voice-bg);
+    color: var(--voice-text);
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    height: 100%;
+    min-height: 0;
+    position: relative;
+  }
+
+  /* 头部只剩 IdentityBlock 与两行鸣谢；账号 chip 与工具 / 历史 / 设置三枚按钮
+     被 `Teleport` 到外壳顶栏的 `#shell-actions`，不在这里。 */
+  .v-head {
+    padding: 20px 24px 0;
+  }
+
+  .v-ident { max-width: 470px; min-width: 0; }
+  .v-ident__head { align-items: center; display: flex; gap: 6px; }
+  .v-ident__title { color: var(--voice-text); font-size: 14px; font-weight: 700; letter-spacing: 0.1px; text-decoration: none; }
+  .v-ident p { color: var(--voice-dim); font-size: 12px; margin: 4px 0 6px; }
+  .v-meta { color: var(--voice-faint); display: flex; flex-wrap: wrap; font-family: var(--mono); font-size: 11px; gap: 5px; }
+  .v-meta b { color: var(--voice-dim); font-weight: 500; }
+
+  /* `Teleport` 出去的四个节点仍在 `#shell-actions` 里命中全局样式；顶栏里的
+     `.v-icon` 缩到 30px，与运维面的按钮同高。 */
+  .shell__actions .v-icon { height: 30px; width: 30px; }
+
+  .v-icon {
+    align-items: center; background: none; border: 0; border-radius: 9px;
+    color: var(--voice-dim); cursor: pointer; display: inline-flex;
+    height: 32px; justify-content: center; position: relative; width: 32px;
+  }
+  .v-icon:hover { background: var(--voice-surface-2); color: var(--voice-text); }
+
+  .v-i { fill: none; height: 18px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 18px; }
+  .v-i--fill { fill: currentColor; stroke: none; }
+
+  .v-badge { background: var(--voice-accent); border-radius: 50%; height: 6px; position: absolute; right: 6px; top: 6px; width: 6px; }
+
+  .v-account {
+    align-items: center; border: 1px solid var(--voice-border); border-radius: 999px;
+    color: var(--voice-dim); display: inline-flex; font-size: 11px; gap: 6px;
+    margin-right: 4px; padding: 4px 10px;
+  }
+  .v-account i { background: var(--voice-ready); border-radius: 50%; height: 5px; width: 5px; }
+
+  .v-stage {
+    align-content: center; display: grid; gap: 18px; justify-items: center;
+    min-height: 0; overflow: hidden;
+    padding: 20px 24px 28px; position: relative;
+  }
+
+  .v-orb-wrap { align-items: center; display: flex; gap: clamp(18px, 3vw, 32px); position: relative; }
+
+  .v-orb {
+    aspect-ratio: 1 / 1; background: none; border: 0; color: var(--glow, var(--voice-accent));
+    display: grid; padding: 0; place-items: center; position: relative;
+    width: clamp(140px, min(38vw, 46vh), 320px);
+  }
+  .v-orb__glow { background: radial-gradient(circle at center, var(--glow) 0%, transparent 65%); border-radius: 50%; filter: blur(28px); inset: 0; opacity: 0.5; position: absolute; }
+  .v-orb__ring,
+  .v-orb__ring--outer { border-radius: 50%; left: 50%; position: absolute; top: 50%; transform: translate(-50%, -50%); }
+  .v-orb__ring { border: 1.5px solid color-mix(in srgb, var(--glow) 35%, transparent); height: 82%; opacity: 0.35; width: 82%; }
+  .v-orb__ring--outer { border: 1px solid color-mix(in srgb, var(--glow) 22%, transparent); height: 94%; opacity: 0.25; width: 94%; }
+  .v-orb__core {
+    background: radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--glow) 28%, transparent), color-mix(in srgb, var(--glow) 10%, transparent) 55%, color-mix(in srgb, var(--glow) 5%, transparent));
+    border: 2px solid color-mix(in srgb, var(--glow) 40%, transparent); border-radius: 50%;
+    box-shadow: 0 0 32px color-mix(in srgb, var(--glow) 22%, transparent), inset 0 0 28px color-mix(in srgb, var(--glow) 18%, transparent);
+    display: grid; height: 72%; place-items: center; position: relative; width: 72%;
+  }
+  .v-orb__ind { color: var(--glow); display: grid; height: 44%; place-items: center; width: 44%; }
+  .v-orb__ind svg { height: 60%; width: 60%; }
+
+  /* 九态（demo 的 `state-*` 类）。配色只有一条轴：--glow。 */
+  .v-orb[data-state='idle'] { --glow: var(--voice-ready); }
+  .v-orb[data-state='connecting'] { --glow: #facd15; }
+  .v-orb[data-state='your-turn'] { --glow: var(--voice-accent); }
+  .v-orb[data-state='listening'],
+  .v-orb[data-state='user-speaking'] { --glow: var(--voice-listening); }
+  .v-orb[data-state='processing'] { --glow: var(--voice-processing); }
+  .v-orb[data-state='ai-speaking'] { --glow: var(--voice-speaking); }
+  .v-orb[data-state='queued'] { --glow: var(--voice-queued); }
+  .v-orb[data-state='error'] { --glow: var(--voice-error); }
+  .v-orb[data-state='queued'] .v-spinner { animation-duration: 2.4s; }
+  .v-orb[data-state='ai-speaking'] .v-orb__ring--outer { animation: v-ring-out 1.8s ease-out infinite; }
+
+  .v-spinner { animation: v-spin 0.9s linear infinite; border: 3px solid currentColor; border-radius: 50%; border-right-color: transparent; height: 48%; width: 48%; }
+
+  .v-bars { align-items: center; display: flex; gap: 5px; height: 42%; }
+  .v-bars span { background: currentColor; border-radius: 3px; height: 14px; opacity: 0.8; width: 4px; }
+  .v-bars span:nth-child(2) { height: 26px; }
+  .v-bars span:nth-child(3) { height: 34px; }
+  .v-bars span:nth-child(4) { height: 20px; }
+  .v-bars span:nth-child(5) { height: 10px; }
+
+  /* processing 的三点（demo 的 .ind-thinking） */
+  .v-dots { align-items: center; display: flex; gap: 6px; height: 30%; }
+  .v-dots span { animation: v-dot 1.25s ease-in-out infinite; background: currentColor; border-radius: 50%; height: 8px; opacity: 0.32; width: 8px; }
+  .v-dots span:nth-child(2) { animation-delay: 0.16s; }
+  .v-dots span:nth-child(3) { animation-delay: 0.32s; }
+
+  /* 九态标本栅格（仅预览页自用，真实页面只同时存在一个状态）。
+     它占 `1fr` 行，自己滚——不能把 `.v-page` 撑高。 */
+  .v-states { align-content: start; display: grid; gap: 18px 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); overflow-y: auto; padding: 6px 24px 28px; }
+  .v-state { align-items: center; display: flex; flex-direction: column; gap: 6px; margin: 0; }
+  .v-orb--sm { width: 118px; }
+  .v-state figcaption { color: var(--voice-faint); display: flex; flex-direction: column; font-family: var(--mono); font-size: 10px; gap: 2px; letter-spacing: 0.08em; text-align: center; text-transform: uppercase; }
+  .v-state figcaption b { color: var(--voice-dim); font-weight: 500; }
+
+  .v-side {
+    align-items: center; background: color-mix(in srgb, #1b1e29 80%, #2a2e3c);
+    border: 1px solid var(--voice-border-strong); border-radius: 50%;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    color: var(--voice-text); display: inline-flex; flex: none; height: 52px;
+    justify-content: center; width: 52px;
+  }
+  .v-side--muted { background: color-mix(in srgb, var(--voice-error) 70%, #1a0e13); border-color: var(--voice-error); color: #fff; }
+  .v-side--stop:hover { background: color-mix(in srgb, var(--voice-error) 25%, #1b1e29); border-color: color-mix(in srgb, var(--voice-error) 60%, var(--voice-border-strong)); }
+
+  .v-arc { height: 80px; left: 50%; pointer-events: none; position: absolute; top: 50%; transform: translate(-50%, -50%); width: 80px; }
+  .v-arc__track { stroke: rgba(255, 255, 255, 0.1); stroke-linecap: round; stroke-width: 1.5; }
+  .v-arc__fill { opacity: 0.85; stroke: var(--voice-listening); stroke-linecap: round; stroke-width: 2; }
+  .v-arc__handle { fill: var(--voice-text); }
+
+  .v-caption { color: var(--voice-faint); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.14em; margin: 0; text-align: center; text-transform: uppercase; }
+  .v-caption--error { color: var(--voice-error); }
+  .v-sub { color: var(--voice-dim); font-size: 13.5px; margin: 0; max-width: 34ch; text-align: center; text-wrap: balance; }
+
+  .v-queue { align-items: center; display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+  .v-join {
+    background: var(--voice-accent); border: 0; border-radius: 999px; color: #0b0b10;
+    font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.1em;
+    padding: 10px 26px; text-transform: uppercase;
+  }
+  .v-leave {
+    background: transparent; border: 1px solid color-mix(in srgb, var(--voice-faint) 35%, transparent);
+    border-radius: 999px; color: var(--voice-faint); font-family: var(--mono); font-size: 11px;
+    font-weight: 500; letter-spacing: 0.12em; padding: 7px 16px; text-transform: uppercase;
+  }
+
+  .v-foot { border-top: 1px solid var(--voice-border); color: var(--voice-faint); font-size: 11px; padding: 10px 24px; text-align: center; }
+  .v-foot a { color: var(--voice-dim); font-family: var(--mono); text-decoration: none; }
+
+  /* 临时气泡（右上）与相机自视（左下）：demo 里两者都浮在舞台外层。 */
+  .v-bubbles { display: flex; flex-direction: column; gap: 8px; position: absolute; right: 24px; top: 8px; width: 250px; }
+  .v-bubble { background: var(--voice-surface-2); border: 1px solid var(--voice-border); border-left: 2px solid var(--voice-accent); border-radius: 12px; padding: 8px 11px; }
+  .v-bubble--user { border-left-color: var(--voice-listening); }
+  .v-bubble--tool { border-left-color: var(--voice-processing); }
+  .v-bubble__role { color: var(--voice-faint); font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .v-bubble p { font-size: 12px; margin: 3px 0 0; }
+
+  /* 相机 PiP：基准是 `.v-stage` 的 `position: relative`（不是 `.v-page`）。
+     旧页用 `fixed`，在外壳里会压到侧栏上（§3.2.4 第 4 点）。 */
+  .v-pip { background: #05060a; border: 1px solid var(--voice-border-strong); border-radius: 12px; bottom: 12px; height: 96px; left: 24px; overflow: hidden; position: absolute; width: 132px; }
+  .v-pip__feed { background: linear-gradient(135deg, #1f2433, #0d1017 60%); height: 100%; }
+  .v-pip__label { background: rgba(5, 6, 10, 0.7); bottom: 0; color: var(--voice-faint); font-family: var(--mono); font-size: 9px; left: 0; letter-spacing: 0.12em; padding: 2px 6px; position: absolute; text-transform: uppercase; }
+
+  .v-latency { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+  .v-latency span { border: 1px solid var(--voice-border); border-radius: 999px; color: var(--voice-faint); font-family: var(--mono); font-size: 10px; padding: 3px 9px; }
+  .v-latency details { color: var(--voice-faint); font-family: var(--mono); font-size: 10px; text-align: center; }
+  .v-latency details summary { cursor: pointer; letter-spacing: 0.08em; }
+  .v-latency details ul { list-style: none; margin: 4px 0 0; padding: 0; }
+
+  /* 弹层标本：demo 里五个 dialog 同时只出现一个，预览需要一次看全。
+     它也占 `1fr` 行，自己滚。 */
+  .v-gallery { align-content: start; display: grid; gap: 16px; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow-y: auto; padding: 4px 24px 24px; }
+  .v-gallery__note { color: var(--voice-faint); font-size: 12px; grid-column: 1 / -1; margin: 0 0 -4px; }
+
+  .v-card { background: var(--voice-surface); border: 1px solid var(--voice-border); border-radius: 14px; padding: 14px; }
+  .v-card__head { align-items: center; border-bottom: 1px solid var(--voice-border); display: flex; gap: 8px; margin: -14px -14px 12px; padding: 11px 14px; }
+  .v-card__head h3 { font-size: 13px; font-weight: 600; margin: 0; }
+  .v-card__head .v-icon { height: 26px; margin-left: auto; width: 26px; }
+  .v-card__hint { color: var(--voice-faint); font-size: 11px; margin: 6px 0 0; }
+
+  .v-field { display: block; margin-bottom: 12px; }
+  .v-field > span { color: var(--voice-dim); display: block; font-size: 12px; margin-bottom: 5px; }
+  .v-field .input,
+  .v-field .select,
+  .v-field .textarea { background: var(--voice-surface-2); border-color: var(--voice-border-strong); color: var(--voice-text); }
+  .v-field .input[readonly] { color: var(--voice-faint); }
+  .v-field small { color: var(--voice-faint); display: block; font-size: 11px; margin-top: 4px; }
+
+  .v-row { display: grid; gap: 10px; grid-template-columns: 1fr 1fr; }
+
+  .v-tool { align-items: center; border-top: 1px solid var(--voice-border); display: flex; gap: 10px; padding: 10px 0; }
+  .v-tool:first-of-type { border-top: 0; }
+  .v-tool b { display: block; font-size: 12px; font-weight: 500; }
+  .v-tool em { color: var(--voice-faint); display: block; font-size: 11px; font-style: normal; }
+  .v-tool .switch { margin-left: auto; }
+
+  /* ── 历史抽屉里的转写条目（`TranscriptList.vue` / `AudioReplay.vue`）──────
+     类名与 `styles/voice.less` 逐一对应；三种条目形态逐个对齐 demo 的
+     `#chat-history`（§14.5 第 10–13 行）。 */
+  .transcript { display: flex; flex-direction: column; gap: 8px; font-size: 13px; line-height: 1.5; list-style: none; margin: 0; padding: 8px 0; }
+
+  .transcript__item {
+    background: color-mix(in srgb, var(--voice-surface) 92%, transparent);
+    border: 1px solid var(--voice-border); border-radius: 10px;
+    display: flex; flex-direction: column; gap: 4px; padding: 6px 10px;
+  }
+  /* 临时条目（partial）半透明：与旧页的 `.hist-item.transient` 同义。 */
+  .transcript__item.is-partial { opacity: 0.6; }
+  .transcript__item--tool { border-color: color-mix(in srgb, var(--voice-processing) 40%, transparent); }
+  .transcript__item--assistant { border-color: color-mix(in srgb, var(--voice-accent) 32%, transparent); }
+
+  .transcript__role { color: var(--voice-faint); font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .transcript__item--tool .transcript__role { color: var(--voice-processing); }
+  .transcript__item--assistant .transcript__role { color: var(--voice-accent); }
+  .transcript__text { font-size: 12px; margin: 0; white-space: pre-wrap; }
+
+  /* 用户条目原音回放：demo 的 `.hist-audio`。文字与控件逐字对齐。 */
+  .hist-audio__label { color: var(--voice-faint); display: block; font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; margin-bottom: 4px; }
+  .hist-audio audio { height: 32px; width: 100%; }
+
+  /* 助手条目的服务端计时（`TurnTimings.vue`，即 demo 的 `.hist-timings`）。
+     七行是服务端测的七个阶段；取不到的写 `Unavailable`，绝不写 `0.00 s`。 */
+  .hist-timings { color: var(--voice-faint); font-size: 11.5px; margin-top: 6px; }
+  .hist-timings summary { cursor: pointer; min-height: 44px; padding: 12px 0; }
+  .hist-timings summary:focus-visible { outline: 2px solid var(--voice-accent); outline-offset: 3px; }
+  .hist-timings .timing-status { color: var(--voice-text); margin: 0; }
+  .hist-timings dl { display: grid; gap: 6px 16px; grid-template-columns: minmax(0, 1fr) auto; margin: 8px 0; }
+  .hist-timings dt { color: var(--voice-faint); }
+  .hist-timings dd { color: var(--voice-text); font-variant-numeric: tabular-nums; margin: 0; }
+  .hist-timings > p:last-child { line-height: 1.45; margin: 8px 0 0; }
+
+  /* tool 条目：Input / Output 可展开 + Snapshot 缩略图。 */
+  .transcript__tool { border-top: 1px dashed var(--voice-border); margin-top: 4px; padding-top: 4px; }
+  .transcript__tool-name { color: var(--voice-processing); cursor: pointer; font-family: var(--mono); font-size: 11px; }
+  .transcript__tool-label { color: var(--voice-faint); font-size: 10px; letter-spacing: 0.08em; margin: 6px 0 2px; text-transform: uppercase; }
+  .transcript__tool-json { background: #0d1326; border: 1px solid var(--voice-border); border-radius: 6px; font-family: var(--mono); font-size: 10.5px; margin: 0; max-height: 140px; overflow: auto; padding: 6px 8px; white-space: pre-wrap; }
+  .transcript__tool-image { border: 1px solid var(--voice-border-strong); border-radius: 6px; display: block; height: 72px; object-fit: cover; width: 100%; }
+
+  .v-pipe { color: var(--voice-dim); font-size: 12px; list-style: none; margin: 8px 0 0; padding: 0; }
+  .v-pipe li { align-items: baseline; display: flex; gap: 8px; padding: 4px 0; }
+  .v-pipe b { color: var(--voice-text); font-family: var(--mono); font-size: 10px; font-weight: 500; min-width: 32px; }
+  .v-pipe code { color: var(--voice-accent); font-family: var(--mono); font-size: 11px; }
+
+  .v-limit { align-items: center; display: flex; flex-direction: column; text-align: center; }
+  .v-limit__badge { background: #ffd21e; border-radius: 50%; height: 44px; margin-bottom: 10px; width: 44px; }
+  .v-limit h3 { font-size: 15px; margin: 0 0 6px; }
+  .v-limit p { color: var(--voice-dim); font-size: 12px; margin: 0 0 10px; }
+  .v-limit .v-join { font-size: 11px; padding: 8px 20px; }
+
+  /* 账号：chip 点开才出 popover（demo 的 #account-chip / #account-pop，ui/account.js:109-127） */
+  .v-acct { align-items: flex-start; display: flex; flex-direction: column; gap: 8px; }
+  .v-acct__chip {
+    align-items: center; background: var(--voice-surface-2); border: 1px solid var(--voice-border-strong);
+    border-radius: 999px; color: var(--voice-text); display: inline-flex; font-size: 12px; gap: 7px;
+    padding: 3px 11px 3px 3px;
+  }
+  .v-acct__avatar {
+    background: var(--voice-accent); border-radius: 50%; color: #0b0b10; display: grid;
+    font-size: 11px; font-weight: 700; height: 22px; place-items: center; width: 22px;
+  }
+  .v-acct__pro {
+    border: 1px solid var(--voice-accent); border-radius: 4px; color: var(--voice-accent);
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.1em; padding: 1px 4px;
+  }
+  .v-acct__pop {
+    background: var(--voice-surface-2); border: 1px solid var(--voice-border-strong); border-radius: 12px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45); min-width: 190px; padding: 10px 12px;
+  }
+  .v-acct__name { font-size: 12px; font-weight: 600; }
+  .v-acct__meta { align-items: center; color: var(--voice-dim); display: flex; font-family: var(--mono); font-size: 10px; gap: 8px; margin: 5px 0 7px; }
+  .v-acct__tier { border: 1px solid var(--voice-border-strong); border-radius: 4px; letter-spacing: 0.1em; padding: 1px 5px; text-transform: uppercase; }
+  .v-acct__link { color: var(--voice-accent); display: block; font-size: 12px; padding: 3px 0; text-decoration: none; }
+  .v-acct__link--out { color: var(--voice-dim); }
+  .v-acct__signin {
+    align-items: center; border: 1px solid var(--voice-border-strong); border-radius: 999px;
+    color: var(--voice-text); display: inline-flex; font-size: 12px; gap: 6px; padding: 5px 12px; text-decoration: none;
+  }
+
+  @keyframes v-spin { to { transform: rotate(360deg); } }
+  @keyframes v-dot {
+    0%, 100% { opacity: 0.28; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1); }
+  }
+  @keyframes v-ring-out {
+    0% { opacity: 0.35; transform: translate(-50%, -50%) scale(1); }
+    100% { opacity: 0; transform: translate(-50%, -50%) scale(1.18); }
+  }
+
+  /* ── 实例页：模型运行时监控 + 日志面板 + 归纳结果（§3.9 / §3.10）────────
+     三块都是旁路：监控 5s 轮询（页签切走即停），日志 2s 增量拉取，
+     归纳只在点“分析”时发一次。取不到就写“不可用 · <reason>”，不写 0。 */
+
+  /* console 面 | voice 面：同一个 `div.shell[data-face]`，内容按面切换（§3.2.4 第 2 点）。
+     `data-face` 挂在 `.shell` 上而不是 `body` 上——`ConsoleLayout.vue` 的根节点就是它，
+     登录页（`/console/login`，`meta.layout=false`）根本不进这个外壳，所以不需要 body 级开关。
+     真实实现用 `v-if="face === 'console'"` 整段不渲染；预览页要同一个 DOM 演两个面，
+     所以这里用 CSS 隐藏，两边看到的“有没有这些控件”是同一个结果。 */
+  .shell[data-face='voice'] #profile,
+  .shell[data-face='voice'] #pipeline-status,
+  .shell[data-face='voice'] #who,
+  .shell[data-face='voice'] .divider-v,
+  .shell[data-face='voice'] #logout,
+  .shell[data-face='voice'] #nav-collapse { display: none; }
+  .shell[data-face='console'] .shell__actions { display: none; }
+
+  /* 两个面的内容区边距不同：运维台要内边距，对话页要一整块舞台。 */
+  .shell[data-face='voice'] .shell__content { overflow: hidden; padding: 0; }
+  .shell[data-face='voice'] .view:not([hidden]) { height: 100%; }
+
+  /* ── 监控卡（`RuntimeGrid.vue` / `ModelRuntimeCard.vue`，A.14）────────── */
+  .rt-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); margin: 14px 0; }
+
+  .rt-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; }
+  .rt-card[data-loaded='false'] { border-color: rgba(240, 101, 92, 0.35); }
+  .rt-card__head { align-items: center; border-bottom: 1px solid var(--border); display: flex; gap: 8px; padding: 9px 12px; }
+  .rt-card__stage { color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+  .rt-card__backend { color: var(--faint); font-family: var(--mono); font-size: 10px; margin-left: auto; }
+  .rt-card__model { color: var(--muted); font-family: var(--mono); font-size: 11px; overflow: hidden; padding: 8px 12px 0; text-overflow: ellipsis; white-space: nowrap; }
+  .rt-card__body { display: flex; flex-direction: column; gap: 7px; padding: 8px 12px 12px; }
+
+  .rt-row { align-items: baseline; display: flex; font-size: 11.5px; gap: 8px; }
+  .rt-row__k { color: var(--faint); flex: 0 0 62px; font-size: 11px; }
+  .rt-row__v { color: var(--text); font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+  .rt-row__v small { color: var(--faint); font-family: var(--font); font-size: 10.5px; }
+
+  /* 取不到的值：红字写“不可用 + 原因码”，不用 0 也不用空白。 */
+  .rt-na { color: var(--danger); font-family: var(--font); font-size: 11px; }
+  .rt-na code { color: var(--danger); font-family: var(--mono); font-size: 10px; opacity: 0.8; }
+
+  .rt-bar { background: var(--surface-3); border-radius: 999px; height: 4px; margin-top: 2px; overflow: hidden; }
+  .rt-bar i { background: var(--success); border-radius: 999px; display: block; height: 100%; }
+  .rt-bar[data-level='warn'] i { background: var(--warning); }
+  .rt-bar[data-level='bad'] i { background: var(--danger); }
+
+  .rt-gpu { align-items: center; color: var(--muted); display: flex; font-family: var(--mono); font-size: 11px; gap: 10px; }
+
+  /* ── 轮次延迟面板（`TurnLatencyPanel.vue`，A.17）─────────────────────────
+     只读：无写入、无删除、无导出、无重算。窗口（15m/1h/24h）与 `status` 过滤是
+     仅有的两个入口；底部那句口径与对话页条目逐字相同（§3.9.4 第 2 条）。 */
+  .tl { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); margin-top: 14px; overflow: hidden; }
+  .tl__head { align-items: center; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px; padding: 9px 12px; }
+  .tl__title { color: var(--text); font-size: 12px; font-weight: 500; }
+  .tl__head .select { height: 26px; width: auto; }
+
+  /* 时间窗预设：三个 chip，当前项 `aria-pressed` 高亮。 */
+  .tl__win {
+    background: transparent; border: 1px solid var(--border-strong); border-radius: 999px;
+    color: var(--muted); cursor: pointer; font-family: var(--mono); font-size: 11px;
+    height: 24px; padding: 0 10px;
+  }
+  .tl__win[aria-pressed='true'] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+  .tl__win:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* 聚合块：一格一个指标，`1px` 的 grid gap 借底色当分隔线。 */
+  .tl__agg { background: var(--border); border-bottom: 1px solid var(--border); display: grid; gap: 1px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .tl__agg > div { background: var(--surface); display: flex; flex-direction: column; gap: 3px; padding: 9px 12px; }
+  .tl__k { color: var(--faint); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .tl__v { color: var(--text); font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .tl__v small { color: var(--faint); font-family: var(--font); font-size: 10.5px; }
+  /* 取不到就说取不到：整块写 `不可用 · <code>`，绝不渲染一排 `0 ms`。 */
+  .tl__v--na { color: var(--danger); font-family: var(--font); font-size: 11.5px; }
+  .tl__v--na code { color: var(--danger); font-family: var(--mono); font-size: 10px; opacity: 0.8; }
+
+  /* 明细表：只读，横向可滚；表头吸顶，长窗滚起来仍知道每列是什么。 */
+  .tl__rows { max-height: 264px; overflow: auto; }
+  .tl__rows th { background: var(--surface); position: sticky; top: 0; }
+  .tl__rows td { white-space: nowrap; }
+  .tl__rows tbody tr:last-child td { border-bottom: 0; }
+
+  /* 口径句：与对话页条目同一句，面板上也必须原样再说一次。 */
+  .tl__foot { border-top: 1px solid var(--border); color: var(--faint); font-size: 11px; line-height: 1.5; margin: 0; padding: 8px 12px; }
+
+  /* ── 日志面板（`LogPanel.vue`，A.15）──────────────────────────────────── */
+  .logs { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); margin-top: 14px; overflow: hidden; }
+  .logs__head { align-items: center; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 8px; padding: 9px 12px; }
+  .logs__head .select { width: auto; }
+  .logs__title { color: var(--text); font-size: 12px; font-weight: 500; }
+  .logs__body { background: #070a14; font-family: var(--mono); font-size: 11.5px; line-height: 1.7; margin: 0; max-height: 300px; overflow: auto; padding: 10px 12px; white-space: pre; }
+  .logs__body .t { color: var(--faint); }
+  .logs__body .p { color: var(--accent); }
+  .logs__body .lv-i { color: var(--muted); }
+  .logs__body .lv-w { color: var(--warning); }
+  .logs__body .lv-e { color: var(--danger); }
+  .logs__foot { border-top: 1px solid var(--border); color: var(--faint); display: flex; font-size: 11px; gap: 12px; padding: 7px 12px; }
+
+  /* ── 归纳结果卡（`LogAnalysisCard.vue`，A.16）──────────────────────────── */
+  .an { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-md); margin-top: 14px; padding: 12px; }
+  .an__head { align-items: center; display: flex; gap: 10px; margin-bottom: 4px; }
+  .an__head h3 { font-size: 13px; margin: 0; }
+  /* `sentSummary()` 那一行是 A.16 的硬性要求，不是修饰。 */
+  .an__sent { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .an__block { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+  .an__block > h4 { color: var(--muted); font-size: 11px; letter-spacing: 0.5px; margin: 0 0 6px; text-transform: uppercase; }
+  .an__row { border-left: 2px solid var(--border-strong); padding-left: 9px; }
+  .an__row + .an__row { margin-top: 8px; }
+  .an__row--bad { border-left-color: var(--danger); }
+  .an__row--warn { border-left-color: var(--warning); }
+  .an__row--ok { border-left-color: var(--success); }
+  .an__sig { color: var(--text); font-family: var(--mono); font-size: 11.5px; }
+  .an__meta { color: var(--faint); font-family: var(--mono); font-size: 10.5px; }
+  .an__body { color: var(--muted); font-size: 11.5px; margin: 3px 0 0; }
+
+  /* 折叠态：`aria-pressed` 只是预览的开关，真实实现读 `stores/shell.ts`。 */
+
+  /* ── 参数页：exposure / effect / 只读 / 音色绑定 / 发布链路 ──────────────
+     与 `ParamTree.vue` / `ParamField.vue` / `ExposureTag.vue` / `EffectBadge.vue`
+     / `FixedField.vue` / `VoicePicker.vue` / `PublishPanel.vue` 的类名一一对应。 */
+
+  /* 17 组目录：可滚动，不再撑长整页（对应 ParamTree 的 max-height）。 */
+  .catalog { max-height: calc(100vh - 340px); overflow-y: auto; }
+  .tree__name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree__item--draft .tree__dot { background: var(--accent); }
+  .tree__item[aria-current='true'] .tree__name { color: var(--text); }
+
+  /* EffectBadge：只允许「启动 / 热更 / 启动 + 热更」三种文案（§2.4）。 */
+  .eff {
+    border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    font-size: 11px; line-height: 17px; padding: 0 6px; white-space: nowrap;
+  }
+  .eff small { color: var(--faint); font-size: 10px; margin-left: 4px; }
+  .eff--startup { border-color: rgba(232, 179, 57, 0.45); color: var(--warning); }
+  .eff--hot { border-color: rgba(91, 140, 255, 0.45); color: var(--accent); }
+  .eff--both { border-color: rgba(167, 139, 250, 0.5); color: var(--purple); }
+
+  .field__tags { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+  /* ops 的 risk 类别：安全 / 隐私 / 环境绑定。 */
+  .risk-cat {
+    border: 1px dashed rgba(240, 101, 92, 0.5); border-radius: var(--radius-sm);
+    color: var(--danger); font-size: 10.5px; line-height: 16px; padding: 0 5px; white-space: nowrap;
+  }
+
+  /* 只读条目（FixedField）：行内不给控件，只给原因。 */
+  .lock {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius-sm); margin: 0 8px; padding: 8px 10px;
+  }
+  .lock + .lock { margin-top: 8px; }
+  .lock__head { align-items: center; color: var(--muted); display: flex; font-size: 11px; gap: 8px; }
+  .lock__row { align-items: baseline; display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+  .lock__name { color: var(--text); font-family: var(--mono); font-size: 11.5px; }
+  .lock__val { color: var(--muted); font-family: var(--mono); font-size: 11px; overflow-wrap: anywhere; }
+  .lock__why { border-top: 1px dashed var(--border); color: var(--faint); font-size: 11px; margin-top: 8px; padding-top: 6px; }
+  .lock--fixed .lock__name { color: var(--muted); }
+
+  /* expert / ops 折叠：展开区比直出区矮一档，视觉上不抢戏。 */
+  .fold { border-top: 1px solid var(--border); margin: 6px 8px 0; }
+  .fold > summary {
+    align-items: center; color: var(--muted); cursor: pointer; display: flex;
+    font-size: 11px; gap: 6px; list-style: none; padding: 7px 0;
+  }
+  .fold > summary::-webkit-details-marker { display: none; }
+  .fold > summary::before { color: var(--faint); content: '▸'; font-size: 9px; }
+  .fold[open] > summary::before { content: '▾'; }
+  .fold__body { padding: 2px 0 8px; }
+  .fx { align-items: center; border-top: 1px dashed rgba(35, 43, 69, 0.7); display: flex; gap: 6px; padding: 5px 0; }
+  .fx__name { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .fx__val {
+    color: var(--faint); font-family: var(--mono); font-size: 11px; margin-left: auto;
+    max-width: 44%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+
+  /* 音色选择（VoicePicker）：当前音色 + 试听 + 制作 + 音色库。 */
+  .vpick { align-items: center; display: flex; flex-wrap: wrap; gap: 6px; }
+  .vpick__cur {
+    align-items: center; background: var(--surface-2); border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm); display: inline-flex; gap: 8px; padding: 3px 9px;
+  }
+  .vpick__cur small { color: var(--faint); font-size: 10.5px; }
+  .wave {
+    background: var(--accent); border-radius: 1px; display: inline-block; height: 10px; width: 2px;
+    box-shadow: 4px 0 0 var(--accent), 8px 0 0 rgba(91, 140, 255, 0.55), 12px 0 0 var(--accent), 16px 0 0 rgba(91, 140, 255, 0.55);
+    margin-right: 16px;
+  }
+
+  /* 发布链路（PublishPanel 五步）：done / active / fail / rolled。 */
+  .steps { display: flex; flex-direction: column; list-style: none; margin: 0; padding: 0; }
+  .steps__item { align-items: start; display: flex; gap: 8px; padding: 4px 0 10px; position: relative; }
+  .steps__item::before {
+    background: var(--border); bottom: -4px; content: ''; left: 6px; position: absolute; top: 16px; width: 1px;
+  }
+  .steps__item:last-child::before { display: none; }
+  .steps__dot {
+    background: var(--surface-3); border: 1px solid var(--border-strong); border-radius: 50%;
+    flex: none; height: 13px; margin-top: 2px; position: relative; width: 13px; z-index: 1;
+  }
+  .steps__body { font-size: 12px; line-height: 1.4; }
+  .steps__body small { color: var(--faint); display: block; font-size: 10.5px; }
+  .steps__item--done .steps__dot { background: var(--success); border-color: var(--success); }
+  .steps__item--active .steps__dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .steps__item--active .steps__body { color: var(--text); }
+  .steps__item--fail .steps__dot { background: var(--danger); border-color: var(--danger); }
+  .steps__item--rolled .steps__dot { background: var(--warning); border-color: var(--warning); }
+
+  /* 预计算进度（`GET /voices/{id}` 的 precompute.progress）。 */
+  .progress { background: var(--surface-3); border-radius: 999px; height: 6px; margin-top: 8px; overflow: hidden; }
+  .progress > i { background: var(--accent); border-radius: 999px; display: block; height: 100%; }
+
+  /* 音色来源三选一（VoiceCreateDialog）：builtin / clone / design。 */
+  .vsources { display: flex; flex-direction: column; gap: 6px; }
+  .vsrc {
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    color: var(--muted); font-size: 12px; padding: 7px 9px;
+  }
+  .vsrc small { color: var(--faint); display: block; font-size: 10.5px; }
+  .vsrc--on { background: var(--accent-soft); border-color: rgba(91, 140, 255, 0.5); color: var(--text); }
+
+  /* ── 窄屏兜底 ──────────────────────────────────────────────────────────
+     1440 是设计基准。下面两档只做「不许出现横向滚动」的降级，
+     不追求平板/手机的完整体验（运维台固定桌面使用）。 */
+  @media (max-width: 1200px) {
+    .params-body { grid-template-columns: 160px minmax(0, 1fr); }
+    .params-body > .panel:nth-child(3) { grid-column: 1 / -1; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .v-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  /* `DRAWER_BREAKPOINT = 980`：侧栏变成抽屉（`nav.shell__nav` 平移出屏 +
+     `.shell__scrim` 遮罩，**不用 `a-drawer`**——它 Teleport 到 body，会把顶栏的
+     汉堡与外链盖在下面）。舞台占满整行，orb 的 `min(38vh,320px)` 保证不被压扁。 */
+  @media (max-width: 980px) {
+    .shell__burger { display: inline-flex; }
+
+    .shell__nav {
+      bottom: 0;
+      box-shadow: 24px 0 40px rgba(0, 0, 0, 0.45);
+      flex: 0 0 200px;
+      left: 0;
+      position: absolute;
+      top: 0;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+      width: 200px;
+    }
+    .shell__nav.is-open { transform: none; }
+
+    /* 抽屉态忽略折叠：56px 的图标条在触屏上没有意义。 */
+    .shell.is-collapsed .shell__nav { flex-basis: 200px; width: 200px; }
+    .shell.is-collapsed .shell__nav-label { display: block; }
+    .shell.is-collapsed .shell__nav .nav span { display: inline; }
+
+    .shell__content { padding: 14px; }
+    .shell[data-face='voice'] .shell__content { padding: 0; }
+
+    /* 抽屉态没有“折叠”这个概念（56px 图标条在触屏上点不中），折叠钮直接不渲染。 */
+    #nav-collapse { display: none; }
+
+    .params-body { grid-template-columns: minmax(0, 1fr); }
+    .params-body > .panel:nth-child(3) { grid-column: auto; }
+    .panel { overflow-x: auto; }
+    .v-gallery { grid-template-columns: minmax(0, 1fr); }
+    .v-bubbles { display: none; }
+    .v-head { padding: 14px 16px 0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 图标精灵：静态预览不引图标库，图形与 demo/index.html 一致。 -->
+<svg width="0" height="0" style="position: absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="19" x2="12" y2="22"/></symbol>
+  <symbol id="i-mic-off" viewBox="0 0 24 24"><line x1="2" y1="2" x2="22" y2="22"/><path d="M9 5a3 3 0 0 1 6 0v4"/><path d="M9 10v1a3 3 0 0 0 5.1 2.1"/><path d="M19 10a7 7 0 0 1-1.24 3.97"/><path d="M5 10a7 7 0 0 0 11 5.67"/><line x1="12" y1="19" x2="12" y2="22"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .66.39 1.25 1 1.51H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="i-voice" viewBox="0 0 24 24"><path d="M3 10v4a1 1 0 0 0 1 1h3l5 4V5L7 9H4a1 1 0 0 0-1 1z" fill="currentColor" stroke="none"/><path d="M16 8a5 5 0 0 1 0 8"/><path d="M19 5a9 9 0 0 1 0 14"/></symbol>
+</svg>
+
+<!-- §3.2.4：一个应用、一套外壳、两个面。对话页是 `.shell__content` 里的内容，
+     不再是一条独立的全屏路由。`data-face` 由 `route.meta.face` 推出。 -->
+<div class="shell" id="shell" data-face="console">
+  <header class="shell__top">
+    <button class="shell__burger" id="nav-burger" type="button" aria-label="展开侧栏" aria-controls="shell-nav" aria-expanded="false">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+
+    <span class="shell__brand">S2S <span>控制台</span></span>
+
+    <label class="visually-hidden" for="profile" hidden>profile</label>
+    <select class="select" id="profile" style="width: 110px" aria-label="profile">
+      <option value="prod">prod</option>
+      <option value="dev">dev</option>
+    </select>
+
+    <span class="status" id="pipeline-status"><i></i>pipeline ok · v12</span>
+
+    <!-- 对话页 `<Teleport to="#shell-actions">` 的落点：账号 chip + 工具 / 历史 / 设置三枚按钮。
+         运维面这里是空的（`.shell__actions:empty` 不留占位）；About 是 `IdentityBlock`
+         里的圆钮，留在舞台头部，不在这里。 -->
+    <div class="shell__actions" id="shell-actions">
+      <span class="v-account"><i></i>tfrere</span>
+      <button class="v-icon" title="Tools" aria-label="Tools"><svg class="v-i"><use href="#i-wrench"/></svg></button>
+      <button class="v-icon" title="Conversation history" aria-label="Conversation history"><svg class="v-i"><use href="#i-chat"/></svg><span class="v-badge"></span></button>
+      <button class="v-icon" title="Settings" aria-label="Settings"><svg class="v-i"><use href="#i-gear"/></svg></button>
+    </div>
+
+    <span class="spacer"></span>
+
+    <button class="btn btn--ghost btn--sm" id="nav-collapse" type="button" aria-pressed="false" aria-label="Toggle sidebar" title="折叠侧栏">«</button>
+    <span class="who" id="who">admin · admin</span>
+    <span class="divider-v"></span>
+    <button class="btn btn--ghost btn--sm" id="logout">退出</button>
+    <button class="btn btn--ghost btn--sm" id="login-toggle" data-goto="login">登录页</button>
+  </header>
+
+  <div class="shell__body">
+    <nav id="shell-nav" class="shell__nav" aria-label="主导航">
+      <div class="shell__nav-label">运维台 · console 面</div>
+
+      <button class="nav" data-goto="params" aria-current="true">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="var(--bg)"/><circle cx="15" cy="12" r="2" fill="var(--bg)"/><circle cx="8" cy="18" r="2" fill="var(--bg)"/></svg>
+        <span>参数</span>
+      </button>
+      <button class="nav" data-goto="voices">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h2l2-6 2.5 12L13 6l2 6h5"/></svg>
+        <span>音色库</span>
+      </button>
+      <button class="nav" data-goto="sessions">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>会话</span>
+      </button>
+      <button class="nav" data-goto="versions">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 8v4l3 2"/></svg>
+        <span>版本</span>
+      </button>
+      <button class="nav" data-goto="instances">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+        <span>实例</span>
+      </button>
+      <button class="nav" data-goto="audit">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg>
+        <span>审计</span>
+      </button>
+      <button class="nav" data-goto="login">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/></svg>
+        <span>登录页</span>
+      </button>
+
+      <!-- 语音面的五项与 demo 一致：只有「对话」是路由，其余四个是浮层按钮（没有 URL）。 -->
+      <div class="shell__nav-label" style="margin-top: 10px">语音对话 · voice 面</div>
+      <button class="nav" data-goto="voice">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/></svg>
+        <span>对话</span>
+      </button>
+      <button class="nav" data-goto="voice-panels">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>会话历史</span>
+      </button>
+      <button class="nav" data-goto="voice-panels">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        <span>工具</span>
+      </button>
+      <button class="nav" data-goto="voice-panels">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c0 .66.39 1.25 1 1.51H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>设置</span>
+      </button>
+      <button class="nav" data-goto="voice-panels">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>关于</span>
+      </button>
+      <button class="nav" data-goto="params">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
+        <span>运维控制台 ↗</span>
+      </button>
+
+      <!-- 预览标本：只为逐项比对 demo，不对应任何路由，真实页面没有这几项。 -->
+      <div class="shell__nav-label" style="margin-top: 10px">预览标本（不走路由）</div>
+      <button class="nav" data-goto="voice-states">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        <span>九态标本</span>
+      </button>
+      <button class="nav" data-goto="voice-live">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h2l2-5 2.5 10L13 8l2 4h5"/></svg>
+        <span>通话中</span>
+      </button>
+      <button class="nav" data-goto="voice-queue">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span>排队 / 满员</span>
+      </button>
+      <button class="nav" data-goto="voice-panels">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/></svg>
+        <span>弹层 5 个</span>
+      </button>
+    </nav>
+
+    <div class="shell__scrim" id="nav-scrim" hidden></div>
+
+    <main class="shell__content">
+
+    <!-- ── 参数 ─────────────────────────────────────────────────────────── -->
+    <section class="view" data-view="params">
+      <div class="page-head">
+        <h1>参数</h1>
+        <p>catalog 196 条 · 193 个唯一名 · 2 个多后端字段 · 每条都有落点，按 effect 落链路</p>
+      </div>
+
+      <div class="toolbar">
+        <select class="select" style="width: 168px" aria-label="exposure">
+          <option>basic · 直出</option>
+          <option selected>advanced · 带建议值</option>
+          <option>expert · 折叠 + 警告</option>
+          <option>ops · 仅运维可见</option>
+        </select>
+        <span class="meta">基于 v12 · 草稿 4 个字段 · 4 项未保存</span>
+        <span class="spacer"></span>
+        <span class="status warn" style="padding: 3px 10px"><i></i>有未保存改动</span>
+        <button class="btn btn--sm">放弃草稿</button>
+        <button class="btn btn--primary btn--sm">保存草稿</button>
+      </div>
+
+      <div class="validation" style="margin-bottom: 12px">
+        <div>校验通过 · 仅结构校验（运行时包不在本进程） · pipelines: realtime · 预期 pool size 4</div>
+        <div class="hint">密钥只写不读：回显 <code>***</code>，提交 <code>***</code> 视为「不改」（本次保留 1 个）</div>
+        <ul>
+          <li>env 类 18 条：草稿与校验都能过，<code>publish</code> 会被 <code>409 env_requires_recreate</code> 拦在写盘之前</li>
+          <li>fixed 17 条 / deploy 7 条 / client 18 条：只读行，不进 patch，也不会触发发布</li>
+        </ul>
+      </div>
+
+      <div class="params-body">
+        <div class="panel">
+          <div class="catalog__tools">
+            <input class="input" type="search" placeholder="搜索名称、说明或 backend" aria-label="搜索参数" />
+          </div>
+          <div class="catalog__count">17 组 · 共 196 条（选中 tts · qwen3 23 条）</div>
+          <div class="hint" style="padding: 0 12px 8px">点开分组，右侧面板列出该组字段（预览只展开当前组）。同名字段只出现一次。</div>
+
+          <div class="catalog">
+            <details class="group">
+              <summary>client · 通用 <span class="tag tag--ops">只读</span><b>18</b></summary>
+              <div class="group__body"><div class="hint">属对话页客户端（浏览器 / CLI），不在运维面 · 不进 patch</div></div>
+            </details>
+
+            <details class="group">
+              <summary>deploy · 通用 <span class="tag tag--ops">只读</span><b>16</b></summary>
+              <div class="group__body"><div class="hint">9 条 fixed + 7 条 compose / Dockerfile 事实 · 改它要重建镜像</div></div>
+            </details>
+
+            <details class="group">
+              <summary>env · 通用 <span class="tag tag--ops">只读</span><b>18</b></summary>
+              <div class="group__body"><div class="hint">环境变量 · 发布时被 <code>409 env_requires_recreate</code> 拦在写盘之前</div></div>
+            </details>
+
+            <details class="group">
+              <summary>llm · 通用 <b>10</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>llm · chat-completions <b>1</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>llm · responses-api <b>10</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>llm · transformers <b>9</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>runtime · 通用 <b>33</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>server · 通用 <b>2</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>stt · openai_compatible <b>7</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>stt · parakeet-tdt <b>3</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>stt · qwen3-asr <b>6</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>tts · kokoro <b>6</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>tts · openai_compatible <b>13</b></summary>
+            </details>
+
+            <details class="group" open>
+              <summary>tts · qwen3 <b>23</b></summary>
+              <div class="group__body">
+                <button class="tree__item tree__item--draft" aria-current="true" title="qwen3_tts_speaker"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_speaker</span></button>
+                <button class="tree__item" title="qwen3_tts_instruct"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_instruct</span></button>
+                <button class="tree__item" title="qwen3_tts_language"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_language</span></button>
+                <button class="tree__item tree__item--draft" title="qwen3_tts_ref_text"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_ref_text</span></button>
+                <button class="tree__item" title="qwen3_tts_max_new_tokens"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_max_new_tokens</span></button>
+                <button class="tree__item" title="qwen3_tts_non_streaming_mode"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_non_streaming_mode</span></button>
+                <button class="tree__item" title="qwen3_tts_streaming_chunk_size"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_streaming_chunk_size</span></button>
+                <button class="tree__item" title="qwen3_tts_xvec_only"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_xvec_only</span></button>
+                <button class="tree__item" title="qwen3_tts_attn_implementation"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_attn_implementation</span></button>
+                <button class="tree__item" title="qwen3_tts_backend"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_backend</span></button>
+                <button class="tree__item" title="qwen3_tts_blocksize"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_blocksize</span></button>
+                <button class="tree__item" title="qwen3_tts_device"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_device</span></button>
+                <button class="tree__item" title="qwen3_tts_dtype"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_dtype</span></button>
+                <button class="tree__item" title="qwen3_tts_ggml_quantization"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_ggml_quantization</span></button>
+                <button class="tree__item" title="qwen3_tts_mlx_quantization"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_mlx_quantization</span></button>
+                <button class="tree__item" title="qwen3_tts_model_name"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_model_name</span></button>
+                <button class="tree__item" title="qwen3_tts_parity_mode"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_parity_mode</span></button>
+                <button class="tree__item tree__item--draft" title="qwen3_tts_ref_audio"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_ref_audio</span></button>
+                <button class="tree__item tree__item--draft" title="qwen3_tts_ref_rvq"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_ref_rvq</span></button>
+                <button class="tree__item tree__item--draft" title="qwen3_tts_ref_spk"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_ref_spk</span></button>
+                <button class="tree__item" title="qwen3_tts_gguf_codec_path"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_gguf_codec_path</span></button>
+                <button class="tree__item" title="qwen3_tts_gguf_talker_path"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_gguf_talker_path</span></button>
+                <button class="tree__item" title="qwen3_tts_ref_cache_dir"><span class="tree__dot"></span><span class="tree__name">qwen3_tts_ref_cache_dir</span></button>
+              </div>
+            </details>
+
+            <details class="group">
+              <summary>vad · 通用 <b>19</b></summary>
+            </details>
+
+            <details class="group">
+              <summary>vad · firered <b>2</b></summary>
+            </details>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head">tts · qwen3<span class="spacer"></span><span class="tag">23 条</span></div>
+
+          <div class="fields">
+            <!-- 音色绑定入口：basic 三条直出；clone 写进去的 ref_* 收在下方锁定块里，
+                 同一个值只留一个可编辑入口（不重复登记）。 -->
+            <div class="field field--dirty">
+              <div class="field__name" title="qwen3_tts_speaker">qwen3_tts_speaker<small>string · 建议 Aiden</small></div>
+              <div>
+                <div class="vpick">
+                  <span class="vpick__cur"><span class="wave" aria-hidden="true"></span>嘉嘉<small>clone · 12.4 s</small></span>
+                  <button class="btn btn--sm">试听</button>
+                  <button class="btn btn--sm">制作</button>
+                  <button class="btn btn--sm">音色库</button>
+                </div>
+                <div class="field__tags">
+                  <span class="tag tag--basic">basic</span>
+                  <span class="eff eff--startup">启动<small>catalog: both</small></span>
+                  <span class="tag">session</span>
+                  <span class="tag">秒级</span>
+                </div>
+                <div class="hint">选 clone 音色 → 本条置空 + 写 ref_spk / ref_rvq / ref_text（§14.7 的 patch 形状，4 个键一起进草稿）</div>
+              </div>
+              <button class="field__reset" title="恢复默认 Aiden">↺</button>
+            </div>
+
+            <div class="field">
+              <div class="field__name" title="qwen3_tts_instruct">qwen3_tts_instruct<small>string · 空</small></div>
+              <div>
+                <textarea class="textarea" rows="2" placeholder="例如：用温和、稍慢的女声，句尾略微上扬"></textarea>
+                <div class="field__tags">
+                  <span class="tag tag--basic">basic</span>
+                  <span class="eff eff--startup">启动</span>
+                  <span class="tag">pipeline</span>
+                  <span class="tag">重启</span>
+                </div>
+                <div class="hint">指令式音色（VoiceDesign）；与克隆音色互斥，两类同时非空 → <code>422 voice_binding_conflict</code></div>
+              </div>
+              <button class="field__reset" title="回退默认">↺</button>
+            </div>
+
+            <div class="field">
+              <div class="field__name" title="qwen3_tts_language">qwen3_tts_language<small>string · auto</small></div>
+              <div>
+                <div class="inline">
+                  <select class="select" style="width: 130px">
+                    <option selected>auto</option>
+                    <option>zh</option>
+                    <option>en</option>
+                    <option>fa</option>
+                  </select>
+                </div>
+                <div class="field__tags">
+                  <span class="tag tag--basic">basic</span>
+                  <span class="eff eff--both">启动 + 热更</span>
+                  <span class="tag">session</span>
+                  <span class="tag">秒级</span>
+                </div>
+                <div class="hint">真双通道：写盘重启对新会话生效，同时在 <code>session.update</code> 白名单里可热更</div>
+              </div>
+              <button class="field__reset" title="回退默认">↺</button>
+            </div>
+
+            <div class="section" style="padding: 0 8px">
+              <h3 class="section__title">音色绑定 · 「嘉嘉」写入的字段</h3>
+            </div>
+
+            <div class="lock">
+              <div class="lock__head"><code>clone</code><span>qwen3 · 12.4 s · tfrere 于 10-24 创建</span></div>
+              <div class="lock__row"><span class="lock__name">qwen3_tts_ref_spk</span><span class="lock__val">/app/data/voices/01J9XQ…/spk.npy</span></div>
+              <div class="lock__row"><span class="lock__name">qwen3_tts_ref_rvq</span><span class="lock__val">/app/data/voices/01J9XQ…/rvq.npy</span></div>
+              <div class="lock__row"><span class="lock__name">qwen3_tts_ref_text</span><span class="lock__val">你好，我是嘉嘉，今天由我为你服务。</span></div>
+              <div class="lock__row"><span class="lock__name">qwen3_tts_ref_audio</span><span class="lock__val">—（与上三条互斥的另一种克隆来源，本次不用）</span></div>
+              <div class="lock__why">这 4 条只在这里出现一次；选中音色时 <code>qwen3_tts_speaker</code> 置空，四条 ref_* 整体替换（且互斥，同时非空 → <code>422 voice_binding_conflict</code>）。</div>
+            </div>
+
+            <div class="field">
+              <div class="field__name" title="qwen3_tts_max_new_tokens">qwen3_tts_max_new_tokens<small>int · 建议 1536</small></div>
+              <div>
+                <div class="inline"><input class="input" value="1536" style="width: 100px" /></div>
+                <div class="field__tags"><span class="tag tag--advanced">advanced</span><span class="eff eff--startup">启动</span><span class="tag">pipeline</span><span class="tag">重启</span></div>
+              </div>
+              <button class="field__reset" title="恢复默认 1536">↺</button>
+            </div>
+
+            <div class="field">
+              <div class="field__name" title="qwen3_tts_non_streaming_mode">qwen3_tts_non_streaming_mode<small>bool · 建议开</small></div>
+              <div>
+                <div class="inline"><span class="switch" role="switch" aria-checked="true"><i></i></span></div>
+                <div class="field__tags"><span class="tag tag--advanced">advanced</span><span class="eff eff--startup">启动</span><span class="tag">pipeline</span><span class="tag">重启</span></div>
+              </div>
+              <button class="field__reset" title="恢复默认">↺</button>
+            </div>
+
+            <div class="field">
+              <div class="field__name" title="qwen3_tts_streaming_chunk_size">qwen3_tts_streaming_chunk_size<small>int · 空</small></div>
+              <div>
+                <div class="inline"><input class="input" value="" placeholder="空 = 由 blocksize 决定" style="width: 200px" /></div>
+                <div class="field__tags"><span class="tag tag--advanced">advanced</span><span class="eff eff--startup">启动</span><span class="tag">pipeline</span><span class="tag">重启</span></div>
+              </div>
+              <button class="field__reset" title="回退默认">↺</button>
+            </div>
+
+            <div class="field">
+              <div class="field__name" title="qwen3_tts_xvec_only">qwen3_tts_xvec_only<small>bool · false</small></div>
+              <div>
+                <div class="inline"><span class="switch" role="switch" aria-checked="false"><i></i></span></div>
+                <div class="field__tags"><span class="tag tag--advanced">advanced</span><span class="eff eff--startup">启动</span><span class="tag">pipeline</span><span class="tag">重启</span></div>
+              </div>
+              <button class="field__reset" title="回退默认">↺</button>
+            </div>
+
+            <!-- expert / ops 折起来，展开前先看完警告（§5 exposure 规则） -->
+            <details class="fold">
+              <summary>
+                <span class="tag tag--expert">expert 9</span>
+                <span class="tag tag--ops">ops 3</span>
+                <span class="hint">展开前先读完警告</span>
+              </summary>
+              <div class="fold__body">
+                <div class="alert" style="margin: 0 0 8px">
+                  <div><strong>expert</strong> · 多数是分钟级重启；改 <code>device</code> 会覆盖各组件的 <code>*_device</code>，两者不一致时以顶层为准。</div>
+                </div>
+                <div class="fx"><span class="fx__name">qwen3_tts_backend</span><span class="fx__val">ggml</span><span class="eff eff--startup">启动</span><span class="tag">分钟级</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_device</span><span class="fx__val">cuda</span><span class="eff eff--startup">启动</span><span class="tag">重启</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_dtype</span><span class="fx__val">auto</span><span class="eff eff--startup">启动</span><span class="tag">重启</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_attn_implementation</span><span class="fx__val">eager</span><span class="eff eff--startup">启动</span><span class="tag">重启</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_blocksize</span><span class="fx__val">512</span><span class="eff eff--startup">启动</span><span class="tag">重启</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_ggml_quantization</span><span class="fx__val">BF16</span><span class="eff eff--startup">启动</span><span class="tag">分钟级</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_mlx_quantization</span><span class="fx__val">6bit</span><span class="eff eff--startup">启动</span><span class="tag">分钟级</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_model_name</span><span class="fx__val">Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice</span><span class="tag">分钟级</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_parity_mode</span><span class="fx__val">false</span><span class="eff eff--startup">启动</span><span class="tag">重启</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_ref_cache_dir</span><span class="fx__val">空</span><span class="tag tag--ops">ops</span><span class="risk-cat">环境绑定</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_gguf_codec_path</span><span class="fx__val">空</span><span class="tag tag--ops">ops</span><span class="risk-cat">环境绑定</span></div>
+                <div class="fx"><span class="fx__name">qwen3_tts_gguf_talker_path</span><span class="fx__val">空</span><span class="tag tag--ops">ops</span><span class="risk-cat">环境绑定</span></div>
+              </div>
+            </details>
+
+            <div class="section" style="padding: 0 8px">
+              <h3 class="section__title">只读条目 · 不进 patch</h3>
+            </div>
+
+            <div class="lock lock--fixed">
+              <div class="lock__row"><span class="lock__name">runtime.chunk_samples</span><span class="lock__val">512</span><span class="tag tag--ops">fixed</span></div>
+              <div class="lock__why">不可配置 · 源码常量（integer 512）——改它要改代码并重建镜像，界面不给控件</div>
+              <div class="lock__row"><span class="lock__name">deploy.max_config_bytes</span><span class="lock__val">1048576</span><span class="tag tag--ops">fixed</span></div>
+              <div class="lock__why">不可配置 · 源码常量（YAML 读取上限）——同上，属 deploy 只读组</div>
+              <div class="lock__row"><span class="lock__name">deploy.cache_volume</span><span class="lock__val">./cache/:/root/.cache/</span><span class="tag tag--ops">deploy</span></div>
+              <div class="lock__why">不可配置 · 平台维护（compose 事实）——改它要改 <code>docker-compose.yml</code> 并重建容器</div>
+              <div class="lock__row"><span class="lock__name">client.instructions</span><span class="lock__val">空</span><span class="tag tag--ops">client</span></div>
+              <div class="lock__why">属对话页客户端，不在运维面 —— 由用户在自己的会话里改</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head">本次改动<span class="spacer"></span><span class="tag tag--hot">4</span></div>
+          <div class="panel__body">
+            <div class="diff">
+              <div class="diff__row">
+                <div class="diff__key">qwen3_tts_speaker</div>
+                <div class="diff__val"><s>Aiden</s><span>→</span><em>—（由克隆音色决定）</em></div>
+              </div>
+              <div class="diff__row">
+                <div class="diff__key">qwen3_tts_ref_spk</div>
+                <div class="diff__val"><s>—</s><span>→</span><em>/app/data/voices/01J9XQ…/spk.npy</em></div>
+              </div>
+              <div class="diff__row">
+                <div class="diff__key">qwen3_tts_ref_rvq</div>
+                <div class="diff__val"><s>—</s><span>→</span><em>/app/data/voices/01J9XQ…/rvq.npy</em></div>
+              </div>
+              <div class="diff__row">
+                <div class="diff__key">qwen3_tts_ref_text</div>
+                <div class="diff__val"><s>—</s><span>→</span><em>你好，我是嘉嘉…</em></div>
+              </div>
+            </div>
+
+            <div class="alert alert--info" style="margin: 12px 0 0">
+              <div><strong>音色绑定</strong> · 草稿只记 4 个字段名 + 音色 ID <code>01J9XQ…</code>，不记音频；回滚时四条一起退回。</div>
+            </div>
+
+            <div class="section">
+              <h3 class="section__title">发布链路 · startup</h3>
+            </div>
+            <ol class="steps">
+              <li class="steps__item steps__item--done"><span class="steps__dot"></span><div class="steps__body">结构校验 + 显存预算<small>42 ms · 通过</small></div></li>
+              <li class="steps__item steps__item--done"><span class="steps__dot"></span><div class="steps__body">写 prod.yaml<small>已备份 .bak.v13</small></div></li>
+              <li class="steps__item steps__item--active"><span class="steps__dot"></span><div class="steps__body">重启 pipeline 子进程<small>supervisor XML-RPC · 容器不重建</small></div></li>
+              <li class="steps__item"><span class="steps__dot"></span><div class="steps__body">探活 GET /v1/pool<small>timeout 30 s · 预期 size 4</small></div></li>
+              <li class="steps__item"><span class="steps__dot"></span><div class="steps__body">生效 v13 + 审计<small>audit_id 在版本页可查</small></div></li>
+            </ol>
+
+            <div class="hint" style="margin: 8px 0 10px">失败分支：探活超时 → 恢复 <code>.bak.v13</code> → 再重启 → 版本标 <code>rolled_back</code>，报 <code>healthcheck_timeout</code>。</div>
+
+            <button class="btn btn--primary" style="width: 100%; justify-content: center">发布 v13</button>
+            <button class="btn" disabled style="margin-top: 6px; width: 100%; justify-content: center" title="本批 4 个字段都是 startup，热更不可用">仅热更 · 不可用</button>
+            <div class="hint" style="margin-top: 8px; text-align: center">热更白名单 5 条，本批一条都没命中</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 音色库（旁路，§3.11 / A.18）──────────────────────────────────── -->
+    <section class="view" data-view="voices" hidden>
+      <div class="page-head">
+        <h1>音色库</h1>
+        <p>12 条音色 · 3 种来源（内置 / 克隆 / 指令设计） · 试听与预计算走旁路，不占 pipeline 的显存与事件循环</p>
+      </div>
+
+      <div class="alert alert--info">
+        <div><strong>旁路</strong> · 预计算子进程 <code>CUDA_VISIBLE_DEVICES=-1</code>、并发 1，试听是 Range 静态读；上传与预计算前后 <code>GET /v1/pool</code> 的 <code>size</code> / <code>in_use</code> 不变。</div>
+      </div>
+      <div class="alert">
+        <div><strong>参考音频属生物特征</strong> · 上传需勾选授权（<code>consent=biometric-ack</code>）；保留 30 天可改至 180 天上限，到期 <code>410 voice_expired</code>；文件 0600、不入 git、不进日志值。</div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat__k">已保存</div><div class="stat__v">12<small> 条</small></div></div>
+        <div class="stat"><div class="stat__k">预计算中</div><div class="stat__v">1<small> 条</small></div></div>
+        <div class="stat"><div class="stat__k">被引用</div><div class="stat__v">7<small> 处 · profile 2 / 版本 5</small></div></div>
+        <div class="stat"><div class="stat__k">最长时长</div><div class="stat__v">12.4<small> s · 上限 30 s</small></div></div>
+      </div>
+
+      <div class="params-body" style="grid-template-columns: minmax(0, 1fr) 320px">
+        <div class="panel">
+          <div class="panel__head">已保存音色<span class="spacer"></span><span class="tag">GET /voices</span></div>
+          <table>
+            <thead>
+              <tr><th>名称</th><th>来源</th><th>后端</th><th class="num">时长</th><th>状态</th><th>引用</th><th>创建人</th><th></th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>嘉嘉</td>
+                <td><span class="tag tag--basic">clone</span></td>
+                <td class="mono">qwen3</td>
+                <td class="num mono">12.4 s</td>
+                <td><span class="tag tag--live">ready</span></td>
+                <td><span class="tag tag--hot">2</span> <span class="hint">prod · v12</span></td>
+                <td>tfrere</td>
+                <td style="text-align: right">
+                  <button class="btn btn--sm">试听</button>
+                  <button class="btn btn--sm">复制</button>
+                  <button class="btn btn--sm" disabled title="被 2 处引用，删除会被 409 voice_in_use 拒绝">删除</button>
+                </td>
+              </tr>
+              <tr>
+                <td>Aiden</td>
+                <td><span class="tag tag--basic">builtin</span></td>
+                <td class="mono">qwen3</td>
+                <td class="num mono">—</td>
+                <td><span class="tag tag--live">ready</span></td>
+                <td><span class="hint">—</span></td>
+                <td>system</td>
+                <td style="text-align: right">
+                  <button class="btn btn--sm">试听</button>
+                  <button class="btn btn--sm">复制</button>
+                  <button class="btn btn--sm" disabled title="内置音色不可删除">删除</button>
+                </td>
+              </tr>
+              <tr>
+                <td>小满</td>
+                <td><span class="tag tag--basic">design</span></td>
+                <td class="mono">qwen3</td>
+                <td class="num mono">—</td>
+                <td><span class="tag tag--live">ready</span></td>
+                <td><span class="hint">—</span></td>
+                <td>tfrere</td>
+                <td style="text-align: right">
+                  <button class="btn btn--sm">试听</button>
+                  <button class="btn btn--sm">复制</button>
+                  <button class="btn btn--sm">删除</button>
+                </td>
+              </tr>
+              <tr>
+                <td>试音_03</td>
+                <td><span class="tag tag--basic">clone</span></td>
+                <td class="mono">qwen3</td>
+                <td class="num mono">8.1 s</td>
+                <td><span class="tag">precomputing</span> <span class="hint">62%</span></td>
+                <td><span class="hint">—</span></td>
+                <td>ops01</td>
+                <td style="text-align: right">
+                  <button class="btn btn--sm">试听</button>
+                  <button class="btn btn--sm" disabled>复制</button>
+                  <button class="btn btn--sm">删除</button>
+                </td>
+              </tr>
+              <tr>
+                <td>坏样本</td>
+                <td><span class="tag tag--basic">clone</span></td>
+                <td class="mono">qwen3</td>
+                <td class="num mono">3.2 s</td>
+                <td><span class="tag tag--down">failed</span> <span class="hint">voice_audio_invalid</span></td>
+                <td><span class="hint">—</span></td>
+                <td>ops01</td>
+                <td style="text-align: right">
+                  <button class="btn btn--sm">试听</button>
+                  <button class="btn btn--sm" disabled>复制</button>
+                  <button class="btn btn--sm">删除</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="alert" style="margin: 10px">
+            <div><strong>409 voice_in_use</strong> · 无法删除「嘉嘉」：<code>detail:[{"field":"profiles","value":["prod"]},{"field":"versions","value":12}]</code>。先把引用它的草稿与版本改掉再删，否则会连同正在用的音色一起消失。</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel__head">制作音色<span class="spacer"></span><span class="tag">VoiceCreateDialog</span></div>
+          <div class="panel__body">
+            <div class="vsources">
+              <div class="vsrc vsrc--on">clone · 克隆参考音频<small>音频 + 逐字转写 → 预计算 .spk / .rvq</small></div>
+              <div class="vsrc">design · 指令式设计<small>VoiceDesign：一句 instruct 描述音色</small></div>
+              <div class="vsrc">builtin · 选内置音色<small>不用上传，直接写 speaker / voice</small></div>
+            </div>
+
+            <div class="section">
+              <h3 class="section__title">五步制作</h3>
+            </div>
+            <ol class="steps">
+              <li class="steps__item steps__item--done"><span class="steps__dot"></span><div class="steps__body">录制或上传<small>PCM16 / 16 kHz / 单声道 · ≤ 10 MiB</small></div></li>
+              <li class="steps__item steps__item--done"><span class="steps__dot"></span><div class="steps__body">试听与裁剪<small>trimStartMs 250 · trimEndMs 12400</small></div></li>
+              <li class="steps__item steps__item--active"><span class="steps__dot"></span><div class="steps__body">校对转写<small>逐字稿必须与音频一致，否则克隆音色会偏</small></div></li>
+              <li class="steps__item"><span class="steps__dot"></span><div class="steps__body">预计算说话人向量<small>jobId 可轮询：progress 62% → ready</small></div></li>
+              <li class="steps__item"><span class="steps__dot"></span><div class="steps__body">命名保存<small>名字大小写不敏感唯一 → 409 voice_name_taken</small></div></li>
+            </ol>
+            <div class="progress"><i style="width: 62%"></i></div>
+            <div class="hint" style="margin-top: 6px">失败示例：<code>voice_precompute_failed</code> · 参考音频静音段占 80%，说话人向量不可分辨</div>
+            <button class="btn btn--primary" style="margin-top: 10px; width: 100%; justify-content: center">保存为音色</button>
+            <div class="hint" style="margin-top: 8px; text-align: center">保存后回到参数页，在 <code>qwen3_tts_speaker</code> 的 VoicePicker 里选中它</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 会话 ─────────────────────────────────────────────────────────── -->
+    <section class="view" data-view="sessions" hidden>
+      <div class="page-head">
+        <h1>会话</h1>
+        <p>只显示五条可热更字段（§2.4 白名单）；model 与 voice 不在此面板内</p>
+      </div>
+
+      <div class="alert alert--info">
+        <div><strong>只影响新会话</strong> · 改动立即推送到 pipeline，已在运行的会话不受影响。</div>
+      </div>
+
+      <div class="panel" style="max-width: 720px">
+        <div class="panel__head">可热更字段</div>
+        <div class="fields" style="padding: 10px 6px 14px">
+          <div class="field">
+            <div class="field__name">session.instructions<small>string · 空</small></div>
+            <div><textarea class="textarea" rows="3">You are a friendly voice assistant.</textarea></div>
+            <button class="field__reset">↺</button>
+          </div>
+          <div class="field">
+            <div class="field__name">turn_detection.create_response<small>bool · true</small></div>
+            <div class="inline"><span class="switch" role="switch" aria-checked="true"><i></i></span></div>
+            <button class="field__reset">↺</button>
+          </div>
+          <div class="field">
+            <div class="field__name">turn_detection.interrupt_response<small>bool · true</small></div>
+            <div class="inline"><span class="switch" role="switch" aria-checked="true"><i></i></span></div>
+            <button class="field__reset">↺</button>
+          </div>
+          <div class="field">
+            <div class="field__name">transcription.language<small>string · 空</small></div>
+            <div class="inline">
+              <input class="input" value="" placeholder="auto / en / zh / fa …" style="width: 140px" />
+              <span class="tag tag--advanced">advanced</span>
+            </div>
+            <button class="field__reset">↺</button>
+          </div>
+          <div class="field">
+            <div class="field__name">extensions<small>json · 留空即不修改</small></div>
+            <div>
+              <textarea class="textarea" rows="2" placeholder='{&quot;speech_to_speech&quot;:{&quot;input_audio_transcription&quot;:{&quot;snapshot&quot;:true}}}'></textarea>
+              <div class="field__tags"><span class="tag tag--expert">expert</span><span class="eff eff--hot">热更</span><span class="tag">session</span><span class="tag">秒级</span></div>
+            </div>
+            <button class="field__reset">↺</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="toolbar" style="max-width: 720px">
+        <span class="spacer"></span>
+        <button class="btn btn--primary btn--sm">下发到运行中的会话</button>
+      </div>
+
+      <div class="panel" style="max-width: 720px; margin-top: 12px">
+        <div class="panel__head">下发结果</div>
+        <table>
+          <thead><tr><th>会话</th><th>结果</th><th class="num">耗时</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">sess_7f3a91</td><td class="dot-ok">updated</td><td class="num mono">42 ms</td></tr>
+            <tr><td class="mono">sess_2c8b04</td><td class="dot-ok">updated</td><td class="num mono">38 ms</td></tr>
+            <tr><td class="mono">sess_9d11e6</td><td style="color: var(--muted)">skipped（无活跃 WS）</td><td class="num mono">—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── 版本 ─────────────────────────────────────────────────────────── -->
+    <section class="view" data-view="versions" hidden>
+      <div class="page-head">
+        <h1>版本</h1>
+        <p>append-only；回滚产生新版本号，旧版本永不删除</p>
+      </div>
+
+      <div class="panel">
+        <table>
+          <thead>
+            <tr><th>版本</th><th>状态</th><th>操作人</th><th>时间</th><th class="num">改动字段</th><th>来源</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">v12</td>
+              <td><span class="tag tag--live">live</span></td>
+              <td>admin</td><td class="mono">2026-10-24 09:41</td><td class="num mono">2</td>
+              <td class="mono">prod.yaml</td>
+              <td style="text-align: right"><button class="btn btn--sm" disabled>当前</button></td>
+            </tr>
+            <tr>
+              <td class="mono">v11</td>
+              <td><span class="tag tag--rolled">rolled_back</span></td>
+              <td>ops01</td><td class="mono">2026-10-23 17:02</td><td class="num mono">5</td>
+              <td class="mono">prod.yaml</td>
+              <td style="text-align: right"><button class="btn btn--sm">回滚</button></td>
+            </tr>
+            <tr>
+              <td class="mono">v10</td>
+              <td><span class="tag">superseded</span></td>
+              <td>ops01</td><td class="mono">2026-10-23 15:20</td><td class="num mono">1</td>
+              <td class="mono">prod.yaml</td>
+              <td style="text-align: right"><button class="btn btn--sm">回滚</button></td>
+            </tr>
+            <tr>
+              <td class="mono">v9</td>
+              <td><span class="tag">superseded</span></td>
+              <td>admin</td><td class="mono">2026-10-22 11:07</td><td class="num mono">12</td>
+              <td class="mono">prod.yaml</td>
+              <td style="text-align: right"><button class="btn btn--sm">回滚</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="alert" style="margin-top: 14px">
+        <div><strong>回滚会重启 pipeline</strong> · 控制台自身不中断；回滚镜像 tag 则 console 与 pipeline 一起退，两者是同一个镜像。</div>
+      </div>
+    </section>
+
+    <!-- ── 实例 ─────────────────────────────────────────────────────────── -->
+    <section class="view" data-view="instances" hidden>
+      <div class="page-head">
+        <h1>实例</h1>
+        <p>进程状态取自 supervisord；「是否在服务」取自 <span class="mono">/v1/pool</span>；模型与显存取自 <span class="mono">model_metrics.log</span> 与 <span class="mono">nvidia-smi</span>（§3.9.1）</p>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><div class="stat__k">console</div><div class="stat__v"><span class="dot-ok">●</span> RUNNING</div></div>
+        <div class="stat"><div class="stat__k">pipeline</div><div class="stat__v"><span class="dot-ok">●</span> RUNNING</div></div>
+        <div class="stat"><div class="stat__k">会话池</div><div class="stat__v">4 <small>/ 8 占用</small></div></div>
+        <div class="stat"><div class="stat__k">当前版本</div><div class="stat__v">v12</div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel__head">supervisord · <span class="path">/run/s2s-console/supervisor.sock</span></div>
+        <table>
+          <thead><tr><th>program</th><th>状态</th><th class="num">pid</th><th class="num">运行时长</th><th class="num">重启次数</th><th></th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="mono">console</td><td class="dot-ok">RUNNING</td><td class="num mono">1</td>
+              <td class="num mono">2h 13m</td><td class="num mono">0</td>
+              <td style="text-align: right"><button class="btn btn--sm" disabled>重启</button></td>
+            </tr>
+            <tr>
+              <td class="mono">pipeline</td><td class="dot-ok">RUNNING</td><td class="num mono">37</td>
+              <td class="num mono">2h 13m</td><td class="num mono">1</td>
+              <td style="text-align: right"><button class="btn btn--sm">重启</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── 模型运行时（`RuntimeGrid.vue`，A.14）─────────────────────────────
+           四段就是 pipeline 的四段；每个取不到的字段都带着理由码，没有 0、没有空白。
+           这一屏同时演了 §3.9.3 的三种故障：TTS 未加载 / 显存 91.4% / STT p95 尖峰。 -->
+      <div class="toolbar" style="margin: 20px 0 4px">
+        <strong style="font-size: 13px">模型运行时</strong>
+        <span class="meta">5s 轮询 · 页签切走即停 · 采集预算 2.0s · TTL 3s</span>
+        <span class="spacer"></span>
+        <span class="meta">采集于 09:41:26 · 窗口 300s</span>
+      </div>
+
+      <div class="panel">
+        <div class="panel__head">
+          <span class="path">GPU</span>
+          <span class="spacer"></span>
+          <span class="meta">NVIDIA GeForce RTX 4090 · <span class="mono">nvidia-smi</span></span>
+        </div>
+        <div style="padding: 10px 12px 12px">
+          <div class="rt-gpu">
+            <b>22 461 / 24 564 MB</b>
+            <span>91.4%</span>
+            <span class="meta">整卡峰值 · 同卡四段共用，不归属单段</span>
+          </div>
+          <div class="rt-bar" data-level="bad" style="margin-top: 6px"><i style="width: 91.4%"></i></div>
+          <ul class="alerts" style="margin: 10px 0 0">
+            <li><code>vram_pressure</code> · 显存占比 91.4% ≥ 90%，新会话可能直接 OOM</li>
+            <li><code>runtime_degraded</code> · <code>tts</code> 段在 300s 窗口内没有任何调用指标</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="rt-grid">
+        <article class="rt-card" data-loaded="true">
+          <div class="rt-card__head">
+            <span class="rt-card__stage">VAD</span>
+            <span class="tag tag--live">loaded</span>
+            <span class="rt-card__backend">onnx · cpu</span>
+          </div>
+          <p class="rt-card__model">silero-vad</p>
+          <div class="rt-card__body">
+            <div class="rt-row"><span class="rt-row__k">加载</span><span class="rt-row__v">是</span></div>
+            <div class="rt-row"><span class="rt-row__k">显存</span><span class="rt-row__v rt-na">不可用 · <code>vram_not_attributable</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">繁忙</span><span class="rt-row__v">1 / 1 <small>占用中</small></span></div>
+            <div class="rt-row"><span class="rt-row__k">队列</span><span class="rt-row__v rt-na">不可用 · <code>queue_depth_not_exposed</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">首字节</span><span class="rt-row__v rt-na">不可用 · <code>not_applicable</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">p50 / p95</span><span class="rt-row__v">11 / 19 ms</span></div>
+          </div>
+        </article>
+
+        <article class="rt-card" data-loaded="true">
+          <div class="rt-card__head">
+            <span class="rt-card__stage">STT</span>
+            <span class="tag tag--live">loaded</span>
+            <span class="rt-card__backend">nemo · cuda:0</span>
+          </div>
+          <p class="rt-card__model">nvidia/parakeet-tdt-1.1b</p>
+          <div class="rt-card__body">
+            <div class="rt-row"><span class="rt-row__k">加载</span><span class="rt-row__v">是</span></div>
+            <div class="rt-row"><span class="rt-row__k">显存</span><span class="rt-row__v">1 284 MB · 5.2%</span></div>
+            <div class="rt-row"><span class="rt-row__k">繁忙</span><span class="rt-row__v">1 / 1 <small>占用中</small></span></div>
+            <div class="rt-row"><span class="rt-row__k">队列</span><span class="rt-row__v rt-na">不可用 · <code>queue_depth_not_exposed</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">首字节</span><span class="rt-row__v">142 ms</span></div>
+            <div class="rt-row"><span class="rt-row__k">p50 / p95</span><span class="rt-row__v" style="color: var(--warning)">386 / 1 240 ms <small>较上一窗口 +212%</small></span></div>
+          </div>
+        </article>
+
+        <article class="rt-card" data-loaded="true">
+          <div class="rt-card__head">
+            <span class="rt-card__stage">LLM</span>
+            <span class="tag tag--live">loaded</span>
+            <span class="rt-card__backend">llama.cpp · cuda:0</span>
+          </div>
+          <p class="rt-card__model">Qwen3-4B-Instruct · Q4_K_M</p>
+          <div class="rt-card__body">
+            <div class="rt-row"><span class="rt-row__k">加载</span><span class="rt-row__v">是</span></div>
+            <div class="rt-row"><span class="rt-row__k">显存</span><span class="rt-row__v">5 120 MB · 20.8%</span></div>
+            <div class="rt-row"><span class="rt-row__k">繁忙</span><span class="rt-row__v">1 / 1 <small>占用中</small></span></div>
+            <div class="rt-row"><span class="rt-row__k">队列</span><span class="rt-row__v rt-na">不可用 · <code>queue_depth_not_exposed</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">首字节</span><span class="rt-row__v">420 ms</span></div>
+            <div class="rt-row"><span class="rt-row__k">p50 / p95</span><span class="rt-row__v">980 / 1 410 ms</span></div>
+          </div>
+        </article>
+
+        <article class="rt-card" data-loaded="false">
+          <div class="rt-card__head">
+            <span class="rt-card__stage">TTS</span>
+            <span class="tag tag--down">not loaded</span>
+            <span class="rt-card__backend">torch · cuda:0</span>
+          </div>
+          <p class="rt-card__model">Qwen3-TTS-12Hz-1.7B-CustomVoice</p>
+          <div class="rt-card__body">
+            <div class="rt-row"><span class="rt-row__k">加载</span><span class="rt-row__v rt-na">否 · <code>no_metrics_window</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">显存</span><span class="rt-row__v rt-na">不可用 · <code>no_metrics_window</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">繁忙</span><span class="rt-row__v">1 / 1 <small>占用中</small></span></div>
+            <div class="rt-row"><span class="rt-row__k">队列</span><span class="rt-row__v rt-na">不可用 · <code>queue_depth_not_exposed</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">首字节</span><span class="rt-row__v rt-na">不可用 · <code>no_metrics_window</code></span></div>
+            <div class="rt-row"><span class="rt-row__k">p50 / p95</span><span class="rt-row__v rt-na">不可用 · <code>no_metrics_window</code></span></div>
+          </div>
+        </article>
+      </div>
+
+      <p class="hint" style="margin: -4px 0 0">
+        「繁忙」四张卡相同，因为它取自 <span class="mono">/v1/pool</span> 的会话池（四段共用）；
+        「显存」是调用期间的整卡峰值；两者都不是单段独占量。
+      </p>
+
+      <div class="panel" style="margin-top: 14px">
+        <div class="panel__head"><span class="path">/v1/pool</span> <span class="spacer"></span><span class="status"><i></i>reachable</span></div>
+        <table>
+          <thead><tr><th>unit</th><th>状态</th><th>会话</th><th>最近活动</th></tr></thead>
+          <tbody>
+            <tr><td class="mono">0</td><td class="dot-ok">serving</td><td class="mono">sess_7f3a91</td><td class="mono">now</td></tr>
+            <tr><td class="mono">1</td><td style="color: var(--muted)">idle</td><td class="mono">—</td><td class="mono">18s ago</td></tr>
+            <tr><td class="mono">2</td><td style="color: var(--muted)">idle</td><td class="mono">—</td><td class="mono">2m ago</td></tr>
+            <tr><td class="mono">3</td><td style="color: var(--muted)">idle</td><td class="mono">—</td><td class="mono">9m ago</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ── 轮次延迟面板（`TurnLatencyPanel.vue`，A.17）───────────────────────
+           只读：没有写入、没有删除、没有导出、没有重算。它答的是“这一次响应整体
+           多慢”（含 VAD 判定、智能轮次等待、会话排队）；下面的日志面板答的是
+           “哪一行报了错”，所以先它后日志（§3.9.4 第 1 条）。
+           下面两段是**同一个面板**的两种状态，不是两个面板——标题上分别标明，
+           否则看图的人会以为是同一个面板闪了一下。 -->
+      <div class="tl">
+        <div class="tl__head">
+          <span class="tl__title">轮次延迟 · 正常窗口</span>
+          <span class="spacer"></span>
+          <button class="tl__win" aria-pressed="true">15m</button>
+          <button class="tl__win" aria-pressed="false">1h</button>
+          <button class="tl__win" aria-pressed="false">24h</button>
+          <select class="select" aria-label="状态过滤">
+            <option selected>全部状态</option>
+            <option>completed</option>
+            <option>cancelled</option>
+            <option>failed</option>
+            <option>incomplete</option>
+          </select>
+          <button class="btn btn--sm">刷新</button>
+        </div>
+
+        <div class="tl__agg">
+          <div><span class="tl__k">记录数</span><span class="tl__v">38</span></div>
+          <div><span class="tl__k">completed / failed</span><span class="tl__v">31 / 2</span></div>
+          <div><span class="tl__k">cancelled / incomplete</span><span class="tl__v">3 / 2</span></div>
+          <div><span class="tl__k">失败率</span><span class="tl__v">5.3%</span></div>
+          <div><span class="tl__k">E2E p50 / p95 / max</span><span class="tl__v">3 180 / 6 260 / 7 940 ms</span></div>
+          <div><span class="tl__k">VAD end decision</span><span class="tl__v">430 / 880 ms</span></div>
+          <div><span class="tl__k">Transcription</span><span class="tl__v">1 240 / 2 040 ms</span></div>
+          <div><span class="tl__k">Response generation</span><span class="tl__v">310 / 340 ms</span></div>
+          <div><span class="tl__k">Voice synthesis to first audio</span><span class="tl__v">480 / 500 ms</span></div>
+          <div><span class="tl__k">Hold time before response</span><span class="tl__v tl__v--na">不可用 / 不可用 <small>38 行中 12 行无值</small></span></div>
+        </div>
+
+        <div class="tl__rows">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th><th>response_key</th><th>状态</th>
+                <th class="num">E2E</th><th class="num">VAD 判定</th><th>智能轮次</th>
+                <th class="num">转写</th><th class="num">生成</th><th class="num">首音频</th><th class="num">Hold</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">09:41:26</td>
+                <td class="mono" title="resp_9f3a1c8b4d2e7f51">resp_9f3a1c8</td>
+                <td>completed</td>
+                <td class="num mono">6 260 ms</td><td class="num mono">550 ms</td><td>disabled</td>
+                <td class="num mono">2 040 ms</td><td class="num mono">340 ms</td><td class="num mono">500 ms</td>
+                <td class="num"><span class="tl__v--na">不可用</span></td>
+              </tr>
+              <tr>
+                <td class="mono">09:38:52</td>
+                <td class="mono" title="resp_4b7e02d86a1f09c3">resp_4b7e02d</td>
+                <td>cancelled</td>
+                <td class="num mono">3 480 ms</td><td class="num mono">410 ms</td><td>complete</td>
+                <td class="num mono">1 980 ms</td><td class="num"><span class="tl__v--na">不可用</span></td><td class="num mono">460 ms</td>
+                <td class="num"><span class="tl__v--na">不可用</span></td>
+              </tr>
+              <tr>
+                <td class="mono">09:37:05</td>
+                <td class="mono" title="resp_1d6c9a43e07b28f6">resp_1d6c9a4</td>
+                <td>completed</td>
+                <td class="num mono">4 120 ms</td><td class="num mono">480 ms</td><td>complete</td>
+                <td class="num mono">2 310 ms</td><td class="num mono">360 ms</td><td class="num mono">520 ms</td>
+                <td class="num mono">42 ms</td>
+              </tr>
+              <tr>
+                <td class="mono">09:34:18</td>
+                <td class="mono" title="resp_8c2f5b70d19e4a25">resp_8c2f5b7</td>
+                <td>failed</td>
+                <td class="num mono">7 940 ms</td><td class="num mono">610 ms</td><td>failed</td>
+                <td class="num mono">2 880 ms</td><td class="num"><span class="tl__v--na">不可用</span></td><td class="num"><span class="tl__v--na">不可用</span></td>
+                <td class="num"><span class="tl__v--na">不可用</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="tl__foot">E2E: estimated speech end to first generated audio, excluding browser playback. Stages overlap and do not add up.</p>
+      </div>
+
+      <!-- 同一面板的第二种状态：索引落后。聚合块整块换成 `不可用 · index_lag`，
+           不拿陈旧峰值充当现状（§3.9.4 第 3 条 / A.17 理由码）；明细行仍可读。
+           `lagS = 43` 时窗口内最新一行就是 43s 前那条，所以下面最大时间是 09:40:43。 -->
+      <div class="tl">
+        <div class="tl__head">
+          <span class="tl__title">轮次延迟 · 索引落后（index.lagS = 43）</span>
+          <span class="spacer"></span>
+          <button class="tl__win" aria-pressed="true">15m</button>
+          <button class="tl__win" aria-pressed="false">1h</button>
+          <button class="tl__win" aria-pressed="false">24h</button>
+          <select class="select" aria-label="状态过滤">
+            <option selected>全部状态</option>
+          </select>
+          <button class="btn btn--sm">刷新</button>
+        </div>
+
+        <div class="tl__agg">
+          <div style="grid-column: 1 / -1">
+            <span class="tl__k">聚合</span>
+            <span class="tl__v tl__v--na">不可用 · <code>index_lag</code></span>
+            <p class="meta" style="margin: 4px 0 0">索引落后 43 s，聚合值不可当现状看；明细表里的行仍可按时间读。</p>
+          </div>
+        </div>
+
+        <div class="tl__rows">
+          <table>
+            <thead>
+              <tr>
+                <th>时间</th><th>response_key</th><th>状态</th>
+                <th class="num">E2E</th><th class="num">VAD 判定</th><th>智能轮次</th>
+                <th class="num">转写</th><th class="num">生成</th><th class="num">首音频</th><th class="num">Hold</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">09:40:43</td>
+                <td class="mono" title="resp_2a9e6c31b58d07f4">resp_2a9e6c3</td>
+                <td>completed</td>
+                <td class="num mono">5 620 ms</td><td class="num mono">520 ms</td><td>disabled</td>
+                <td class="num mono">2 150 ms</td><td class="num mono">330 ms</td><td class="num mono">490 ms</td>
+                <td class="num"><span class="tl__v--na">不可用</span></td>
+              </tr>
+              <tr>
+                <td class="mono">09:40:12</td>
+                <td class="mono" title="resp_7e1b4d90c62a3f85">resp_7e1b4d9</td>
+                <td>completed</td>
+                <td class="num mono">4 880 ms</td><td class="num mono">470 ms</td><td>complete</td>
+                <td class="num mono">1 920 ms</td><td class="num mono">350 ms</td><td class="num mono">510 ms</td>
+                <td class="num mono">38 ms</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p class="tl__foot">E2E: estimated speech end to first generated audio, excluding browser playback. Stages overlap and do not add up.</p>
+      </div>
+
+      <p class="hint" style="margin: 8px 0 0">
+        明细表第一行就是上面 Conversation 卡里那条助手条目（`6.26 s` ↔ `6 260 ms`），第二行是
+        `First audio 3.48 s` 那条（v1 的标题写 `First audio`，v2 写 `E2E`）——两处数字逐条相等，因为它们是同一行日志的两种渲染。
+        两处措辞故意不同、但指同一个字段：状态列写 A.17 的枚举值（`cancelled`），条目里写 demo 的四态译文（`Interrupted`）；
+        取不到时条目写 `Unavailable`（demo 原文），面板写 `不可用`（与实例页其余文案一致）——都不是 `0 ms`。
+        轮次面板与下面的日志面板窗口**不联动**：一个按 15m 聚合，另一个按关键字与级别过滤，联动会让人误以为两个窗口必须相等。
+      </p>
+
+      <!-- ── 日志面板（`LogPanel.vue`，A.15）─────────────────────────────────
+           只读：没有写入、没有删除、没有下载；尾部跟随就是每 2s 拉一次增量。 -->
+      <div class="logs">
+        <div class="logs__head">
+          <span class="logs__title">日志</span>
+          <select class="select" aria-label="进程">
+            <option selected>console + pipeline</option>
+            <option>console</option>
+            <option>pipeline</option>
+          </select>
+          <select class="select" aria-label="级别">
+            <option>全部级别</option>
+            <option selected>WARN 及以上</option>
+            <option>ERROR</option>
+          </select>
+          <select class="select" aria-label="时间范围">
+            <option selected>最近 15 分钟</option>
+            <option>最近 5 分钟</option>
+            <option>最近 1 小时</option>
+            <option>自定义…</option>
+          </select>
+          <input class="input" type="search" placeholder="关键字（≤ 200 字符）" aria-label="关键字" maxlength="200" style="width: 190px" />
+          <label class="switch" role="switch" aria-checked="true" title="尾部跟随（每 2s 拉一次增量）"><i></i></label>
+          <span class="meta">尾部跟随</span>
+          <span class="spacer"></span>
+          <button class="btn btn--sm">刷新</button>
+          <button class="btn btn--primary btn--sm">分析</button>
+        </div>
+
+        <pre class="logs__body"><span class="t">09:41:02</span> <span class="p">console </span> <span class="lv-i">INFO </span> pipeline restart requested by admin (v12)
+<span class="t">09:41:06</span> <span class="p">pipeline</span> <span class="lv-w">WARN </span> tts handler not ready: Qwen3-TTS-12Hz-1.7B-CustomVoice (attempt 1/3)
+<span class="t">09:41:09</span> <span class="p">pipeline</span> <span class="lv-w">WARN </span> tts handler not ready: Qwen3-TTS-12Hz-1.7B-CustomVoice (attempt 2/3)
+<span class="t">09:41:12</span> <span class="p">pipeline</span> <span class="lv-e">ERROR</span> tts handler not ready after 3 attempts: no metrics in 300s window
+<span class="t">09:41:14</span> <span class="p">pipeline</span> <span class="lv-w">WARN </span> cuda out of memory risk: 22461/24564 MB (91.4%)
+<span class="t">09:41:18</span> <span class="p">pipeline</span> <span class="lv-i">INFO </span> session sess_7f3a91 attached to unit 0
+<span class="t">09:41:20</span> <span class="p">pipeline</span> <span class="lv-w">WARN </span> stt latency p95=1240ms p50=386ms window=300s
+<span class="t">09:41:22</span> <span class="p">pipeline</span> <span class="lv-i">INFO </span> lm turn finished: first_audio=810ms
+<span class="t">09:41:24</span> <span class="p">console </span> <span class="lv-i">INFO </span> GET /api/v1/runtime/models 200 38ms
+<span class="t">09:41:26</span> <span class="p">pipeline</span> <span class="lv-w">WARN </span> slow request: llm first token 1410ms
+<span class="t">09:41:28</span> <span class="p">console </span> <span class="lv-e">ERROR</span> audit write retried once: database is locked
+<span class="t">09:41:31</span> <span class="p">pipeline</span> <span class="lv-i">INFO </span> session sess_7f3a91 detached (2m 13s)
+<span class="t">09:41:33</span> <span class="p">console </span> <span class="lv-i">INFO </span> GET /api/v1/logs 200 12ms (cursor=eyJpbm9kZSI6NjE0Mjh9, 41 lines)
+<span class="t">09:41:35</span> <span class="p">pipeline</span> <span class="lv-e">ERROR</span> torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 384.00 MiB</pre>
+
+        <div class="logs__foot">
+          <span>cursor <span class="mono">eyJpbm9kZSI6NjE0MjgsIm9mZiI6MjQ3MTN9</span></span>
+          <span>扫描 4 个文件（console + pipeline）· 412 KiB</span>
+          <span style="color: var(--warning)">已截断，缩小时间范围再看</span>
+          <span class="spacer"></span>
+          <span>/var/log/supervisor/*.log · 只读</span>
+        </div>
+      </div>
+
+      <!-- ── 归纳结果（`LogAnalysisCard.vue`，A.16）───────────────────────────
+           首行的 `sentSummary()` 是硬性要求：告诉人“到底把多少条日志送出去了”。
+           结果只读，不写回配置；审计只记字段名与 summary。 -->
+      <div class="an">
+        <div class="an__head">
+          <h3>日志归纳</h3>
+          <span class="tag">只读 · 不写配置</span>
+          <span class="spacer"></span>
+          <span class="an__sent">已送入 412 行 / 约 5.8k tokens（估算） · 已截断 1 200 行 · 附带 38 条轮次</span>
+        </div>
+        <p class="hint" style="margin: 0">
+          Qwen3-4B-Instruct · 6.4 s · 分析 ID <span class="mono">an_9f3c2b</span> · 审计 <span class="mono">logs.analyze</span> 只记 <span class="mono">from/to/process/level/q/sentLines/estimatedTokens</span> 与 200 字摘要，不存日志原文与密钥
+        </p>
+
+        <div class="an__block">
+          <h4>错误与异常摘要</h4>
+          <div class="an__row an__row--bad">
+            <div class="an__sig">tts handler not ready after 3 attempts</div>
+            <div class="an__meta">3 次 · 首次 09:41:06 · 末次 09:41:12 · ERROR</div>
+            <p class="an__body">加载器连续三次放弃，窗口内无任何 TTS 调用指标（<code>no_metrics_window</code>）。</p>
+          </div>
+          <div class="an__row an__row--bad">
+            <div class="an__sig">torch.OutOfMemoryError: CUDA out of memory</div>
+            <div class="an__meta">1 次 · 首次 09:41:35 · 末次 09:41:35 · ERROR</div>
+            <p class="an__body">尝试分配 384 MiB 失败；当时整卡已占 22 461 / 24 564 MB。</p>
+          </div>
+          <div class="an__row an__row--warn">
+            <div class="an__sig">stt latency p95=1240ms</div>
+            <div class="an__meta">2 次 · 首次 09:41:20 · 末次 09:41:33 · WARN</div>
+            <p class="an__body">同一段 p50 只有 386 ms，p95 是 p50 的 3.2 倍。</p>
+          </div>
+        </div>
+
+        <div class="an__block">
+          <h4>需要重点关注</h4>
+          <div class="an__row an__row--bad">
+            <div class="an__sig">TTS 不可用（影响：所有会话都出不了声）</div>
+            <p class="an__body">判定依据：<span class="mono">tts handler not ready</span> 在 300s 窗内连续 3 次、无任何成功指标；监控卡同段 <span class="mono">loaded:false</span>。</p>
+          </div>
+          <div class="an__row an__row--warn">
+            <div class="an__sig">显存 91.4% + 一次 OOM（影响：新会话可能直接失败）</div>
+            <p class="an__body">判定依据：<span class="mono">vram_pressure</span> 告警与 OOM 行同一时间窗；TTS 反复加载又失败会持续抬高占用。</p>
+          </div>
+          <div class="an__row an__row--warn">
+            <div class="an__sig">STT p95 尖峰（影响：长语音尾部延迟变差）</div>
+            <p class="an__body">判定依据：p95/p50 = 3.2，且同一时刻 <span class="mono">slow request</span> 只出现在 STT 与 LLM，VAD 正常。</p>
+          </div>
+        </div>
+
+        <div class="an__block">
+          <h4>可能根因</h4>
+          <div class="an__row">
+            <div class="an__sig">同卡四段共用一份显存，TTS 加载失败后反复重试</div>
+            <p class="an__body">置信度：高（0.82）· 依据：91.4% 占用 + 3 次重试 + OOM 行在同一分钟。</p>
+          </div>
+          <div class="an__row">
+            <div class="an__sig">STT 并发超过单卡吞吐</div>
+            <p class="an__body">置信度：中（0.56）· 依据：p50 正常而 p95 抬高，典型的轻微排队；无错误行佐证。</p>
+          </div>
+        </div>
+
+        <div class="an__block">
+          <h4>可执行的优化方案</h4>
+          <div class="an__row an__row--ok">
+            <div class="an__sig">先降 <span class="mono">num_pipelines</span> 到 2，再重启 pipeline</div>
+            <p class="an__body">预期：整卡占用降到 ~70%，给 TTS 腾出加载空间。风险：并发会话数上限减半。</p>
+          </div>
+          <div class="an__row an__row--ok">
+            <div class="an__sig">把 TTS 换成更小量化，或先预热再放流量</div>
+            <p class="an__body">预期：首会话不再承担 6.4 s 加载。风险：音色/质量可能变化，需回归。</p>
+          </div>
+          <div class="an__row an__row--ok">
+            <div class="an__sig">STT 降 <span class="mono">compute_type</span> 或限制并发</div>
+            <p class="an__body">预期：p95 回落到 500 ms 量级。风险：单次识别略慢。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 审计 ─────────────────────────────────────────────────────────── -->
+    <section class="view" data-view="audit" hidden>
+      <div class="page-head">
+        <h1>审计</h1>
+        <p>只增不改 · 不记录密钥值，只记录字段名</p>
+      </div>
+
+      <div class="toolbar">
+        <input class="input" placeholder="按操作人筛选" style="width: 180px" />
+        <select class="select" style="width: 130px" aria-label="结果"><option>全部结果</option><option>ok</option><option>failed</option></select>
+        <span class="spacer"></span>
+        <span class="meta">最近 24h · 37 条</span>
+      </div>
+
+      <div class="panel">
+        <table>
+          <thead>
+            <tr><th>时间</th><th>操作人</th><th>动作</th><th>版本</th><th>字段</th><th>结果</th><th class="num">耗时</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mono">10-24 09:41:07</td><td>admin</td><td>publish</td><td class="mono">v12</td>
+              <td class="mono">vad.threshold, llm.temperature</td>
+              <td class="dot-ok">ok</td><td class="num mono">6.2 s</td>
+            </tr>
+            <tr>
+              <td class="mono">10-23 17:02:44</td><td>ops01</td><td>rollback</td><td class="mono">v11</td>
+              <td class="mono">—</td>
+              <td style="color: var(--warning)">rolled_back</td><td class="num mono">11.4 s</td>
+            </tr>
+            <tr>
+              <td class="mono">10-23 15:20:11</td><td>ops01</td><td>publish</td><td class="mono">v10</td>
+              <td class="mono">tts.voice</td>
+              <td class="dot-ok">ok</td><td class="num mono">5.8 s</td>
+            </tr>
+            <tr>
+              <td class="mono">10-23 14:58:02</td><td>admin</td><td>publish</td><td class="mono">—</td>
+              <td class="mono">llm.gpu_layers</td>
+              <td style="color: var(--danger)">healthcheck_timeout</td><td class="num mono">30.0 s</td>
+            </tr>
+            <tr>
+              <td class="mono">10-23 14:57:39</td><td>admin</td><td>validate</td><td class="mono">—</td>
+              <td class="mono">llm.gpu_layers</td>
+              <td class="dot-ok">ok</td><td class="num mono">0.4 s</td>
+            </tr>
+            <tr>
+              <td class="mono">10-22 11:07:20</td><td>admin</td><td>publish</td><td class="mono">v9</td>
+              <td class="mono">12 个字段</td>
+              <td class="dot-ok">ok</td><td class="num mono">7.1 s</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── 登录 ─────────────────────────────────────────────────────────── -->
+    <section class="view" data-view="login" hidden>
+      <div class="login-wrap">
+        <form class="login" onsubmit="return false">
+          <h1>S2S 部署参数控制台</h1>
+          <p>没有自助注册；首个账号由 <span class="mono">seed_admin.py</span> 创建。</p>
+
+          <label for="u">用户名</label>
+          <input class="input" id="u" autocomplete="username" value="admin" />
+
+          <label for="p">密码</label>
+          <input class="input" id="p" type="password" autocomplete="current-password" value="········" />
+
+          <button class="btn btn--primary">登录</button>
+
+          <div class="hint" style="margin-top: 14px; text-align: center">
+            忘记密码？在容器里重跑 seed_admin 或在库里重置。
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- ── 对话页 · 待机（demo 的 idle / ready）──────────────────────────── -->
+    <section class="view" data-view="voice" hidden>
+      <div class="v-page">
+        <header class="v-head">
+          <div class="v-ident">
+            <div class="v-ident__head">
+              <a class="v-ident__title" href="https://github.com/huggingface/speech-to-speech">Hugging Face Realtime</a>
+              <button class="v-icon" title="About this space" aria-label="About this space"><svg class="v-i"><use href="#i-info"/></svg></button>
+            </div>
+            <p>An open, real-time voice chat built on Hugging Face's speech-to-speech stack.</p>
+            <div class="v-meta"><span>Powered by</span><b>Inference Endpoints</b><span>·</span><b>Cerebras</b></div>
+            <div class="v-meta"><span>Built by</span><b>Hugging Face</b><span>·</span><b>tfrere</b><span>·</span><b>A-Mahla</b><span>·</span><b>andito</b></div>
+          </div>
+          <!-- 账号 chip 与工具 / 历史 / 设置三枚按钮被 `Teleport` 到外壳顶栏的 `#shell-actions`，
+               不在这里；About 是 `IdentityBlock` 里的圆钮，留在这一行。 -->
+        </header>
+
+        <main class="v-stage">
+          <div class="v-orb-wrap">
+            <div class="v-orb" data-state="idle">
+              <span class="v-orb__glow"></span>
+              <span class="v-orb__ring"></span>
+              <span class="v-orb__ring v-orb__ring--outer"></span>
+              <span class="v-orb__core"><span class="v-orb__ind"><svg class="v-i"><use href="#i-mic"/></svg></span></span>
+            </div>
+          </div>
+          <p class="v-caption">Tap to start</p>
+        </main>
+
+        <footer class="v-foot">Powered by <a href="https://github.com/huggingface/speech-to-speech">huggingface/speech-to-speech</a></footer>
+      </div>
+    </section>
+
+    <!-- ── 对话页 · 九态标本（demo #main-circle 的 state-* 与六个指示器）─── -->
+    <section class="view" data-view="voice-states" hidden>
+      <div class="v-page">
+        <header class="v-head">
+          <div class="v-ident">
+            <div class="v-ident__head">
+              <a class="v-ident__title" href="https://github.com/huggingface/speech-to-speech">Hugging Face Realtime</a>
+              <button class="v-icon" title="About this space" aria-label="About this space"><svg class="v-i"><use href="#i-info"/></svg></button>
+            </div>
+            <p>九个状态一屏看完：配色只走一条轴（<code>--glow</code>），球心图形在 mic / error / spinner / dots / bars / voice 六种指示器之间切。真实页面同一时刻只有一个。</p>
+          </div>
+        </header>
+
+        <div class="v-states">
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="idle"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><svg class="v-i"><use href="#i-mic"/></svg></span></span></div>
+            <figcaption><b>idle</b><span>mic · grey-green</span></figcaption>
+          </figure>
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="connecting"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><span class="v-spinner"></span></span></span></div>
+            <figcaption><b>connecting</b><span>spinner · yellow</span></figcaption>
+          </figure>
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="queued"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><span class="v-spinner"></span></span></span></div>
+            <figcaption><b>queued</b><span>spinner · slate</span></figcaption>
+          </figure>
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="your-turn"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><svg class="v-i"><use href="#i-mic"/></svg></span></span></div>
+            <figcaption><b>your-turn</b><span>mic · accent</span></figcaption>
+          </figure>
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="listening"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><span class="v-bars"><span></span><span></span><span></span><span></span><span></span></span></span></span></div>
+            <figcaption><b>listening</b><span>bars · cyan</span></figcaption>
+          </figure>
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="user-speaking"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><span class="v-bars"><span></span><span></span><span></span><span></span><span></span></span></span></span></div>
+            <figcaption><b>user-speaking</b><span>bars · cyan</span></figcaption>
+          </figure>
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="processing"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><span class="v-dots"><span></span><span></span><span></span></span></span></span></div>
+            <figcaption><b>processing</b><span>dots · amber</span></figcaption>
+          </figure>
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="ai-speaking"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><svg class="v-i"><use href="#i-voice"/></svg></span></span></div>
+            <figcaption><b>ai-speaking</b><span>voice · accent</span></figcaption>
+          </figure>
+          <figure class="v-state">
+            <div class="v-orb v-orb--sm" data-state="error"><span class="v-orb__glow"></span><span class="v-orb__ring"></span><span class="v-orb__ring v-orb__ring--outer"></span><span class="v-orb__core"><span class="v-orb__ind"><svg class="v-i"><use href="#i-info"/></svg></span></span></div>
+            <figcaption><b>error</b><span>info · red · tap to retry</span></figcaption>
+          </figure>
+        </div>
+
+        <p class="v-gallery__note" style="padding: 0 24px 24px">
+          只有 <code>idle</code> 与 <code>error</code> 时 orb 是一个按钮（点一下开始/重试）；通话中它只是显示器。<code>ai-speaking</code> 的光晕由实时电平驱动，其余状态固定亮度。
+        </p>
+      </div>
+    </section>
+
+    <!-- ── 对话页 · 通话中（demo 的 listening / user-speaking / ai-speaking）── -->
+    <section class="view" data-view="voice-live" hidden>
+      <div class="v-page">
+        <header class="v-head">
+          <div class="v-ident">
+            <div class="v-ident__head">
+              <a class="v-ident__title" href="https://github.com/huggingface/speech-to-speech">Hugging Face Realtime</a>
+              <button class="v-icon" title="About this space" aria-label="About this space"><svg class="v-i"><use href="#i-info"/></svg></button>
+            </div>
+            <p>An open, real-time voice chat built on Hugging Face's speech-to-speech stack.</p>
+            <div class="v-meta"><span>Powered by</span><b>Inference Endpoints</b><span>·</span><b>Cerebras</b></div>
+          </div>
+        </header>
+
+        <main class="v-stage">
+          <!-- 临时气泡：右上，transcript 的最近三条自动消失 -->
+          <div class="v-bubbles">
+            <div class="v-bubble v-bubble--user"><span class="v-bubble__role">You</span><p>What's the weather like in Paris right now?</p></div>
+            <div class="v-bubble v-bubble--tool"><span class="v-bubble__role">tool · web_search</span><p>searching “Paris weather”…</p></div>
+            <div class="v-bubble"><span class="v-bubble__role">Assistant</span><p>18° and overcast — light rain in about an hour.</p></div>
+          </div>
+
+          <div class="v-orb-wrap">
+            <!-- 左侧：麦克风 + 噪声门弧。几何与 demo/main.js:493-516 一致：
+                 R=32（viewBox 100）、SPAN=200°、START=80°，缺口朝向球体（右侧）。 -->
+            <span style="display: inline-flex; position: relative">
+              <svg class="v-arc" viewBox="0 0 100 100" aria-hidden="true">
+                <path class="v-arc__track" fill="none" d="M 55.56 81.51 A 32 32 0 1 1 55.56 18.49" stroke-linecap="round"/>
+                <path class="v-arc__fill" fill="none" d="M 55.56 81.51 A 32 32 0 0 1 20.77 36.99" stroke-linecap="round"/>
+                <circle class="v-arc__handle" cx="20.77" cy="36.99" r="3"/>
+              </svg>
+              <button class="v-side" title="Mute" aria-label="Mute"><svg class="v-i"><use href="#i-mic"/></svg></button>
+            </span>
+
+            <div class="v-orb" data-state="listening">
+              <span class="v-orb__glow"></span>
+              <span class="v-orb__ring"></span>
+              <span class="v-orb__ring v-orb__ring--outer"></span>
+              <span class="v-orb__core">
+                <span class="v-orb__ind"><span class="v-bars"><span></span><span></span><span></span><span></span><span></span></span></span>
+              </span>
+            </div>
+
+            <button class="v-side v-side--stop" title="End" aria-label="End"><svg class="v-i"><use href="#i-stop"/></svg></button>
+          </div>
+
+          <!-- 通话中 caption 收起（状态由 orb 自己承担），只留轮次延迟 -->
+          <div class="v-latency">
+            <span>turn 3</span><span>stt 180 ms</span><span>llm 420 ms</span><span>tts 210 ms</span><span>total 810 ms</span>
+            <details>
+              <summary>Server timings · E2E 0.81s</summary>
+              <ul>
+                <li>E2E time: 0.81s</li>
+                <li>Speech to text: 0.18s</li>
+                <li>Language model: 0.42s</li>
+                <li>Voice synthesis to first audio: 0.21s</li>
+              </ul>
+            </details>
+            <p class="v-sub" style="font-family: inherit; letter-spacing: 0; text-transform: none">
+              徽章只在服务器真正测到的项上出现；v1 pipeline 把标题换成 <code>First audio</code>。语音页不另画转写区——正文在右上历史抽屉里。
+            </p>
+          </div>
+
+          <!-- 相机工具开启时的左下自视窗 -->
+          <div class="v-pip"><div class="v-pip__feed"></div><span class="v-pip__label">camera</span></div>
+        </main>
+
+        <footer class="v-foot">Powered by <a href="https://github.com/huggingface/speech-to-speech">huggingface/speech-to-speech</a></footer>
+      </div>
+    </section>
+
+    <!-- ── 对话页 · 排队 / 满员 ───────────────────────────────────────────── -->
+    <section class="view" data-view="voice-queue" hidden>
+      <div class="v-page">
+        <header class="v-head">
+          <div class="v-ident">
+            <div class="v-ident__head">
+              <a class="v-ident__title" href="https://github.com/huggingface/speech-to-speech">Hugging Face Realtime</a>
+              <button class="v-icon" title="About this space" aria-label="About this space"><svg class="v-i"><use href="#i-info"/></svg></button>
+            </div>
+            <p>An open, real-time voice chat built on Hugging Face's speech-to-speech stack.</p>
+            <div class="v-meta"><span>Powered by</span><b>Inference Endpoints</b><span>·</span><b>Cerebras</b></div>
+          </div>
+        </header>
+
+        <main class="v-stage">
+          <div class="v-orb-wrap">
+            <div class="v-orb" data-state="queued">
+              <span class="v-orb__glow"></span>
+              <span class="v-orb__ring"></span>
+              <span class="v-orb__ring v-orb__ring--outer"></span>
+              <span class="v-orb__core"><span class="v-orb__ind"><span class="v-spinner"></span></span></span>
+            </div>
+          </div>
+          <p class="v-caption">Queued · position 3 · ~2 min</p>
+          <p class="v-sub">All slots are busy. You'll join automatically — keep this tab open.</p>
+
+          <div class="v-queue">
+            <button class="v-join">Join now</button>
+            <button class="v-leave">Leave queue</button>
+          </div>
+          <p class="v-caption" style="text-transform: none; letter-spacing: 0; opacity: 0.8">
+            Join now 只在轮到你（your-turn）时出现；排队中只显示 Leave queue。
+          </p>
+        </main>
+
+        <footer class="v-foot">Powered by <a href="https://github.com/huggingface/speech-to-speech">huggingface/speech-to-speech</a></footer>
+      </div>
+    </section>
+
+    <!-- ── 对话页 · 弹层标本（demo 的 5 个浮层）──────────────────────────── -->
+    <section class="view" data-view="voice-panels" hidden>
+      <div class="v-page">
+        <header class="v-head">
+          <div class="v-ident">
+            <div class="v-ident__head">
+              <a class="v-ident__title" href="https://github.com/huggingface/speech-to-speech">Hugging Face Realtime</a>
+              <button class="v-icon" title="About this space" aria-label="About this space"><svg class="v-i"><use href="#i-info"/></svg></button>
+            </div>
+            <p>弹层标本：同一套浮层在真实页面上盖在 orb 上方，这里并排展示内容，便于逐项比对 demo。</p>
+          </div>
+        </header>
+
+        <div class="v-gallery">
+          <p class="v-gallery__note">Settings · Tools · About · Limit 是 <code>&lt;dialog&gt;</code>；Conversation 是右侧抽屉（不抢焦点、不锁滚动）；Account 是 chip 下的 popover（点外部关闭，不移动焦点）。</p>
+
+          <!-- Settings -->
+          <div class="v-card">
+            <div class="v-card__head">
+              <h3>Settings</h3>
+              <button class="v-icon" aria-label="Close"><svg class="v-i"><use href="#i-x"/></svg></button>
+            </div>
+
+            <label class="v-field">
+              <span>Speech-to-speech server URL</span>
+              <input class="input" readonly value="https://s2s.example.com" />
+              <small>只读：同源部署不回填，app 自动拼 <code>/v1/realtime</code>。</small>
+            </label>
+
+            <div class="v-row">
+              <label class="v-field">
+                <span>Transport</span>
+                <select class="select" disabled><option>WebSocket</option><option>WebRTC</option></select>
+                <small>仅当部署未固定 upstream 时可选。</small>
+              </label>
+              <label class="v-field">
+                <span>Voice</span>
+                <select class="select">
+                  <option>Aiden</option><option>Ryan</option><option>Dylan</option><option>Eric</option>
+                  <option>Ono_Anna</option><option>Serena</option><option>Sohee</option><option>Uncle_Fu</option><option>Vivian</option>
+                </select>
+                <small>9 个 CustomVoice；下次通话生效。</small>
+              </label>
+            </div>
+
+            <div class="v-row">
+              <label class="v-field">
+                <span>Microphone</span>
+                <select class="select"><option>System default</option><option>MacBook Pro Microphone</option></select>
+              </label>
+              <label class="v-field">
+                <span>Speakers</span>
+                <select class="select"><option>System default</option><option>External Headphones</option></select>
+                <small>Chrome / Edge 支持切换输出。</small>
+              </label>
+            </div>
+
+            <div class="v-row">
+              <label class="v-field">
+                <span>Faster interruptions</span>
+                <select class="select"><option>On</option><option>Off</option></select>
+                <small>你开口时压低助手音量（本地 VAD）。</small>
+              </label>
+              <label class="v-field">
+                <span>Playback startup buffer (ms)</span>
+                <input class="input" type="number" value="120" />
+                <small>仅 WebSocket；0 = 立即播放。</small>
+              </label>
+            </div>
+
+            <label class="v-field">
+              <span>Noise gate · −50 dB</span>
+              <input type="range" min="-66" max="-3" step="1" value="-50" style="width: 100%; accent-color: var(--voice-accent)" />
+              <small>仅 WebSocket；滑到最左关闭。条内实时显示输入电平。</small>
+            </label>
+
+            <label class="v-field">
+              <span>Instructions</span>
+              <textarea class="textarea" rows="3" placeholder="You are a friendly voice assistant..."></textarea>
+            </label>
+
+            <div class="v-row" style="grid-template-columns: 1fr auto">
+              <button class="btn btn--sm" disabled>Restart conversation with these settings</button>
+              <button class="btn btn--primary btn--sm">Save</button>
+            </div>
+            <p class="v-card__hint">Restart 需先连上会话才可用；否则提示 “Connect first, then come back here to apply live changes.”</p>
+          </div>
+
+          <!-- Tools -->
+          <div class="v-card">
+            <div class="v-card__head">
+              <h3>Tools</h3>
+              <button class="v-icon" aria-label="Close"><svg class="v-i"><use href="#i-x"/></svg></button>
+            </div>
+            <p style="color: var(--voice-dim); font-size: 12px; margin: 0 0 8px">Let the assistant act during the conversation. Changes apply live.</p>
+
+            <div class="v-tool">
+              <div><b>Web search</b><em>Look things up on Google, via Serper.</em></div>
+              <span class="switch" role="switch" aria-checked="true"><i></i></span>
+            </div>
+            <label class="v-field" style="margin-top: 8px">
+              <span>Search API key</span>
+              <input class="input" type="password" value="" placeholder="••••••••  · provided by the server" disabled />
+              <small>服务端已握 key：不回显、不可编辑，页面永远拿不到这个值（B5）。</small>
+            </label>
+            <label class="v-field">
+              <span>或：自己带一个 key（仅当部署没配时）</span>
+              <input class="input" type="password" value="" placeholder="Serper API key (stays in this browser)" />
+              <small>只进内存：不进 localStorage、不进 URL、不进日志；刷新即丢。没有 key 时开关禁用并提示填自己的。</small>
+            </label>
+
+            <div class="v-tool" style="margin-top: 4px">
+              <div><b>Camera</b><em>Let the assistant see through your webcam.</em></div>
+              <span class="switch" role="switch" aria-checked="false"><i></i></span>
+            </div>
+            <p class="v-card__hint">A live preview shows bottom-left while the camera is on.</p>
+          </div>
+
+          <!-- Conversation history -->
+          <div class="v-card">
+            <div class="v-card__head">
+              <h3>Conversation</h3>
+              <button class="v-icon" aria-label="Close"><svg class="v-i"><use href="#i-x"/></svg></button>
+            </div>
+            <ol class="transcript">
+              <li class="transcript__item">
+                <span class="transcript__role">You</span>
+                <span class="transcript__text">What's the weather like in Paris right now?</span>
+                <div class="hist-audio">
+                  <span class="hist-audio__label">Audio sent to the model</span>
+                  <audio controls preload="metadata" aria-label="Replay your audio" title="Replay the audio sent to the model"></audio>
+                </div>
+              </li>
+
+              <li class="transcript__item transcript__item--tool">
+                <span class="transcript__role">Tool call</span>
+                <details class="transcript__tool" open>
+                  <summary class="transcript__tool-name">web_search</summary>
+                  <p class="transcript__tool-label">Input</p>
+                  <pre class="transcript__tool-json">{
+  "query": "Paris weather right now"
+}</pre>
+                  <p class="transcript__tool-label">Output</p>
+                  <pre class="transcript__tool-json">18°C, overcast, light rain in about an hour</pre>
+                </details>
+              </li>
+
+              <li class="transcript__item transcript__item--assistant">
+                <span class="transcript__role">Assistant</span>
+                <span class="transcript__text">18° and overcast — light rain in about an hour.</span>
+                <details class="hist-timings" open>
+                  <summary>Server timings · E2E 6.26 s</summary>
+                  <p class="timing-status">Completed</p>
+                  <dl>
+                    <dt>E2E time</dt><dd>6.26 s</dd>
+                    <dt>VAD end decision</dt><dd>0.55 s</dd>
+                    <dt>Smart Turn decision</dt><dd>disabled</dd>
+                    <dt>Transcription</dt><dd>2.04 s</dd>
+                    <dt>Response generation</dt><dd>0.34 s</dd>
+                    <dt>Voice synthesis to first audio</dt><dd>0.50 s</dd>
+                    <dt>Hold time before response</dt><dd>Unavailable</dd>
+                  </dl>
+                  <p>E2E: estimated speech end to first generated audio, excluding browser playback. Stages overlap and do not add up.</p>
+                </details>
+              </li>
+
+              <li class="transcript__item">
+                <span class="transcript__role">You</span>
+                <span class="transcript__text">And tomorrow?</span>
+                <div class="hist-audio">
+                  <span class="hist-audio__label">Audio sent to the model · beginning unavailable</span>
+                  <audio controls preload="metadata" aria-label="Replay your audio" title="Replay your audio (the beginning was no longer buffered)"></audio>
+                </div>
+              </li>
+
+              <li class="transcript__item transcript__item--tool">
+                <span class="transcript__role">Snapshot</span>
+                <span class="transcript__text">Webcam frame attached to the model turn.</span>
+                <img class="transcript__tool-image" alt="Webcam snapshot sent to the model" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='320' height='180'%3E%3Crect width='100%25' height='100%25' fill='%231f2433'/%3E%3Ccircle cx='160' cy='78' r='26' fill='%233a4666'/%3E%3Cpath d='M118 142h84' stroke='%233a4666' stroke-width='12' stroke-linecap='round'/%3E%3C/svg%3E" />
+              </li>
+
+              <li class="transcript__item transcript__item--assistant">
+                <span class="transcript__role">Assistant</span>
+                <span class="transcript__text">Tomorrow looks brighter, around 21° with some sun.</span>
+                <!-- 第二条演另一组真实会发生的情形：v1 pipeline（标题是 First audio）+ 被打断 + 两段没测到。
+                     每一条助手条目都有自己的 `Server timings`，不是一个全局“最新值”。 -->
+                <details class="hist-timings">
+                  <summary>Server timings · First audio 3.48 s</summary>
+                  <p class="timing-status">Interrupted</p>
+                  <dl>
+                    <dt>VAD handoff to first audio</dt><dd>3.48 s</dd>
+                    <dt>VAD end decision</dt><dd>Unavailable</dd>
+                    <dt>Smart Turn decision</dt><dd>complete</dd>
+                    <dt>Transcription</dt><dd>1.12 s</dd>
+                    <dt>Response generation</dt><dd>Unavailable</dd>
+                    <dt>Voice synthesis to first audio</dt><dd>0.61 s</dd>
+                    <dt>Hold time before response</dt><dd>0.42 s</dd>
+                  </dl>
+                  <p>First audio: VAD handoff to generated audio, excluding browser playback. Stages overlap and do not add up.</p>
+                </details>
+              </li>
+            </ol>
+            <p class="v-card__hint">
+              条目形态与 demo 的 <code>#chat-history</code> 逐项一致：用户条目挂原音回放（标签 <code>Audio sent to the model</code>，开头已滚出缓冲时加 <code>· beginning unavailable</code>；播放期间麦克风被静音防回声）；
+              tool 条目挂可展开的 <code>Input</code> / <code>Output</code>，快照单独一条 <code>Snapshot</code>；
+              <b>助手条目只有文字与轮次延迟</b>——demo 从不保存 TTS 音频，这里也不得凭空加播放器。每条助手条目下各有一个 <code>details.hist-timings</code>：<code>summary</code> 是 <code>Server timings · E2E 6.26 s</code>（v1 换成 <code>· First audio …</code>，没测到 E2E 就只剩 <code>Server timings</code>），下面是状态词与七行服务端计时，取不到的写 <code>Unavailable</code>，末尾一句口径说明。<b>舞台上没有任何 chip 行</b>：七行数字只出现在历史条目里。
+              抽屉从右侧滑入（380px），Esc 关闭，空会话显示 <code>Nothing said yet.</code>；刷新即结束会话，不恢复历史。
+              预览页里 <code>&lt;audio&gt;</code> 没有 <code>src</code>（真实实现是 <code>SentAudioRecorder</code> 给的 WAV Blob objectURL）。
+            </p>
+          </div>
+
+          <!-- Account：chip → popover（demo 的 #account-chip / #account-pop） -->
+          <div class="v-card">
+            <div class="v-card__head">
+              <h3>Account</h3>
+            </div>
+
+            <div class="v-acct">
+              <button class="v-acct__chip" aria-haspopup="true" aria-expanded="true">
+                <span class="v-acct__avatar">T</span>
+                <span>tfrere</span>
+              </button>
+              <div class="v-acct__pop">
+                <div class="v-acct__name">tfrere</div>
+                <div class="v-acct__meta"><span class="v-acct__tier">Free</span><span>4:12 left today</span></div>
+                <a class="v-acct__link" href="#account">Upgrade to PRO</a>
+                <a class="v-acct__link v-acct__link--out" href="#account">Sign out</a>
+              </div>
+              <a class="v-acct__signin" href="#account">
+                <svg class="v-i" viewBox="0 0 24 24" style="height: 14px; width: 14px"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span>Sign in</span>
+              </a>
+            </div>
+
+            <p class="v-card__hint">
+              chip = avatar + handle；头像取不到时回落成首字母。
+              <code>pro</code> / <code>org</code> 多一枚 <code>PRO</code> / <code>TEAM</code> 徽章，且 popover 里 remaining 是 <code>Unlimited</code>、不再给 Upgrade。
+              未登录且 <code>loginUrl</code> 存在时 chip 整个换成上面的 <b>Sign in</b> 胶囊；<code>/api/me</code> 返回 <code>enabled:false</code> 时整块不渲染（不留空壳）。
+            </p>
+          </div>
+
+          <!-- About -->
+          <div class="v-card">
+            <div class="v-card__head">
+              <h3>About</h3>
+              <button class="v-icon" aria-label="Close"><svg class="v-i"><use href="#i-x"/></svg></button>
+            </div>
+            <p style="color: var(--voice-dim); font-size: 12px; margin: 0">Speech-to-speech is Hugging Face's open framework for real-time voice agents. Rather than one end-to-end model, it chains four open models from the Hub, so any stage can be swapped or run locally.</p>
+            <ul class="v-pipe">
+              <li><b>VAD</b><span>detects speech</span><code>silero-vad</code></li>
+              <li><b>STT</b><span>transcribes it</span><code>nvidia/parakeet-tdt-1.1b</code></li>
+              <li><b>VLM</b><span>composes the reply</span><code>google/gemma-4-31B-it</code></li>
+              <li><b>TTS</b><span>speaks it back</span><code>Qwen3-TTS-12Hz-1.7B-CustomVoice</code></li>
+            </ul>
+            <p class="v-card__hint">模型名与链接逐字取自 demo，容器里换成部署实际加载的型号。</p>
+          </div>
+
+          <!-- Limit（三套文案按 tier 换，逐字取自 demo/ui/account.js:160-222） -->
+          <div class="v-card v-limit">
+            <div class="v-limit__badge" aria-hidden="true"></div>
+            <h3>Thanks for chatting!</h3>
+            <p>You've enjoyed your 10 minutes for today. Go PRO for unlimited conversations and to support open source AI.</p>
+            <button class="v-join">Upgrade to PRO</button>
+            <p style="font-size: 11px; margin-top: 8px">Or come back tomorrow. Your minutes reset daily.</p>
+            <p class="v-card__hint" style="text-align: left">
+              三套文案：匿名用户 → “Guest conversations run for 5 minutes…” + CTA “Sign in with Hugging Face”；登录非 PRO → 上面这套；满员 → “Hugged to the limit 🤗” 且无 CTA。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    </main>
+  </div>
+</div>
+
+<script>
+  // 视图切换：只做 preview 用，真实实现由 vue-router 承担。
+  const VOICE_VIEWS = new Set(['voice', 'voice-states', 'voice-live', 'voice-queue', 'voice-panels']);
+  const views = [...document.querySelectorAll('.view')];
+  const navs = [...document.querySelectorAll('[data-goto]')];
+  const shell = document.getElementById('shell');
+  const nav = document.getElementById('shell-nav');
+  const scrim = document.getElementById('nav-scrim');
+  const burger = document.getElementById('nav-burger');
+  const collapse = document.getElementById('nav-collapse');
+  // 与 `stores/shell.ts` 的 `DRAWER_BREAKPOINT` 同值：< 980 走抽屉，抽屉里折叠无意义。
+  const DRAWER_BREAKPOINT = 980;
+
+  function go(name) {
+    views.forEach((v) => { v.hidden = v.dataset.view !== name; });
+    navs.forEach((n) => {
+      if (n.classList.contains('nav')) n.setAttribute('aria-current', String(n.dataset.goto === name));
+    });
+    // 面由路由决定（真实实现是 `route.meta.face`）：登录页与运维台是 console 面，
+    // 五张对话页视图是 voice 面。两者共用同一份顶栏与侧栏 DOM（§3.2.4）。
+    shell.dataset.face = VOICE_VIEWS.has(name) ? 'voice' : 'console';
+    // 登录页是唯一不进 `ConsoleLayout` 的路由（`meta.layout=false`），它连侧栏都不该有。
+    document.body.dataset.view = name;
+    closeDrawer();
+
+    const toggle = document.getElementById('login-toggle');
+    toggle.dataset.goto = name === 'login' ? 'params' : 'login';
+    toggle.textContent = name === 'login' ? '← 返回控制台' : '登录页';
+  }
+
+  function isDrawer() {
+    return window.matchMedia(`(max-width: ${DRAWER_BREAKPOINT - 1}px)`).matches;
+  }
+
+  function openDrawer() {
+    nav.classList.add('is-open');
+    burger.setAttribute('aria-expanded', 'true');
+    scrim.hidden = false;
+  }
+
+  function closeDrawer() {
+    nav.classList.remove('is-open');
+    burger.setAttribute('aria-expanded', 'false');
+    scrim.hidden = true;
+  }
+
+  burger.addEventListener('click', () => {
+    if (nav.classList.contains('is-open')) closeDrawer(); else openDrawer();
+  });
+  scrim.addEventListener('click', closeDrawer);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDrawer(); });
+
+  // 折叠只在 ≥ DRAWER_BREAKPOINT 生效；真实实现把状态写进
+  // localStorage['s2s.shell.collapsed']（不是密钥）。
+  collapse.addEventListener('click', () => {
+    if (isDrawer()) return;
+    const collapsed = shell.classList.toggle('is-collapsed');
+    collapse.setAttribute('aria-pressed', String(collapsed));
+    collapse.textContent = collapsed ? '»' : '«';
+  });
+
+  navs.forEach((n) => n.addEventListener('click', () => go(n.dataset.goto)));
+
+  // 开关只做视觉反馈。
+  document.querySelectorAll('.switch').forEach((s) => {
+    s.addEventListener('click', () => {
+      s.setAttribute('aria-checked', s.getAttribute('aria-checked') === 'true' ? 'false' : 'true');
+    });
+  });
+</script>
+</body>
+</html>
