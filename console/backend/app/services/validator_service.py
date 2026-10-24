@@ -98,6 +98,17 @@ def _ensure_runtime_importable() -> None:
         del sys.modules[name]
 
 
+def mode() -> str:
+    """The tier the next `validate()` call would take (§11.2).
+
+    Runs the same import-recovery the validator does, so the console reports
+    `runtime` exactly when a publish would actually be verified.
+    """
+    if _runtime() is None:
+        _ensure_runtime_importable()
+    return "runtime" if _runtime() is not None else "structural"
+
+
 def is_env_ref(value: Any) -> bool:
     return isinstance(value, dict) and set(value) == {"env"} and isinstance(value["env"], str)
 

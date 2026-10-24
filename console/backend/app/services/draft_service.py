@@ -16,11 +16,12 @@ from app.core.exposure import MASK, is_secret, mask
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.draft_repository import DraftRepository
 from app.repositories.version_repository import VersionRepository
+from app.schemas.common import iso_utc
 from app.services import publish_flow_service
 
 
 def _iso(value) -> str | None:
-    return value.isoformat().replace("+00:00", "Z") if value is not None else None
+    return iso_utc(value)
 
 
 def read_draft(db, profile: str) -> dict[str, Any]:

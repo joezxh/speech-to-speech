@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session
 
 from app.models.param_audit import ParamAudit
@@ -50,6 +50,7 @@ class AuditRepository:
         actor: str = "",
         action: str = "",
         result: str = "",
+        field: str = "",
         since: datetime | None = None,
         until: datetime | None = None,
         page: int = 1,
@@ -64,6 +65,11 @@ class AuditRepository:
             stmt = stmt.where(ParamAudit.action == action)
         if result:
             stmt = stmt.where(ParamAudit.result == result)
+        if field:
+            # `fields` is a JSON array of names. A LIKE on its text form works on
+            # both SQLite and Postgres without a JSON path operator, and the
+            # quotes keep `stt.language` from matching `stt.language_variant`.
+            stmt = stmt.where(cast(ParamAudit.fields, String).like(f'%"{field}"%'))
         if since is not None:
             stmt = stmt.where(ParamAudit.at >= since)
         if until is not None:

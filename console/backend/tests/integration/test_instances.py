@@ -1,0 +1,103 @@
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.config import console as console_settings
+from app.db.database import get_db
+from app.main import create_app
+from app.repositories.user_repository import UserRepository
+from app.services import pool, process_probe
+from app.services.auth_service import hash_password
+
+
+class _RunningProbe:
+    def state(self, name):
+        return process_probe.ProcessInfo(name=name, running=True, pid=42, state="RUNNING")
+
+
+@pytest.fixture
+def client(db_session, monkeypatch, tmp_path):
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html></html>", encoding="utf-8")
+    monkeypatch.setattr("app.main.console_settings.static_dir", str(dist))
+    monkeypatch.setattr(console_settings, "param_catalog_path", str(tmp_path / "missing.yaml"))
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: db_session
+    UserRepository(db_session).create("alice", hash_password("correct-horse"), "admin")
+    process_probe.set_probe(process_probe.NullProbe("test has no supervisor"))
+    yield TestClient(app)
+    process_probe.set_probe(None)
+
+
+def _auth(client):
+    tokens = client.post(
+        "/api/v1/auth/login", json={"username": "alice", "password": "correct-horse"}
+    ).json()["data"]
+    return {"Authorization": f"Bearer {tokens['accessToken']}"}
+
+
+def test_instances_keeps_200_when_the_pool_is_down(client, monkeypatch):
+    monkeypatch.setattr(
+        pool, "read_pool", lambda timeout=5.0: pool.PoolState(reachable=False, error="refused")
+    )
+    response = client.get("/api/v1/instances", headers=_auth(client))
+    assert response.status_code == 200
+    data = response.json()["data"]
+    # A.10: a degraded read is the whole point of this page.
+    assert data["pool"] is None
+    assert "pool_unreachable" in data["alerts"]
+    assert "pipeline_stopped" in data["alerts"]
+    assert data["container"]["name"] == console_settings.supervisor_program
+
+
+def test_instances_exposes_units_and_usage(client, monkeypatch):
+    state = pool.PoolState(
+        reachable=True,
+        size=2,
+        in_use=1,
+        units=(
+            {"index": 0, "state": "active", "session_id": "s1"},
+            {"index": 1, "state": "idle", "session_id": None},
+        ),
+    )
+    monkeypatch.setattr(pool, "read_pool", lambda timeout=5.0: state)
+    monkeypatch.setattr(pool, "read_usage", lambda timeout=5.0: {"turns": 3})
+
+    data = client.get("/api/v1/instances", headers=_auth(client)).json()["data"]
+    assert data["pool"] == {
+        "size": 2,
+        "inUse": 1,
+        "units": [
+            {"index": 0, "state": "active", "sessionId": "s1"},
+            {"index": 1, "state": "idle", "sessionId": None},
+        ],
+    }
+    assert data["usage"] == {"turns": 3}
+    assert data["alerts"] == ["pipeline_stopped"]
+
+
+def test_status_reports_the_environment_it_is_running_in(client, monkeypatch):
+    monkeypatch.delenv("S2S_INTERNAL_TOKEN", raising=False)
+    monkeypatch.setattr(
+        pool, "read_pool", lambda timeout=5.0: pool.PoolState(reachable=False, error="refused")
+    )
+    data = client.get("/api/v1/status", headers=_auth(client)).json()["data"]
+    assert data["db"] == "ok"
+    assert data["pipeline"] == "unreachable"
+    assert data["internalTokenConfigured"] is False
+    assert data["validatorMode"] in ("runtime", "structural")
+    assert data["profile"] == "prod"
+
+
+def test_status_sees_a_configured_internal_token(client, monkeypatch):
+    monkeypatch.setenv("S2S_INTERNAL_TOKEN", "tok")
+    monkeypatch.setattr(
+        pool, "read_pool", lambda timeout=5.0: pool.PoolState(reachable=True, size=1)
+    )
+    process_probe.set_probe(_RunningProbe())
+    data = client.get("/api/v1/status", headers=_auth(client)).json()["data"]
+    assert data["internalTokenConfigured"] is True
+    assert data["pipeline"] == "ok"

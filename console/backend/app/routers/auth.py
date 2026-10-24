@@ -8,7 +8,7 @@ from app.core.security import CurrentUser, create_token, decode_token, require_u
 from app.deps import DbSession
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import LoginRequest, RefreshRequest
-from app.schemas.common import ok
+from app.schemas.common import iso_utc, ok
 from app.services.auth_service import throttle, verify_password
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
@@ -59,6 +59,6 @@ def me(user: CurrentUser = Depends(require_user), db: DbSession = None):
         {
             "username": row.username,
             "role": row.role,
-            "lastLoginAt": row.last_login_at.isoformat().replace("+00:00", "Z") if row.last_login_at else None,
+            "lastLoginAt": iso_utc(row.last_login_at),
         }
     )

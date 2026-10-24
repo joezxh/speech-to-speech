@@ -9,9 +9,18 @@ def register_api_routers(app: FastAPI) -> None:
     /api/v1 (JWT), /api (anonymous), /v1 (reverse proxy) — never reordered,
     because the SPA catch-all is registered after this call returns.
     """
-    from app.routers import auth, catalog, health, profiles  # noqa: PLC0415 - import cycle avoidance
+    from app.routers import (  # noqa: PLC0415 - import cycle avoidance
+        auth,
+        catalog,
+        health,
+        instances,
+        profiles,
+        status,
+    )
 
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(catalog.router)
     app.include_router(profiles.router)
+    app.include_router(instances.router)
+    app.include_router(status.router)
