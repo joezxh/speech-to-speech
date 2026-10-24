@@ -158,6 +158,50 @@ PRO 成员始终无限。开箱即用的 `cerebras`、`HuggingFaceM4`、`smolage
 
 localStorage 键以 `s2s.ws.*` 为命名空间（外加用于传输选择的 `s2s.transport`，以及用于设备的 `s2s.audio.inputId` / `s2s.audio.outputId`）。
 
+## 部署参数控制台（`console.html`）
+
+`console.html` 是同源托管的运维页面，后端是 `param_api.py` + `param_platform/`（挂在 `/admin/*`）。它把「改参数 → 渲染 YAML → 重建容器 → 探活 `/v1/pool` → 记版本与审计」串成一条链，所以页面上的「发布」是真的重建容器，不是写文件。
+
+| 页签 | 端点 | 行为 |
+|------|------|------|
+| 参数 | `GET /admin/catalog`、`GET/POST/DELETE /admin/profiles/{p}/draft` | 草稿是 **patch**：只提交改动过的字段，密钥回显为 `***` 且原样提交视为「不改」 |
+| 会话 | `POST /admin/sessions/update` | 只热更 4 个字段（`instructions`、`audio.input.turn_detection`、`audio.input.transcription.language`、`extensions`）；其余必须走发布 |
+| 版本 | `GET /admin/profiles/{p}/versions`、`POST /admin/profiles/{p}/rollback` | 回滚写成一个**新版本**，旧版本永不删除 |
+| 实例 | `GET /admin/instances` | 容器状态 + `/v1/pool` 的真实 `size` / `in_use` / 每 unit 状态；异常仍是 200 并带 `alerts` |
+| 审计 | `GET /admin/profiles/{p}/audit` | 只留字段名，不留值（提示词不进审计表） |
+
+### `parameter-catalog.yaml` 的落位约定
+
+`param_platform.catalog.default_path()` 按顺序取**第一个可读**的路径：
+
+1. `$PARAM_CATALOG_PATH`
+2. `<应用目录>/catalog/parameter-catalog.yaml`
+3. `<应用目录>/../docs/parameter-catalog.yaml`
+
+第 3 条只在源码树里成立：仓库里那份在 `speech-to-speech-src/docs/parameter-catalog.yaml`（`parameter-catalog.md` 是人读版本）。所以**本地 `uvicorn server:app` 开箱即有目录**；而镜像的构建上下文就是 `demo/`，`../docs` 进不去，容器里必须显式选一种落地方式（`Dockerfile` 末尾有同一份说明）：
+
+| 方式 | 做法 | 适用 |
+|------|------|------|
+| 烘进镜像 | `cp ../docs/parameter-catalog.yaml catalog/`，再打开 `Dockerfile` 里被注释的 `COPY catalog/parameter-catalog.yaml /app/catalog/…` | 发布镜像、长期部署 |
+| 运行期挂载 | `-v <repo>/docs/parameter-catalog.yaml:/app/catalog/parameter-catalog.yaml:ro` | 不想重建镜像 |
+| 不带 | 页面照常打开，`/admin/catalog` 返回 `503 catalog_unavailable` 并显示 hint；版本 / 审计 / 实例三个只读视图仍可用 | 只要语音 demo |
+
+`COPY` 默认保持注释：文件缺失会让 `docker build` 直接失败，而只跑语音 demo 的部署不该被控制台拖累。
+
+### 控制台相关的环境变量
+
+| 变量 | 默认 | 作用 |
+|------|------|------|
+| `ADMIN_TOKEN` | 空 | 写操作令牌。为空时写接口一律 `503 admin_disabled`，只读视图仍可匿名访问 |
+| `OPERATOR_TOKEN` | 空 | 第二角色：只能改 `basic` / `advanced` 参数，不能发布 / 回滚 / 热更 |
+| `PARAM_CONFIG_DIR` | `<repo>/config`（镜像内 `/config`） | profile 目录，一个 `<profile>.yaml` + 可选 `<profile>.env` |
+| `PARAM_DB_PATH` | `/data/s2s-params.sqlite3`，否则 `demo/s2s-params.sqlite3` | SQLite：草稿 / 版本 / 审计 |
+| `PARAM_COMPOSE_FILE` / `PARAM_COMPOSE_SERVICE` | 空 | 发布时重建哪个容器；为空则发布被拒（`compose_unavailable`） |
+| `PARAM_POOL_URL` | `http://127.0.0.1:8765` | 发布与实例页探活的 `/v1/pool` |
+| `PARAM_VRAM_GB` | 空 = 跳过 | 显存预算上限；不设时渲染只做结构校验，并明确告知「预算未检查」 |
+| `PARAM_PIPELINE_VRAM_GB` | 内置常量 | 单条 pipeline 的显存估算 |
+| `S2S_ADMIN_TOKEN` | 从 `<profile>.env` 读 | 链 B 转发给 pipeline 自身 `/admin/sessions/update` 的令牌 |
+
 ## 文件
 
 | 文件 | 角色 |
@@ -167,8 +211,18 @@ localStorage 键以 `s2s.ws.*` 为命名空间（外加用于传输选择的 `s2
 | `ui/chat.js` | `ChatView`：历史面板、短暂气泡、转写 / 工具流式、用户录音回放 |
 | `ui/account.js` | `Account`：HF 登录 chip + 弹窗、每日上限模态 |
 | `ui/dom.js` | 共享辅助：`$`、`escHtml`、`truncateError`、`DEBUG` |
+| `console.html` / `console.css` | 部署参数控制台页面（5 个页签：参数 / 会话 / 版本 / 实例 / 审计） |
+| `ui/console/app.js` | 控制台外壳：profile 选择、状态胶囊、页签切换、令牌弹窗、toast |
+| `ui/console/params.js` | 参数页：左侧目录树 + 右侧草稿（patch 语义、`***` 密钥、校验结果） |
+| `ui/console/sessions.js` | 会话页（热更链 B）：只提交上面那四个字段，服务端错误码翻成人话 |
+| `ui/console/versions.js` | 版本页：append-only 列表 + 回滚（回滚本身写成一个新版本） |
+| `ui/console/instances.js` | 实例页：`compose ps` + `/v1/pool` 的真实状态，读不到也照样渲染 |
+| `ui/console/audit.js` | 审计页：操作人 / 版本 / 结果 / 耗时 / 只留字段名的详情 |
+| `ui/console/api.js` / `ui/console/html.js` | `/admin/*` 客户端（令牌 + `X-Operator` + A.0 错误体）与转义模板 |
 | `auth.py` | HF OAuth + 每请求身份（层级、哈希密钥） |
 | `limiter.py` | SQLite 每日本地对话时长预算（分块的服务器时钟预留） |
+| `param_api.py` | `/admin/*` HTTP 层：鉴权、profile 校验、密钥掩码、调用一个流程函数 |
+| `param_platform/` | 发布链的实现：目录解析、YAML 渲染/校验、草稿与版本存储、compose 重建、热更新 |
 | `s2s-realtime-client.js` | 围绕一个 Agents SDK `RealtimeSession` 及其现成 WebSocket / WebRTC 传输的窄 demo 适配器 |
 | `package.json` / `package-lock.json` | 精确的官方 Agents SDK 和浏览器测试依赖固定版本 |
 | `ws/codec.js` | base64 <-> PCM 辅助 + 转写提取（纯函数） |

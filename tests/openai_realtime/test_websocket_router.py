@@ -1997,6 +1997,113 @@ class TestPool:
             assert data["total_errors"] == 3
 
 
+# ===================================================================
+# Chain B: the admin hot update (spec §5, §11.2)
+# ===================================================================
+
+ADMIN_TOKEN = "hot-update-token"
+
+
+def _admin_post(client, body, token: str = ADMIN_TOKEN):
+    return client.post(
+        "/admin/sessions/update",
+        json=body,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+
+class TestAdminHotUpdate:
+    """Changing the sessions that are open, without a restart.
+
+    The isolation assertions rely on message *content* rather than on a timeout:
+    a leaked event stays in the receiving websocket's queue, so the next
+    `receive_json()` on the wrong connection returns the previous call's payload
+    and the id it names fails the comparison.
+    """
+
+    def test_an_unconfigured_token_disables_the_route(self, monkeypatch):
+        monkeypatch.delenv("S2S_ADMIN_TOKEN", raising=False)
+        app = create_app(pool=[_make_unit(0)], stop_event=ThreadingEvent())
+        with TestClient(app) as client:
+            response = _admin_post(client, {"session": {"instructions": "x"}})
+        # Fail closed: unset must never mean "no authentication".
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "admin_disabled"
+
+    def test_a_wrong_token_is_refused(self, monkeypatch):
+        monkeypatch.setenv("S2S_ADMIN_TOKEN", ADMIN_TOKEN)
+        app = create_app(pool=[_make_unit(0)], stop_event=ThreadingEvent())
+        with TestClient(app) as client:
+            response = _admin_post(
+                client, {"session": {"instructions": "x"}}, token="not-the-token"
+            )
+        assert response.status_code == 401
+        assert response.json()["error"]["code"] == "unauthorized"
+
+    def test_scope_session_touches_one_connection_only(self, monkeypatch):
+        monkeypatch.setenv("S2S_ADMIN_TOKEN", ADMIN_TOKEN)
+        pool = [_make_unit(0), _make_unit(1)]
+        app = create_app(pool=pool, stop_event=ThreadingEvent())
+        with TestClient(app) as client:
+            with client.websocket_connect("/v1/realtime") as ws1:
+                sid1 = ws1.receive_json()["session"]["id"]
+                with client.websocket_connect("/v1/realtime") as ws2:
+                    sid2 = ws2.receive_json()["session"]["id"]
+                    assert sid1 != sid2
+
+                    first = _admin_post(
+                        client,
+                        {"scope": "session", "target": sid1, "session": {"instructions": "只改第一条"}},
+                    )
+                    assert first.status_code == 200
+                    assert first.json() == {"updated": [sid1], "failed": []}
+                    updated = ws1.receive_json()
+                    assert updated["type"] == "session.updated"
+                    assert updated["session"]["instructions"] == "只改第一条"
+
+                    second = _admin_post(
+                        client,
+                        {"scope": "session", "target": sid2, "session": {"instructions": "只改第二条"}},
+                    )
+                    assert second.json() == {"updated": [sid2], "failed": []}
+                    updated = ws2.receive_json()
+                    assert updated["session"]["id"] == sid2
+                    assert updated["session"]["instructions"] == "只改第二条"
+
+    def test_scope_pipeline_reaches_the_unit_with_that_index(self, monkeypatch):
+        monkeypatch.setenv("S2S_ADMIN_TOKEN", ADMIN_TOKEN)
+        pool = [_make_unit(0), _make_unit(1)]
+        app = create_app(pool=pool, stop_event=ThreadingEvent())
+        with TestClient(app) as client:
+            with client.websocket_connect("/v1/realtime") as ws1:
+                sid1 = ws1.receive_json()["session"]["id"]
+                with client.websocket_connect("/v1/realtime") as ws2:
+                    sid2 = ws2.receive_json()["session"]["id"]
+                    response = _admin_post(
+                        client,
+                        {"scope": "pipeline", "target": 1, "session": {"instructions": "第二个 pipeline"}},
+                    )
+                    assert response.json() == {"updated": [sid2], "failed": []}
+                    assert ws2.receive_json()["session"]["instructions"] == "第二个 pipeline"
+                    assert sid1 != sid2
+
+    def test_an_unknown_scope_is_refused(self, monkeypatch):
+        monkeypatch.setenv("S2S_ADMIN_TOKEN", ADMIN_TOKEN)
+        app = create_app(pool=[_make_unit(0)], stop_event=ThreadingEvent())
+        with TestClient(app) as client:
+            response = _admin_post(client, {"scope": "everyone", "session": {"instructions": "x"}})
+        assert response.status_code == 400
+        assert "scope must be one of" in response.json()["error"]["message"]
+
+    def test_an_empty_payload_changes_nothing(self, monkeypatch):
+        monkeypatch.setenv("S2S_ADMIN_TOKEN", ADMIN_TOKEN)
+        app = create_app(pool=[_make_unit(0)], stop_event=ThreadingEvent())
+        with TestClient(app) as client:
+            response = _admin_post(client, {"session": {}})
+        assert response.status_code == 400
+        assert "non-empty object" in response.json()["error"]["message"]
+
+
 @pytest.mark.parametrize("reason", ["max_output_tokens", "content_filter"])
 def test_partial_incomplete_response_drains_audio_before_done(setup, reason):
     app, _, _, output_queue, _, _, _, _, cancel_scope = setup

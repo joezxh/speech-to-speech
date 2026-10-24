@@ -1,5 +1,7 @@
 import asyncio
+import hmac
 import logging
+import os
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -9,6 +11,7 @@ from typing import Any, Callable, TypeVar
 
 import numpy as np
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse
 from openai.types.realtime import (
     ConversationItemCreateEvent,
     ConversationItemDeleteEvent,
@@ -20,6 +23,7 @@ from openai.types.realtime import (
     ResponseCreateEvent,
     SessionUpdateEvent,
 )
+from pydantic import ValidationError
 
 from speech_to_speech.api.openai_realtime.llm_proxy import LLMProxyConfig, mount_llm_proxy
 from speech_to_speech.api.openai_realtime.pipeline_unit import PipelineUnit, SessionState
@@ -507,6 +511,23 @@ async def _dispatch_client_event(
         unit.response_playing.clear()
 
 
+def _admin_error(status: int, code: str, message: str, details: Any = None) -> JSONResponse:
+    """The console API's error body, so the platform can pass it through as is.
+
+    `message` never echoes an input value: the payload this route carries can
+    hold a prompt, and a prompt is not something to put in a log line.
+    """
+    return JSONResponse(
+        status_code=status,
+        content={"error": {"code": code, "message": message, "details": details or []}},
+    )
+
+
+def _admin_bearer(request: Request) -> str:
+    header = request.headers.get("authorization", "")
+    return header[7:].strip() if header.lower().startswith("bearer ") else ""
+
+
 def create_app(
     pool: list[PipelineUnit],
     stop_event: ThreadingEvent,
@@ -672,6 +693,103 @@ def create_app(
             "in_use": sum(1 for u in pool if u.session is not None),
             "units": [_state(u) for u in pool],
         }
+
+    def _live_units(scope: Any, target: Any) -> tuple[list[PipelineUnit], JSONResponse | None]:
+        """Which units a fanout reaches (spec §5.3's three scopes).
+
+        `pool` is the enumeration rather than `service._conns`: a unit's
+        `session_id` is set by `register()` and cleared when the unit is released,
+        so the pool already is the list of conversations that are open right now.
+        """
+        live = [unit for unit in pool if unit.session is not None and unit.session.session_id]
+        if scope == "all":
+            return live, None
+        if scope == "pipeline":
+            if not isinstance(target, int) or isinstance(target, bool):
+                return [], _admin_error(400, "invalid_request_error", "scope=pipeline needs an integer target")
+            return [unit for unit in live if unit.index == target], None
+        if scope == "session":
+            if not isinstance(target, str) or not target:
+                return [], _admin_error(400, "invalid_request_error", "scope=session needs a session id")
+            return [unit for unit in live if unit.session.session_id == target], None
+        return [], _admin_error(400, "invalid_request_error", "scope must be one of: all, pipeline, session")
+
+    @app.post("/admin/sessions/update")
+    async def admin_sessions_update(request: Request) -> Response:
+        """Chain B (spec §5): change the sessions that are open, without a restart.
+
+        The payload goes to `SessionHandler.handle_session_update` untouched: the
+        deep merge, the language check and the `invalid_session_type` refusal stay
+        in the one place that owns them. A second copy of that logic here is how
+        the two drift apart.
+
+        Nothing is persisted. A hot update reaches the connections that exist at
+        this instant; a new connection reads its prompt from the YAML, so a change
+        meant to survive a restart is a publish (chain A), not this.
+        """
+        expected = os.environ.get("S2S_ADMIN_TOKEN", "").strip()
+        if not expected:
+            # Fail closed: an unset token must never mean "no authentication".
+            return _admin_error(503, "admin_disabled", "S2S_ADMIN_TOKEN is not configured on this service")
+        if not hmac.compare_digest(_admin_bearer(request).encode(), expected.encode()):
+            return _admin_error(401, "unauthorized", "a valid Bearer token is required")
+
+        try:
+            body = await request.json()
+        except ValueError:
+            return _admin_error(400, "invalid_request_error", "body must be a JSON object")
+        if not isinstance(body, dict):
+            return _admin_error(400, "invalid_request_error", "body must be a JSON object")
+
+        payload = body.get("session")
+        if not isinstance(payload, dict) or not payload:
+            return _admin_error(400, "invalid_request_error", "session must be a non-empty object")
+        try:
+            # `type` is the union's only discriminator, so a partial session (which
+            # is what a console sends) has to be labelled before it can be parsed.
+            # A caller that says `transcription` keeps it and gets the handler's
+            # own `invalid_session_type` refusal below.
+            event = SessionUpdateEvent.model_validate(
+                {"type": "session.update", "session": {"type": "realtime", **payload}}
+            )
+        except ValidationError as exc:
+            return _admin_error(
+                400,
+                "invalid_request_error",
+                f"session does not match the realtime schema ({exc.error_count()} field error(s))",
+            )
+
+        targets, refusal = _live_units(body.get("scope", "all"), body.get("target"))
+        if refusal is not None:
+            return refusal
+
+        updated: list[str] = []
+        failed: list[dict[str, str]] = []
+        for unit in targets:
+            sess = unit.session
+            # _live_units filtered on these; a release can still land between the
+            # enumeration and this line.
+            if sess is None or not sess.session_id:
+                continue
+            try:
+                error = unit.service.session.handle_session_update(sess.session_id, event)
+            except KeyError:
+                failed.append({"session_id": sess.session_id, "error": "session_gone"})
+                continue
+            if error is not None:
+                failed.append({"session_id": sess.session_id, "error": error.error.type})
+                continue
+            updated.append(sess.session_id)
+            if sess.transport is not None:
+                # The client's copy of the session is stale now; tell it, the same
+                # way a client-initiated `session.update` does.
+                try:
+                    await sess.transport.send_events([unit.service.build_session_updated(sess.session_id)])
+                except Exception as exc:
+                    logger.warning(f"session.updated undelivered to {sess.session_id}: {exc}")
+
+        logger.info(f"hot update {body.get('scope', 'all')}: {len(updated)} updated, {len(failed)} failed")
+        return JSONResponse(content={"updated": updated, "failed": failed})
 
     @app.post("/v1/realtime/calls")
     async def webrtc_calls_endpoint(request: Request) -> Response:

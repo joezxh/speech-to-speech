@@ -1,0 +1,74 @@
+# Rendered from the parameter platform; the file on disk is the live config.
+# Migrated 1:1 from the 40+ CLI flags that used to sit in docker-compose.yml.
+#
+# File mode accepts only -f/--name (cli.py:_run_file_command), so anything not
+# written here cannot be passed at run time.
+schema_version: 1
+
+blocks:
+  vad:
+    kind: vad
+    # No --vad flag was ever passed, so this is the CLI default; stating it keeps
+    # the file self-describing.
+    backend: silero
+    settings:
+      min_silence_ms: 700
+      # --no_smart_turn: pure silence detection, no Smart Turn
+      smart_turn: false
+      # Kept even though smart_turn is off: a missing path makes the backend
+      # download v3.2 at startup, which stalls an offline container.
+      smart_turn_model_path: /root/.cache/smart-turn-v3.2-cpu.onnx
+      speculative_reopen_ms: 0
+      unanswered_reopen_ms: 0
+
+  stt:
+    kind: stt
+    backend: qwen3-asr
+    settings:
+      qwen3_asr_model_name: /root/.cache/qwen3-asr-model-hf
+      qwen3_asr_device: auto
+      qwen3_asr_language: auto
+
+  llm:
+    kind: llm
+    backend: chat-completions
+    settings:
+      model_name: Qwen3-8B
+      responses_api_base_url: http://192.168.40.30/v1-openai
+      # Streaming map, not a string. A missing variable is a hard error at
+      # resolve time — there is no fallback to the default.
+      responses_api_api_key: {env: GPUSTACK_API_KEY}
+      responses_api_stream: true
+      # Empty string means "send no reasoning_effort"; null would be different.
+      responses_api_reasoning_effort: ""
+      stream_batch_sentences: 1
+      init_chat_role: system
+      init_chat_prompt: "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
+
+  tts:
+    kind: tts
+    backend: qwen3
+    settings:
+      qwen3_tts_model_name: /root/.cache/qwen3-tts-model
+      qwen3_tts_backend: torch
+      qwen3_tts_device: cuda
+      qwen3_tts_non_streaming_mode: false
+      qwen3_tts_streaming_chunk_size: 4
+
+pipelines:
+  # `--name prod` in the compose command selects this definition and nothing
+  # else: `serve` requires exactly one selected definition.
+  prod:
+    stages: {vad: vad, stt: stt, llm: llm, tts: tts}
+    num_pipelines: 1
+    options:
+      # --no_enable_live_transcription. Lives here rather than in a block because
+      # it is a ModuleArguments field, not a component setting.
+      enable_live_transcription: false
+
+runtime:
+  server:
+    # Deliberately widened: the catalog default is 127.0.0.1, unreachable from
+    # outside the container.
+    host: 0.0.0.0
+    port: 8765

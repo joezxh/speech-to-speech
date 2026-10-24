@@ -1,0 +1,2994 @@
+# S2S 部署参数目录（机器可读）
+#
+# 人读版：./parameter-catalog.md（逐参数说明、风险、样例）
+# 平台设计：./superpowers/specs/2026-10-23-s2s-deployment-parameter-platform-design.md
+# YAML 语义：./configuration.md（本文不复制其内容）
+#
+# 约束：
+#   - schema 固定为 s2s-parameter-catalog-v1
+#   - exposure=ops 的条目 risk 必填
+#   - effect=hot 的条目 impact 必须是 session
+#   - 条目按 stage, backend, name 升序排列
+#   - type=fixed 表示源码常量或编排文件写死，平台不可配置
+#   - 同一个字段在人读版多处出现时（如密钥字段），本文件只收录一次
+#   - source_priority 按优先级从高到低排列，取值限定：
+#     response|session|yaml|clientset|env|compose_file|build_arg|code|code_constant|default
+
+schema: s2s-parameter-catalog-v1
+generated_from: "speech-to-speech-src@f2267d8"
+generated_at: "2026-10-23"
+
+parameters:
+  # ────────────────────────────── stage: client ──────────────────────────────
+  - stage: client
+    backend: null
+    name: api_key
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: session
+    change_cost: restart
+    risk: "安全：凭据明文存于配置或命令行进程表"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.api_key"
+
+  - stage: client
+    backend: null
+    name: block_mic_during_playback
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "打开后失去 barge-in 打断能力"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.block_mic_during_playback"
+
+  - stage: client
+    backend: null
+    name: chunk_size
+    type: integer
+    default: 1024
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "过小抬高回调频率与 CPU，过大抬高端到端延迟"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.chunk_size"
+
+  - stage: client
+    backend: null
+    name: connection_retry_timeout_s
+    type: float
+    default: 30.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "过短会让弱网客户端频繁放弃重连"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.connection_retry_timeout_s"
+
+  - stage: client
+    backend: null
+    name: input_device
+    type: integer
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "环境绑定：设备索引在不同主机不同，容器内通常不可用"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.input_device"
+
+  - stage: client
+    backend: null
+    name: instructions
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: hot
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "覆盖服务端 init_chat_prompt；过长抬高首 token 延迟与 KV 显存"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.instructions"
+
+  - stage: client
+    backend: null
+    name: log_transcripts
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: session
+    change_cost: restart
+    risk: "隐私：客户端侧同样会留存对话文本"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.log_transcripts"
+
+  - stage: client
+    backend: null
+    name: model
+    type: string
+    default: "local"
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: both
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "本地后端可能忽略该值，改它无实际效果"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.model"
+
+  - stage: client
+    backend: null
+    name: output_device
+    type: integer
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "环境绑定：设备索引在不同主机不同，容器内通常不可用"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.output_device"
+
+  - stage: client
+    backend: null
+    name: playback_buffer_ms
+    type: float
+    default: 0.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "过大首音迟，过小 underrun 爆音；构造时校验为有限非负数"
+    source_ref: "api/openai_realtime/audio_client.py:_PLAYBACK_START_BUFFER_MS"
+
+  - stage: client
+    backend: null
+    name: print_json
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: session
+    change_cost: restart
+    risk: "大量事件打印会拖慢终端"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.print_json"
+
+  - stage: client
+    backend: null
+    name: recv_rate
+    type: integer
+    default: 16000
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "与服务端输出采样率不符会变调"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.recv_rate"
+
+  - stage: client
+    backend: null
+    name: send_rate
+    type: integer
+    default: 16000
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "与声卡能力不符会引入多次重采样开销"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.send_rate"
+
+  - stage: client
+    backend: null
+    name: tool_executor
+    type: object
+    default: null
+    choices: []
+    required: false
+    source_priority: [code]
+    effect: startup
+    exposure: ops
+    impact: session
+    change_cost: restart
+    risk: "安全：执行任意本地逻辑，平台不应接受用户提交可执行回调"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.tool_executor"
+
+  - stage: client
+    backend: null
+    name: tool_response_create
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [code]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "关闭后工具结果不回灌，模型看不到执行结果"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.tool_response_create"
+
+  - stage: client
+    backend: null
+    name: tools
+    type: array
+    default: []
+    choices: []
+    required: false
+    source_priority: [code]
+    effect: startup
+    exposure: expert
+    impact: session
+    change_cost: restart
+    risk: "工具描述错误会导致模型乱调或拒调"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.tools"
+
+  - stage: client
+    backend: null
+    name: url
+    type: string
+    default: "ws://127.0.0.1:8765/v1/realtime"
+    choices: []
+    required: true
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "地址与 host/端口映射不匹配会一直连不上；公网需 wss://"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.url"
+
+  - stage: client
+    backend: null
+    name: voice
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: hot
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "音色名由 TTS 后端决定，错名会导致合成失败或回退"
+    source_ref: "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.voice"
+
+  # ────────────────────────────── stage: deploy ──────────────────────────────
+  - stage: deploy
+    backend: null
+    name: base_image
+    type: string
+    default: "ccr.ccs.tencentyun.com/llm-basic/python-torch:cu128"
+    choices:
+      - "ccr.ccs.tencentyun.com/llm-basic/python-torch:cu128"
+      - "ccr.ccs.tencentyun.com/llm-basic/python-torch:cu130"
+    required: false
+    source_priority: [build_arg, default]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：与宿主驱动强耦合，cu128 需驱动 <13.0，cu130 需 >=580"
+    source_ref: "Dockerfile:ARG BASE_IMAGE"
+
+  - stage: deploy
+    backend: null
+    name: cache_volume
+    type: fixed
+    default: "./cache/:/root/.cache/"
+    choices: []
+    required: false
+    source_priority: [compose_file]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：不挂卷则每次重建重下权重；卷权限需与容器 UID 匹配"
+    source_ref: "docker-compose.yml:services.pipeline.volumes"
+
+  - stage: deploy
+    backend: null
+    name: dockerfile
+    type: string
+    default: "Dockerfile"
+    choices:
+      - "Dockerfile"
+      - "Dockerfile.cu130"
+      - "Dockerfile.baked"
+      - "Dockerfile.baked.cu130"
+      - "Dockerfile.local"
+      - "Dockerfile.arm64"
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：变体自带不同 CUDA 基线，选错则容器启动报驱动不匹配"
+    source_ref: "docker-compose.yml:build.dockerfile"
+
+  - stage: deploy
+    backend: null
+    name: env_reference
+    type: fixed
+    default: "{env: NAME}"
+    choices: []
+    required: false
+    source_priority: [yaml]
+    effect: startup
+    exposure: advanced
+    impact: container
+    change_cost: restart
+    risk: "引用不存在的变量不会回退默认而是报错；这是密钥不进仓的主要手段"
+    source_ref: "config.py:_expand_env"
+
+  - stage: deploy
+    backend: null
+    name: gpu_reservation
+    type: fixed
+    default: "deploy.resources.reservations.devices.capabilities=[gpu]"
+    choices: []
+    required: false
+    source_priority: [compose_file]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：无 GPU 预留时 pipeline 会退到 CPU，实时性不保"
+    source_ref: "docker-compose.yml:services.pipeline.deploy"
+
+  - stage: deploy
+    backend: null
+    name: healthcheck
+    type: fixed
+    default: "none (probe GET /v1/pool)"
+    choices: []
+    required: false
+    source_priority: [compose_file]
+    effect: startup
+    exposure: advanced
+    impact: container
+    change_cost: minutes
+    risk: "无 healthcheck 意味着 compose 不知道服务是否就绪，平台必须自己探 /v1/pool"
+    source_ref: "docker-compose.yml (no healthcheck defined)"
+
+  - stage: deploy
+    backend: null
+    name: llama_parallel_slots
+    type: integer
+    default: 1
+    choices: []
+    required: false
+    source_priority: [compose_file]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：与 -c 上下文、GPU 显存耦合，调大易 OOM"
+    source_ref: "docker-compose.yml:services.llama.command[-np]"
+
+  - stage: deploy
+    backend: null
+    name: max_config_bytes
+    type: fixed
+    default: 1048576
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：超过 1 MiB 直接拒读；平台模板体积远低于此"
+    source_ref: "_config_yaml.py:13 _MAX_BYTES"
+
+  - stage: deploy
+    backend: null
+    name: max_config_depth
+    type: fixed
+    default: 32
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：超 32 层拒绝；平台生成器不应生成深层嵌套"
+    source_ref: "_config_yaml.py:14 _MAX_DEPTH"
+
+  - stage: deploy
+    backend: null
+    name: path_field_resolution
+    type: fixed
+    default: "expand ~ then resolve relative to YAML directory"
+    choices: []
+    required: false
+    source_priority: [yaml]
+    effect: startup
+    exposure: advanced
+    impact: container
+    change_cost: restart
+    risk: "容器内路径必须用绝对路径；相对路径按 YAML 所在目录解析易错"
+    source_ref: "config.py:_PATH_FIELDS"
+
+  - stage: deploy
+    backend: null
+    name: pipeline_gpu_id
+    type: string
+    default: "1"
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：改错会用错卡或看不到 GPU；与 num_pipelines 的显存预算共同决定上限"
+    source_ref: "docker-compose.gpustack.yml:deploy.resources.reservations.devices.device_ids"
+
+  - stage: deploy
+    backend: null
+    name: pipeline_port
+    type: integer
+    default: 8765
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：只改宿主侧，容器内仍固定 8765；必须与 --port 一致对"
+    source_ref: "docker-compose.gpustack.yml:ports"
+
+  - stage: deploy
+    backend: null
+    name: restart_policy
+    type: string
+    default: "unless-stopped"
+    choices:
+      - "no"
+      - "always"
+      - "on-failure"
+      - "unless-stopped"
+    required: false
+    source_priority: [compose_file]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：平台回滚与自动拉起存在竞争，建议平台接管后固定为 no"
+    source_ref: "docker-compose.gpustack.yml:restart"
+
+  - stage: deploy
+    backend: null
+    name: schema_version
+    type: integer
+    default: 1
+    choices: [1]
+    required: true
+    source_priority: [yaml]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：写错直接拒启；平台模板应固定写入 1"
+    source_ref: "config.py:375"
+
+  - stage: deploy
+    backend: null
+    name: silero_vad_volume
+    type: fixed
+    default: "../.silero-dl2/silero-vad-master:/opt/silero-vad:ro"
+    choices: []
+    required: false
+    source_priority: [compose_file]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：缺该卷则回退联网下载，离线环境下启动挂掉"
+    source_ref: "docker-compose.yml:services.pipeline.volumes"
+
+  - stage: deploy
+    backend: null
+    name: top_level_keys
+    type: fixed
+    default: "[schema_version, runtime, blocks, pipelines]"
+    choices: []
+    required: false
+    source_priority: [yaml]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：多余键被拒（无向前兼容），平台模板需严格对齐"
+    source_ref: "config.py:374"
+
+  # ────────────────────────────── stage: env ──────────────────────────────
+  - stage: env
+    backend: null
+    name: AUTH_DEBUG
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "隐私：调试日志可能落盘用户身份信息"
+    source_ref: "demo/auth.py:89"
+
+  - stage: env
+    backend: null
+    name: GPUSTACK_API_KEY
+    type: string
+    default: "not-needed"
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "安全：写入 .env 后必须限制文件权限，不得入仓"
+    source_ref: ".env.gpustack.example:GPUSTACK_API_KEY"
+
+  - stage: env
+    backend: null
+    name: GPUSTACK_BASE_URL
+    type: string
+    default: "http://192.168.40.30/v1-openai"
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：错地址则首轮回复直接报错；平台应先用 /v1/models 探活"
+    source_ref: ".env.gpustack.example:GPUSTACK_BASE_URL"
+
+  - stage: env
+    backend: null
+    name: GPUSTACK_MODEL
+    type: string
+    default: "Qwen3-8B"
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "名称与网关注册名不匹配会 404"
+    source_ref: ".env.gpustack.example:GPUSTACK_MODEL"
+
+  - stage: env
+    backend: null
+    name: HF_ENDPOINT
+    type: string
+    default: "https://hf-mirror.com"
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：镜像站不可达时下载卡住；与离线变量互斥优先"
+    source_ref: "docker-compose.gpustack.yml:environment"
+
+  - stage: env
+    backend: null
+    name: HF_HUB_ENABLE_PROGRESS_BARS
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：纯日志噪声控制，无功能风险"
+    source_ref: "docker-compose.gpustack.yml:environment"
+
+  - stage: env
+    backend: null
+    name: HF_HUB_OFFLINE
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：置 1 后未缓存的权重直接失败，报 LocalEntryNotFound"
+    source_ref: "docker-compose.yml:services.pipeline.environment"
+
+  - stage: env
+    backend: null
+    name: MODELSCOPE_ENDPOINT
+    type: string
+    default: "https://modelscope.cn"
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：仅影响 ModelScope 拉取路径"
+    source_ref: "docker-compose.gpustack.yml:environment"
+
+  - stage: env
+    backend: null
+    name: MODEL_METRICS_LOG
+    type: string
+    default: "model_metrics.log"
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "环境绑定：容器内相对路径落在工作目录，未挂卷则随容器销毁丢失"
+    source_ref: "utils/model_monitor.py:50"
+
+  - stage: env
+    backend: null
+    name: MODEL_METRICS_LOG_BACKUPS
+    type: integer
+    default: 5
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "环境绑定：份数 × 单文件上限 = 磁盘占用上限，需与卷容量匹配"
+    source_ref: "utils/model_monitor.py:52"
+
+  - stage: env
+    backend: null
+    name: MODEL_METRICS_LOG_MAX_BYTES
+    type: integer
+    default: 20971520
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "环境绑定：过小导致高频滚动，过大占满磁盘"
+    source_ref: "utils/model_monitor.py:51"
+
+  - stage: env
+    backend: null
+    name: OPENAI_API_KEY
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "安全：全局变量会隐式影响多个后端，平台应改用显式 *_api_key"
+    source_ref: "STT/openai_compatible_handler.py"
+
+  - stage: env
+    backend: null
+    name: RTC_ICE_SERVERS
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "环境绑定：NAT/防火墙下需自建 TURN，否则浏览器端连不通"
+    source_ref: "demo/server.py"
+
+  - stage: env
+    backend: null
+    name: SERPER_API_KEY
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "安全：泄漏等于泄漏搜索额度"
+    source_ref: "demo/server.py"
+
+  - stage: env
+    backend: null
+    name: TOKENIZERS_PARALLELISM
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：仅影响警告与 fork 行为，无功能风险"
+    source_ref: "docker-compose.yml:services.pipeline.environment"
+
+  - stage: env
+    backend: null
+    name: TRANSFORMERS_OFFLINE
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [env]
+    effect: startup
+    exposure: ops
+    impact: container
+    change_cost: minutes
+    risk: "环境绑定：置 1 后未缓存的权重直接失败"
+    source_ref: "docker-compose.yml:services.pipeline.environment"
+
+  - stage: env
+    backend: null
+    name: UNLIMITED_ORGS
+    type: string
+    default: "cerebras,huggingfacem4,smolagents,pollen-robotics"
+    choices: []
+    required: false
+    source_priority: [env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "安全：白名单组织绕开全部配额，误加等于开放无限用量"
+    source_ref: "demo/auth.py:47"
+
+  - stage: env
+    backend: null
+    name: USAGE_HASH_SECRET
+    type: string
+    default: "<random 32 bytes per process>"
+    choices: []
+    required: false
+    source_priority: [env, code_constant]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "安全：不显式设置则每次重启换密钥，历史 user_key 全部失配、配额记录失效"
+    source_ref: "demo/limiter.py:50"
+
+  # ────────────────────────────── stage: llm / backend: null ──────────────────────────────
+  - stage: llm
+    backend: null
+    name: chat_size
+    type: integer
+    default: 30
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "过大抬上下文显存；过小丢失多轮记忆"
+    source_ref: "arguments_classes/language_model_base_arguments.py:chat_size"
+
+  - stage: llm
+    backend: null
+    name: compact_history
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "开启后每轮可能多一次 LLM 调用（后台摘要旧轮次）"
+    source_ref: "arguments_classes/language_model_base_arguments.py:compact_history"
+
+  - stage: llm
+    backend: null
+    name: enable_lang_prompt
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "每轮追加语言指令会略增 token 与延迟"
+    source_ref: "arguments_classes/language_model_base_arguments.py:enable_lang_prompt"
+
+  - stage: llm
+    backend: null
+    name: http_retry_policy
+    type: fixed
+    default: "single attempt, no retry"
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：无重试意味着瞬时网络抖动直接失败，平台侧需提供健康检查与重启"
+    source_ref: "LLM/base_openai_compatible_language_model.py"
+
+  - stage: llm
+    backend: null
+    name: init_chat_prompt
+    type: string
+    default: "You are a helpful and friendly AI assistant. You are polite, respectful, and aim to provide concise responses of less than 20 words."
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: both
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "过长抬高首 token 延迟与 KV 显存；入库前须脱敏"
+    source_ref: "arguments_classes/language_model_base_arguments.py:init_chat_prompt"
+
+  - stage: llm
+    backend: null
+    name: init_chat_role
+    type: string
+    default: "system"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "非 system 可能被部分 chat template 忽略"
+    source_ref: "arguments_classes/language_model_base_arguments.py:init_chat_role"
+
+  - stage: llm
+    backend: null
+    name: model_name
+    type: string
+    default: "Qwen/Qwen3.5-4B"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "模型越大显存越高；远端模型名须与 provider 完全一致"
+    source_ref: "arguments_classes/language_model_base_arguments.py:model_name"
+
+  - stage: llm
+    backend: null
+    name: request_timeout_s
+    type: fixed
+    default: 20.0
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "不可配置；20s 后强制结束本轮回复，长回答可能被截断（connect=min(10.0, x)）"
+    source_ref: "LLM/base_openai_compatible_language_model.py:196"
+
+  - stage: llm
+    backend: null
+    name: stream_batch_sentences
+    type: integer
+    default: 3
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "越大首音越慢（默认 3 句）；1 为低延迟推荐"
+    source_ref: "arguments_classes/language_model_base_arguments.py:stream_batch_sentences"
+
+  - stage: llm
+    backend: null
+    name: user_role
+    type: string
+    default: "user"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "与模型 chat template 不匹配会降低指令遵循"
+    source_ref: "arguments_classes/language_model_base_arguments.py:user_role"
+
+  # ────────────────────────────── stage: llm / backend: chat-completions ──────────────────────────────
+  - stage: llm
+    backend: chat-completions
+    name: responses_api_reasoning_effort
+    type: string
+    default: null
+    choices: [null, none, low, medium, high]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "为 null 时回退到 disable_thinking 行为（enable_thinking=false）"
+    source_ref: "arguments_classes/chat_completions_language_model_arguments.py:21"
+
+  # ────────────────────────────── stage: llm / backend: responses-api ──────────────────────────────
+  - stage: llm
+    backend: responses-api
+    name: model_name
+    type: string
+    default: "gpt-5.6-terra"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "默认 gpt-5.6-terra 不支持音频输入；stt=none 时必须显式换成支持音频的模型"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:9"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_api_key
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "安全：平台只写不读，回显 ***；泄漏等于泄漏上游额度"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:16"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_audio_content_type
+    type: string
+    default: "input_audio"
+    choices: [input_audio, audio_url]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "提供商只接其中一种，选错报 400"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:54"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_audio_history_turns
+    type: integer
+    default: 1
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "保留越多音频，上下文 token 越高；0 表示全部替换为占位"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:61"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_audio_max_tokens
+    type: integer
+    default: 256
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "仅音频输入 LLM（stt=none）生效"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:46"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_audio_temperature
+    type: float
+    default: 0.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "仅音频输入 LLM（stt=none）生效"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:50"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_base_url
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：留空会打向公网官方 API，内网部署必须显式配置"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:20"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_disable_thinking
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "部分提供商忽略该参数，需配合 reasoning_effort 使用"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:31"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_reasoning_effort
+    type: string
+    default: "none"
+    choices: [none, low, medium, high]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "非 none 会明显抬高首 token 延迟"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:38"
+
+  - stage: llm
+    backend: responses-api
+    name: responses_api_stream
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "关闭后首音延迟显著变长"
+    source_ref: "arguments_classes/responses_api_language_model_arguments.py:24"
+
+  # ────────────────────────────── stage: llm / backend: transformers ──────────────────────────────
+  - stage: llm
+    backend: transformers
+    name: llm_device
+    type: string
+    default: "auto"
+    choices: [auto, cuda, cpu, mps]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "落 CPU 时首 token 延迟可达秒级；MLX 后端默认 mps"
+    source_ref: "arguments_classes/language_model_arguments.py:10"
+
+  - stage: llm
+    backend: transformers
+    name: llm_gen_do_sample
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "开采样后同一输入不再稳定复现"
+    source_ref: "arguments_classes/language_model_arguments.py:48"
+
+  - stage: llm
+    backend: transformers
+    name: llm_gen_max_new_tokens
+    type: integer
+    default: 1024
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "过大使长回答占满实例并抬高 KV 显存"
+    source_ref: "arguments_classes/language_model_arguments.py:34"
+
+  - stage: llm
+    backend: transformers
+    name: llm_gen_min_new_tokens
+    type: integer
+    default: 0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "非 0 会强制模型不说短句"
+    source_ref: "arguments_classes/language_model_arguments.py:38"
+
+  - stage: llm
+    backend: transformers
+    name: llm_gen_temperature
+    type: float
+    default: 0.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "与 llm_gen_do_sample 联动；采样关闭时温度无效"
+    source_ref: "arguments_classes/language_model_arguments.py:42"
+
+  - stage: llm
+    backend: transformers
+    name: llm_is_vlm
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "用文本模型打开会加载失败（会改用 AutoProcessor + AutoModelForImageTextToText）"
+    source_ref: "arguments_classes/language_model_arguments.py:52"
+
+  - stage: llm
+    backend: transformers
+    name: llm_load_in_4bit
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "显存降至 ~2.1GB，有小幅质量损失；优先级高于 8bit"
+    source_ref: "arguments_classes/language_model_arguments.py:27"
+
+  - stage: llm
+    backend: transformers
+    name: llm_load_in_8bit
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "需 bitsandbytes 与 CUDA 兼容；4B 模型显存 ~8GB 降至 ~4GB"
+    source_ref: "arguments_classes/language_model_arguments.py:20"
+
+  - stage: llm
+    backend: transformers
+    name: llm_torch_dtype
+    type: string
+    default: "float16"
+    choices: [float32, float16, bfloat16]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "float32 显存翻倍，容易 OOM"
+    source_ref: "arguments_classes/language_model_arguments.py:14"
+
+  # ────────────────────────────── stage: runtime ──────────────────────────────
+  - stage: runtime
+    backend: null
+    name: chunk_samples
+    type: fixed
+    default: 512
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：固定 512；改动影响全部下游分块假设"
+    source_ref: "api/openai_realtime/service.py:111 CHUNK_SAMPLES"
+
+  - stage: runtime
+    backend: null
+    name: cors_policy
+    type: fixed
+    default: "no CORSMiddleware installed"
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "安全：固定行为：跨域前端需与 API 同源或由反代补 CORS 头"
+    source_ref: "demo/server.py"
+
+  - stage: runtime
+    backend: null
+    name: detect_llm_output_language
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "首块过短时不下发语言码；多一次本地推理开销"
+    source_ref: "arguments_classes/module_arguments.py:detect_llm_output_language"
+
+  - stage: runtime
+    backend: null
+    name: device
+    type: string
+    default: null
+    choices: [auto, cuda, mps, cpu, npu]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "环境绑定：强制单设备会击穿各组件的 *_device 意图，可能 OOM 或落到 CPU 使延迟翻倍"
+    source_ref: "arguments_classes/module_arguments.py:device"
+
+  - stage: runtime
+    backend: null
+    name: diarization
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: minutes
+    risk: "额外模型显存；分离出错会把同一人拆成多说话人"
+    source_ref: "arguments_classes/module_arguments.py:diarization"
+
+  - stage: runtime
+    backend: null
+    name: diarization_device
+    type: string
+    default: "auto"
+    choices: [auto, cuda, mps, cpu]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "与 STT/TTS 争抢显存；受全局 device 覆盖"
+    source_ref: "arguments_classes/module_arguments.py:diarization_device"
+
+  - stage: runtime
+    backend: null
+    name: diarization_dtype
+    type: string
+    default: "float32"
+    choices: [float32, float16, bfloat16]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "float16 在部分算子下精度下降，可能误判说话人"
+    source_ref: "arguments_classes/module_arguments.py:diarization_dtype"
+
+  - stage: runtime
+    backend: null
+    name: diarization_model_name
+    type: string
+    default: null
+    choices: []
+    required: true
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "未设而开启 diarization 会启动失败（条件必填）"
+    source_ref: "arguments_classes/module_arguments.py:diarization_model_name"
+
+  - stage: runtime
+    backend: null
+    name: diarization_revision
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "固定 revision 避免上游更新导致行为漂移"
+    source_ref: "arguments_classes/module_arguments.py:diarization_revision"
+
+  - stage: runtime
+    backend: null
+    name: diarization_streaming_mode
+    type: string
+    default: "low_latency"
+    choices: [low_latency, very_low_latency, ultra_low_latency]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "越低延迟越易把一句话切成多段"
+    source_ref: "arguments_classes/module_arguments.py:diarization_streaming_mode"
+
+  - stage: runtime
+    backend: null
+    name: diarization_threshold
+    type: float
+    default: 0.5
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "过低把噪声当说话人，过高漏掉轻声轮次"
+    source_ref: "arguments_classes/module_arguments.py:diarization_threshold"
+
+  - stage: runtime
+    backend: null
+    name: enable_live_transcription
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: pipeline
+    change_cost: restart
+    risk: "开启会产生大量 partial 事件，弱网下抬高带宽"
+    source_ref: "arguments_classes/module_arguments.py:enable_live_transcription"
+
+  - stage: runtime
+    backend: null
+    name: enable_llm_proxy
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "安全：服务自身不做任何鉴权，开启即把 LLM 额度暴露给任何可达客户端"
+    source_ref: "arguments_classes/module_arguments.py:enable_llm_proxy"
+
+  - stage: runtime
+    backend: null
+    name: live_transcription_update_interval
+    type: float
+    default: 0.5
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "间隔过小抬高 CPU 与事件量"
+    source_ref: "arguments_classes/module_arguments.py:live_transcription_update_interval"
+
+  - stage: runtime
+    backend: null
+    name: llm_backend
+    type: string
+    default: "transformers"
+    choices: [transformers, mlx-lm, chat-completions, responses-api]
+    required: false
+    source_priority: [yaml, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "macOS 默认 mlx-lm，其他平台默认 transformers；能力差异由 backend_registry 校验"
+    source_ref: "arguments_classes/module_arguments.py:llm_backend"
+
+  - stage: runtime
+    backend: null
+    name: llm_proxy_connect_timeout_s
+    type: float
+    default: 10.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: process
+    change_cost: restart
+    risk: "仅约束连接；流式读无超时，上游卡住会长时间占用实例"
+    source_ref: "arguments_classes/module_arguments.py:llm_proxy_connect_timeout_s"
+
+  - stage: runtime
+    backend: null
+    name: log_level
+    type: string
+    default: "info"
+    choices: [debug, info, warning, error, critical]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: process
+    change_cost: restart
+    risk: "debug 会显著抬高 I/O 与日志体积，生产建议 info"
+    source_ref: "arguments_classes/module_arguments.py:log_level"
+
+  - stage: runtime
+    backend: null
+    name: log_transcripts
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "隐私：日志常被容器与聚合器长期保留，对话内容会比会话活得更久"
+    source_ref: "arguments_classes/module_arguments.py:log_transcripts"
+
+  - stage: runtime
+    backend: null
+    name: mac_optimal_settings
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: process
+    change_cost: restart
+    risk: "仅在 macOS 成立；在 Linux 打开会尝试加载 MLX 而失败"
+    source_ref: "arguments_classes/module_arguments.py:mac_optimal_settings"
+
+  - stage: runtime
+    backend: null
+    name: monitoring_endpoints
+    type: fixed
+    default: "GET /v1/pool, GET /v1/usage"
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: advanced
+    impact: process
+    change_cost: restart
+    risk: "平台健康检查与回滚判定复用这两个端点；池状态含 stuck 单元可识别卡死管线"
+    source_ref: "api/openai_realtime/websocket_router.py:615,639"
+
+  - stage: runtime
+    backend: null
+    name: num_pipelines
+    type: integer
+    default: 1
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "每路独占整套 handler，实测约 4.6GB 显存；硬约束 <= floor(可用显存×0.85 / 4.6GB)，超配直接 OOM"
+    source_ref: "arguments_classes/module_arguments.py:num_pipelines"
+
+  - stage: runtime
+    backend: null
+    name: pipeline_sample_rate
+    type: fixed
+    default: 16000
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：固定 16kHz；改它需改源码与全部后端适配"
+    source_ref: "api/openai_realtime/service.py:110 PIPELINE_SAMPLE_RATE"
+
+  - stage: runtime
+    backend: null
+    name: pool_reject_when_full
+    type: fixed
+    default: true
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：无排队意味着高峰期直接失败；扩容只能加 num_pipelines 或加实例"
+    source_ref: "api/openai_realtime/websocket_router.py"
+
+  - stage: runtime
+    backend: null
+    name: realtime_api_auth
+    type: fixed
+    default: "none"
+    choices: []
+    required: false
+    source_priority: [code_constant]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "安全：任何拿到 host:port 的人都能开会话、读 /v1/pool；平台必须在反代层加 token 与网络隔离"
+    source_ref: "api/openai_realtime/websocket_router.py"
+
+  - stage: runtime
+    backend: null
+    name: session.audio.input.transcription.language
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [session, default]
+    effect: hot
+    exposure: advanced
+    impact: session
+    change_cost: seconds
+    risk: "只影响该连接；值必须在 stt_supported_languages/tts_supported_languages 内，auto 需 stt_auto_reset_supported，否则 400"
+    source_ref: "api/openai_realtime/handlers/session.py:42-64"
+
+  - stage: runtime
+    backend: null
+    name: session.audio.input.turn_detection.create_response
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [session, default]
+    effect: hot
+    exposure: advanced
+    impact: session
+    change_cost: seconds
+    risk: "置 false 后停说完不再自动回复，需客户端显式触发，易被认为服务无响应"
+    source_ref: "api/openai_realtime/runtime_config.py:59-68"
+
+  - stage: runtime
+    backend: null
+    name: session.audio.input.turn_detection.interrupt_response
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [session, default]
+    effect: hot
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "置 false 后用户插话不能打断播报，体验上像卡死"
+    source_ref: "api/openai_realtime/runtime_config.py:70-88"
+
+  - stage: runtime
+    backend: null
+    name: session.extensions
+    type: list
+    default: []
+    choices: [speech_to_speech.input_audio_transcription.snapshot]
+    required: false
+    source_priority: [session, default]
+    effect: hot
+    exposure: expert
+    impact: session
+    change_cost: seconds
+    risk: "目前只识别 snapshot 一个取值；写其他值静默无效"
+    source_ref: "api/openai_realtime/runtime_config.py:90-100"
+
+  - stage: runtime
+    backend: null
+    name: session.instructions
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [session, response, default]
+    effect: hot
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "仅影响已连接会话；新连接仍读 init_chat_prompt 种子，平台必须同时改 YAML 否则重启后回退旧人设"
+    source_ref: "api/openai_realtime/handlers/session.py:24-77"
+
+  - stage: runtime
+    backend: null
+    name: stt
+    type: string
+    default: "parakeet-tdt"
+    choices: [parakeet-tdt, paraformer, sensevoice, sense_voice, whisper, faster-whisper, mlx-audio-whisper, nemotron-streaming, orukeet, parakeet-unified, openai-realtime, vllm-realtime, openai_compatible, qwen3-asr, none]
+    required: false
+    source_priority: [yaml, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "切换后端会改变模型显存与语言支持；none 需音频输入 LLM，否则校验失败"
+    source_ref: "arguments_classes/module_arguments.py:stt"
+
+  - stage: runtime
+    backend: null
+    name: torch_num_threads
+    type: integer
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: process
+    change_cost: restart
+    risk: "Silero 与 CPU STT 共用该值，调大加速 STT 但拖慢 Silero；不影响 ONNX/MLX"
+    source_ref: "arguments_classes/module_arguments.py:torch_num_threads"
+
+  - stage: runtime
+    backend: null
+    name: tts
+    type: string
+    default: "qwen3"
+    choices: [qwen3, cosyvoice, minimax, pocket, facebookmms, supertonic, omnivoice, drama3, kitten, chat-tts, kokoro, openai_compatible]
+    required: false
+    source_priority: [yaml, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "不同后端音色体系与采样率不同；切换需同步权重与缓存"
+    source_ref: "arguments_classes/module_arguments.py:tts"
+
+  - stage: runtime
+    backend: null
+    name: vad
+    type: string
+    default: "silero"
+    choices: [silero, firered]
+    required: false
+    source_priority: [yaml, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "firered 需额外可选依赖与权重目录，缺省会启动失败"
+    source_ref: "arguments_classes/vad_arguments.py:vad"
+
+  # ────────────────────────────── stage: server ──────────────────────────────
+  - stage: server
+    backend: null
+    name: host
+    type: string
+    default: "127.0.0.1"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "安全：默认仅回环；0.0.0.0 会把无鉴权的 Realtime API 暴露到网络"
+    source_ref: "arguments_classes/realtime_server_arguments.py:host"
+
+  - stage: server
+    backend: null
+    name: port
+    type: integer
+    default: 8765
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: process
+    change_cost: restart
+    risk: "环境绑定：须与 compose 端口映射 PIPELINE_PORT:8765 一致，改错则外部不可达"
+    source_ref: "arguments_classes/realtime_server_arguments.py:port"
+
+  # ────────────────────────────── stage: stt / backend: openai_compatible ──────────────────────────────
+  - stage: stt
+    backend: openai_compatible
+    name: openai_stt_api_key
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "安全：未设时隐式回退 OPENAI_API_KEY，会让「未配置」看起来像「已配置」"
+    source_ref: "arguments_classes/openai_stt_arguments.py:13"
+
+  - stage: stt
+    backend: openai_compatible
+    name: openai_stt_base_url
+    type: string
+    default: "http://localhost:8000/v1"
+    choices: []
+    required: true
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：错地址每轮都报错；建议平台先探 /v1/models"
+    source_ref: "arguments_classes/openai_stt_arguments.py:9"
+
+  - stage: stt
+    backend: openai_compatible
+    name: openai_stt_language
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "与音频不符会降低准确率"
+    source_ref: "arguments_classes/openai_stt_arguments.py:27"
+
+  - stage: stt
+    backend: openai_compatible
+    name: openai_stt_max_window_s
+    type: float
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "设置后长段会被切窗请求，增加请求数与拼接复杂度"
+    source_ref: "arguments_classes/openai_stt_arguments.py:39"
+
+  - stage: stt
+    backend: openai_compatible
+    name: openai_stt_model
+    type: string
+    default: "nvidia/parakeet-tdt-0.6b-v3"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "名称须与远端注册名完全一致"
+    source_ref: "arguments_classes/openai_stt_arguments.py:20"
+
+  - stage: stt
+    backend: openai_compatible
+    name: openai_stt_response_format
+    type: string
+    default: "json"
+    choices: [json, text, verbose_json, srt, vtt]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "不支持的格式会解析失败"
+    source_ref: "arguments_classes/openai_stt_arguments.py:31"
+
+  - stage: stt
+    backend: openai_compatible
+    name: openai_stt_timeout
+    type: float
+    default: 60.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "过小截断长语音，过大在远端故障时拖住整路会话"
+    source_ref: "arguments_classes/openai_stt_arguments.py:35"
+
+  # ────────────────────────────── stage: stt / backend: parakeet-tdt ──────────────────────────────
+  - stage: stt
+    backend: parakeet-tdt
+    name: parakeet_tdt_device
+    type: string
+    default: "auto"
+    choices: [auto, cuda, cpu]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "与 TTS 争抢显存"
+    source_ref: "arguments_classes/parakeet_tdt_arguments.py:22"
+
+  - stage: stt
+    backend: parakeet-tdt
+    name: parakeet_tdt_language
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "语言提示与音频不符会降低准确率"
+    source_ref: "arguments_classes/parakeet_tdt_arguments.py:29"
+
+  - stage: stt
+    backend: parakeet-tdt
+    name: parakeet_tdt_model_name
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "换模型需重下权重；本地路径写错启动失败"
+    source_ref: "arguments_classes/parakeet_tdt_arguments.py:15"
+
+  # ────────────────────────────── stage: stt / backend: qwen3-asr ──────────────────────────────
+  - stage: stt
+    backend: qwen3-asr
+    name: qwen3_asr_device
+    type: string
+    default: "auto"
+    choices: [auto, cuda, cpu]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "auto 在无 GPU 环境下会落到 CPU，RTF 大幅上升"
+    source_ref: "arguments_classes/qwen3_asr_stt_arguments.py:17"
+
+  - stage: stt
+    backend: qwen3-asr
+    name: qwen3_asr_gen_max_new_tokens
+    type: integer
+    default: 256
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "过小截断长句转写"
+    source_ref: "arguments_classes/qwen3_asr_stt_arguments.py:51"
+
+  - stage: stt
+    backend: qwen3-asr
+    name: qwen3_asr_language
+    type: string
+    default: "auto"
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: both
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "auto 在短句上可能误判；可被 session.update 的转录语言约束"
+    source_ref: "arguments_classes/qwen3_asr_stt_arguments.py:32"
+
+  - stage: stt
+    backend: qwen3-asr
+    name: qwen3_asr_model_name
+    type: string
+    default: "Qwen/Qwen3-ASR-0.6B-hf"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "容器内建议用绝对路径（如 /root/.cache/qwen3-asr-model-hf）"
+    source_ref: "arguments_classes/qwen3_asr_stt_arguments.py:7"
+
+  - stage: stt
+    backend: qwen3-asr
+    name: qwen3_asr_prompt
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "提示词过长抬高每段延迟"
+    source_ref: "arguments_classes/qwen3_asr_stt_arguments.py:42"
+
+  - stage: stt
+    backend: qwen3-asr
+    name: qwen3_asr_torch_dtype
+    type: string
+    default: "auto"
+    choices: [auto, float16, bfloat16, float32]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "float32 显存翻倍"
+    source_ref: "arguments_classes/qwen3_asr_stt_arguments.py:23"
+
+  # ────────────────────────────── stage: tts / backend: kokoro ──────────────────────────────
+  - stage: tts
+    backend: kokoro
+    name: kokoro_blocksize
+    type: integer
+    default: 512
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "与 CHUNK_SAMPLES=512 对齐最佳"
+    source_ref: "arguments_classes/kokoro_tts_arguments.py:35"
+
+  - stage: tts
+    backend: kokoro
+    name: kokoro_device
+    type: string
+    default: "auto"
+    choices: [auto, cuda, cpu, mps]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "CPU 可接受但并发受限"
+    source_ref: "arguments_classes/kokoro_tts_arguments.py:13"
+
+  - stage: tts
+    backend: kokoro
+    name: kokoro_lang_code
+    type: string
+    default: "b"
+    choices: [a, b]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "决定可用音色集合"
+    source_ref: "arguments_classes/kokoro_tts_arguments.py:25"
+
+  - stage: tts
+    backend: kokoro
+    name: kokoro_model_name
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "留空依赖后端默认下载，离线环境需显式路径"
+    source_ref: "arguments_classes/kokoro_tts_arguments.py:7"
+
+  - stage: tts
+    backend: kokoro
+    name: kokoro_speed
+    type: float
+    default: 1.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "过快影响可懂度"
+    source_ref: "arguments_classes/kokoro_tts_arguments.py:31"
+
+  - stage: tts
+    backend: kokoro
+    name: kokoro_voice
+    type: string
+    default: "bm_fable"
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: both
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "与 lang_code 不匹配会读错音"
+    source_ref: "arguments_classes/kokoro_tts_arguments.py:19"
+
+  # ────────────────────────────── stage: tts / backend: openai_compatible ──────────────────────────────
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_api_key
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "安全：未设时隐式回退 OPENAI_API_KEY"
+    source_ref: "arguments_classes/openai_tts_arguments.py:13"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_base_url
+    type: string
+    default: "http://localhost:8091/v1"
+    choices: []
+    required: true
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：错地址每句都失败，表现为全程静音"
+    source_ref: "arguments_classes/openai_tts_arguments.py:9"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_blocksize
+    type: integer
+    default: 512
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "与 CHUNK_SAMPLES=512 对齐最佳"
+    source_ref: "arguments_classes/openai_tts_arguments.py:57"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_instructions
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: pipeline
+    change_cost: restart
+    risk: "仅在支持风格指令的服务上生效"
+    source_ref: "arguments_classes/openai_tts_arguments.py:33"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_language
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "固定语言会覆盖自动识别"
+    source_ref: "arguments_classes/openai_tts_arguments.py:25"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_model
+    type: string
+    default: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "名称须与远端一致"
+    source_ref: "arguments_classes/openai_tts_arguments.py:17"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_response_format
+    type: string
+    default: "pcm"
+    choices: [pcm, wav]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "只支持 pcm / wav；mp3 会报错"
+    source_ref: "arguments_classes/openai_tts_arguments.py:37"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_sample_rate
+    type: integer
+    default: 24000
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "配错会变调/变速；Qwen3-TTS 固定 24000；仅对返回裸 PCM 的兼容服务生效"
+    source_ref: "arguments_classes/openai_tts_arguments.py:41"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_speed
+    type: float
+    default: 1.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "仅非流式端点生效"
+    source_ref: "arguments_classes/openai_tts_arguments.py:45"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_stream
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "非 vLLM-Omni 服务打开会报错"
+    source_ref: "arguments_classes/openai_tts_arguments.py:49"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_task_type
+    type: string
+    default: null
+    choices: [CustomVoice, VoiceDesign, Base]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "仅 vLLM-Omni 需要"
+    source_ref: "arguments_classes/openai_tts_arguments.py:29"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_timeout
+    type: float
+    default: 300.0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "过小丢句，过大拖住会话；合成超时表现为该句静音"
+    source_ref: "arguments_classes/openai_tts_arguments.py:53"
+
+  - stage: tts
+    backend: openai_compatible
+    name: openai_tts_voice
+    type: string
+    default: "aiden"
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: both
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "不存在时远端报 400 或回退默认"
+    source_ref: "arguments_classes/openai_tts_arguments.py:21"
+
+  # ────────────────────────────── stage: tts / backend: qwen3 ──────────────────────────────
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_attn_implementation
+    type: string
+    default: "eager"
+    choices: [eager, flash_attention_2, sdpa]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "flash_attention_2 需额外依赖；Jetson 必须用 eager"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:25"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_backend
+    type: string
+    default: "ggml"
+    choices: [ggml, torch]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "ggml 与 torch 权重格式不同，切换需重下；Apple Silicon 忽略此值走 mlx-audio"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:31"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_blocksize
+    type: integer
+    default: 512
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "与 CHUNK_SAMPLES=512 对齐最佳"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:131"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_device
+    type: string
+    default: "cuda"
+    choices: [cuda, auto]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "auto 在无 CUDA 时会落到 CPU，延迟不可接受"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:13"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_dtype
+    type: string
+    default: "auto"
+    choices: [auto, float16, bfloat16, float32]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "float32 显存与带宽开销翻倍"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:19"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_ggml_quantization
+    type: string
+    default: "BF16"
+    choices: [BF16, Q8_0, Q4_K_M, F32]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "Q4_K_M 显存最低但音质下降"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:37"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_gguf_codec_path
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：本地路径；必须与 talker 成对且 backend=ggml"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:49"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_gguf_talker_path
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：本地路径；必须与 codec 成对且 backend=ggml"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:43"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_instruct
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: pipeline
+    change_cost: restart
+    risk: "仅 VoiceDesign 模型生效"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:89"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_language
+    type: string
+    default: "auto"
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: both
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "auto 在混合语种下会串音；可被 session.update 覆盖"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:115"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_max_new_tokens
+    type: integer
+    default: 1536
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "过小长句被截断（约 12 token/秒音频）"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:125"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_mlx_quantization
+    type: string
+    default: "6bit"
+    choices: [bf16, 4bit, 6bit, 8bit]
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "仅 Apple Silicon 生效"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:109"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_model_name
+    type: string
+    default: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "CustomVoice / VoiceDesign / Base 三类模型可选字段不同，选错会启动失败"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:7"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_non_streaming_mode
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "关掉（=句内流式）可降首音延迟；本仓 compose 即为 false"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:103"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_parity_mode
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "关闭 CUDA graph 后吞吐下降，但可规避部分卡型的流式异常"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:99"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_ref_audio
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: minutes
+    risk: "隐私：参考音频是生物特征，入库需授权；与 ref_spk 互斥"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:61"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_ref_cache_dir
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：容器内不挂卷会导致每次重建重算音色向量"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:55"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_ref_rvq
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "依赖 ref_spk + ref_text，缺一会报错"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:73"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_ref_spk
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "与 ref_audio 互斥，同时给会报错"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:67"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_ref_text
+    type: string
+    default: "I'm confused why some people have super short timelines, yet at the same time are bullish on scaling up reinforcement learning atop LLMs. If we're actually close to a human-like learner, then this whole approach of training on verifiable outcomes."
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "必须是参考音频的逐字转写，否则克隆失真"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:79"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_speaker
+    type: string
+    default: "Aiden"
+    choices: []
+    required: false
+    source_priority: [session, yaml, env, default]
+    effect: both
+    exposure: basic
+    impact: session
+    change_cost: seconds
+    risk: "音色名不存在时后端会退到第一个可用音色"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:83"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_streaming_chunk_size
+    type: integer
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "过小抬高调度开销，过大抬高首音延迟；缺省为 faster-qwen3-tts=8 / mlx-audio=4"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:119"
+
+  - stage: tts
+    backend: qwen3
+    name: qwen3_tts_xvec_only
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "开启后音色更稳定但相似度略降"
+    source_ref: "arguments_classes/qwen3_tts_arguments.py:93"
+
+  # ────────────────────────────── stage: vad / backend: null ──────────────────────────────
+  - stage: vad
+    backend: null
+    name: audio_enhancement
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "降噪可能损伤语音细节，增加 CPU 开销"
+    source_ref: "arguments_classes/vad_arguments.py:audio_enhancement"
+
+  - stage: vad
+    backend: null
+    name: enable_realtime_transcription
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "渐进转写会增加 partial 事件与重复风险"
+    source_ref: "arguments_classes/vad_arguments.py:enable_realtime_transcription"
+
+  - stage: vad
+    backend: null
+    name: max_speech_ms
+    type: float
+    default: .inf
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "过小长段落被强制切分；默认无限（YAML null 等价）"
+    source_ref: "arguments_classes/vad_arguments.py:max_speech_ms"
+
+  - stage: vad
+    backend: null
+    name: min_silence_ms
+    type: integer
+    default: 64
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "过小频繁断句、过大迟钝；生产常用 700ms"
+    source_ref: "arguments_classes/vad_arguments.py:min_silence_ms"
+
+  - stage: vad
+    backend: null
+    name: min_speech_continuation_ms
+    type: integer
+    default: 192
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "与 min_speech_ms 配合；过大导致续说被当新轮；钳制到 [100, min_speech_ms]，0 关闭"
+    source_ref: "arguments_classes/vad_arguments.py:min_speech_continuation_ms"
+
+  - stage: vad
+    backend: null
+    name: min_speech_ms
+    type: integer
+    default: 384
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "过大会吞掉短应答（嗯、好）"
+    source_ref: "arguments_classes/vad_arguments.py:min_speech_ms"
+
+  - stage: vad
+    backend: null
+    name: realtime_processing_pause
+    type: float
+    default: 0.5
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "间隔过小抬高算力占用"
+    source_ref: "arguments_classes/vad_arguments.py:realtime_processing_pause"
+
+  - stage: vad
+    backend: null
+    name: sample_rate
+    type: integer
+    default: 16000
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "与 STT/TTS 模型采样率不匹配会变调或识别率骤降；16k 为全链路约定"
+    source_ref: "arguments_classes/vad_arguments.py:sample_rate"
+
+  - stage: vad
+    backend: null
+    name: short_segment_merge_ms
+    type: integer
+    default: 0
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "开启会增加起播延迟以等待拼接；0 关闭"
+    source_ref: "arguments_classes/vad_arguments.py:short_segment_merge_ms"
+
+  - stage: vad
+    backend: null
+    name: smart_turn
+    type: boolean
+    default: true
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: basic
+    impact: session
+    change_cost: restart
+    risk: "关闭后退回纯静音判停，交互更硬但更可预测"
+    source_ref: "arguments_classes/vad_arguments.py:smart_turn"
+
+  - stage: vad
+    backend: null
+    name: smart_turn_cpu_count
+    type: integer
+    default: 1
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "线程过多与 Silero、CPU STT 争抢"
+    source_ref: "arguments_classes/vad_arguments.py:smart_turn_cpu_count"
+
+  - stage: vad
+    backend: null
+    name: smart_turn_incomplete_delay_ms
+    type: integer
+    default: 600
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "在宽限窗口内运行；过大浪费窗口"
+    source_ref: "arguments_classes/vad_arguments.py:smart_turn_incomplete_delay_ms"
+
+  - stage: vad
+    backend: null
+    name: smart_turn_max_wait_ms
+    type: integer
+    default: 2000
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "过大拖慢回答提交"
+    source_ref: "arguments_classes/vad_arguments.py:smart_turn_max_wait_ms"
+
+  - stage: vad
+    backend: null
+    name: smart_turn_model_path
+    type: string
+    default: null
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：容器内 ONNX 路径；缺省会联网下载 v3.2"
+    source_ref: "arguments_classes/vad_arguments.py:smart_turn_model_path"
+
+  - stage: vad
+    backend: null
+    name: smart_turn_threshold
+    type: float
+    default: 0.5
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: session
+    change_cost: restart
+    risk: "越高越倾向等待，容易显得迟钝"
+    source_ref: "arguments_classes/vad_arguments.py:smart_turn_threshold"
+
+  - stage: vad
+    backend: null
+    name: speculative_reopen_ms
+    type: integer
+    default: 800
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "过大导致重复转写与重复气泡（本项目已设 0 规避）；0 关闭"
+    source_ref: "arguments_classes/vad_arguments.py:speculative_reopen_ms"
+
+  - stage: vad
+    backend: null
+    name: speech_pad_ms
+    type: integer
+    default: 500
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "过小切掉首字，过大引入静音延迟"
+    source_ref: "arguments_classes/vad_arguments.py:speech_pad_ms"
+
+  - stage: vad
+    backend: null
+    name: thresh
+    type: float
+    default: 0.6
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: pipeline
+    change_cost: restart
+    risk: "过高漏检开头，过低误触噪首，直接影响断句"
+    source_ref: "arguments_classes/vad_arguments.py:thresh"
+
+  - stage: vad
+    backend: null
+    name: unanswered_reopen_ms
+    type: integer
+    default: 7000
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: advanced
+    impact: session
+    change_cost: restart
+    risk: "受 Smart Turn 上限钳制；过大拖慢提交"
+    source_ref: "arguments_classes/vad_arguments.py:unanswered_reopen_ms"
+
+  # ────────────────────────────── stage: vad / backend: firered ──────────────────────────────
+  - stage: vad
+    backend: firered
+    name: vad_firered_model_dir
+    type: string
+    default: null
+    choices: []
+    required: true
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "环境绑定：容器内路径；相对路径按 YAML 目录解析，错路径启动失败（vad=firered 时必填）"
+    source_ref: "arguments_classes/vad_arguments.py:vad_firered_model_dir"
+
+  - stage: vad
+    backend: firered
+    name: vad_firered_use_gpu
+    type: boolean
+    default: false
+    choices: []
+    required: false
+    source_priority: [yaml, env, default]
+    effect: startup
+    exposure: expert
+    impact: pipeline
+    change_cost: restart
+    risk: "占用 GPU 显存，与 STT/TTS 争抢"
+    source_ref: "arguments_classes/vad_arguments.py:vad_firered_use_gpu"
+
+
+
+
+

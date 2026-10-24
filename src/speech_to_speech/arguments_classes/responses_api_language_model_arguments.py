@@ -65,3 +65,11 @@ class ResponsesApiLanguageModelHandlerArguments(LanguageModelBaseArguments):
             "a role-preserving placeholder. Set to 0 to replace every completed audio turn. Default is 1."
         },
     )
+    responses_api_provider_unavailable_message: Optional[str] = field(
+        default=None,
+        metadata={
+            "help": "Spoken message used when the upstream LLM endpoint is unavailable (HTTP 5xx, connection "
+            "failure) instead of the generic provider-failure fallback. The upstream status code and response "
+            "body are always logged regardless of this setting. Default is None (use the generic fallback)."
+        },
+    )

@@ -230,7 +230,20 @@ dmypy.json
 cover/
 .tox/
 uv.lock
+# `pytest --basetemp` on Windows: the session-end cleanup fails with WinError 5
+# and leaves the directory behind, so keep it out of `git status`.
+.pytest-tmp/
 
 # JavaScript dependencies
 node_modules/
 /cache/
+
+# Parameter platform runtime state (demo/param_platform). Of `config/`, only
+# `prod.yaml` and `prod.env.example` are meant to be committed: the rendered
+# `.env` holds credentials, and every backup and temp file the publish flow
+# writes is named after it.
+config/*.env
+config/*.env.tmp
+config/*.yaml.tmp
+config/*.bak.*
+demo/s2s-params.sqlite3*

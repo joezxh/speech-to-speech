@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>部署参数控制台 · S2S</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="console.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <h1>部署参数控制台</h1>
+        <p class="brand-sub">config/&lt;profile&gt;.yaml · 每次发布一个新版本</p>
+      </div>
+      <div class="topbar-tools">
+        <label class="field">
+          <span>profile</span>
+          <select id="profile"></select>
+        </label>
+        <span id="status-pill" class="pill">未连接</span>
+        <button id="token-btn" class="btn ghost" type="button">令牌</button>
+      </div>
+    </header>
+
+    <div id="banner" class="banner" hidden></div>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab" data-tab="params" role="tab" aria-selected="true">参数</button>
+      <button class="tab" data-tab="sessions" role="tab" aria-selected="false">会话</button>
+      <button class="tab" data-tab="versions" role="tab" aria-selected="false">版本</button>
+      <button class="tab" data-tab="instances" role="tab" aria-selected="false">实例</button>
+      <button class="tab" data-tab="audit" role="tab" aria-selected="false">审计</button>
+    </nav>
+
+    <main>
+      <!-- 参数：目录 + 草稿 ------------------------------------------------->
+      <section class="panel params" data-panel="params">
+        <aside class="catalog">
+          <div class="catalog-tools">
+            <input id="catalog-search" type="search" placeholder="搜索名称、说明或 backend" autocomplete="off" />
+            <select id="catalog-exposure" title="显示到哪一级参数">
+              <option value="basic">basic</option>
+              <option value="advanced" selected>advanced</option>
+              <option value="expert">expert</option>
+              <option value="ops">ops</option>
+            </select>
+          </div>
+          <p id="catalog-count" class="hint"></p>
+          <div id="catalog-tree" class="tree"></div>
+        </aside>
+
+        <section class="editor">
+          <div class="editor-head">
+            <h2>草稿</h2>
+            <span id="draft-meta" class="hint"></span>
+          </div>
+          <div id="draft-rows" class="rows"></div>
+          <p id="draft-empty" class="empty">左侧目录点一个参数，它就会出现在这里。</p>
+          <div id="validation" class="validation" hidden></div>
+          <footer class="editor-actions">
+            <input id="note" type="text" maxlength="500" placeholder="发布说明（可选，会写进版本历史）" />
+            <button id="discard" class="btn ghost" type="button">放弃草稿</button>
+            <button id="save" class="btn" type="button">保存草稿</button>
+            <button id="publish" class="btn primary" type="button">发布</button>
+          </footer>
+        </section>
+      </section>
+
+      <!-- 会话：链路 B 热更新 ------------------------------------------------>
+      <section class="panel sessions" data-panel="sessions" hidden>
+        <div class="card">
+          <h2>热更新当前会话</h2>
+          <p class="hint">
+            只改已经连上的连接。新连接读的是 YAML，所以想让改动在重启后仍然有效，请走「参数 → 发布」。
+          </p>
+
+          <div class="grid">
+            <label class="field">
+              <span>范围</span>
+              <select id="hot-scope">
+                <option value="all" selected>全部活跃连接</option>
+                <option value="pipeline">指定 pipeline</option>
+                <option value="session">指定会话</option>
+              </select>
+            </label>
+            <label class="field" id="hot-target-field" hidden>
+              <span id="hot-target-label">target</span>
+              <input id="hot-target" type="text" autocomplete="off" />
+            </label>
+          </div>
+
+          <label class="field">
+            <span>instructions（人设提示词）</span>
+            <textarea id="hot-instructions" rows="4" placeholder="留空表示这次不改"></textarea>
+          </label>
+
+          <div class="grid">
+            <label class="field">
+              <span>识别语言 language</span>
+              <input id="hot-language" type="text" placeholder="如 zh / en / auto" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>允许插话打断 interrupt_response</span>
+              <!-- Three states, not two: 不发 means "keep whatever the session
+                   already has", which is not the same as sending false. -->
+              <select id="hot-interrupt">
+                <option value="" selected>不改</option>
+                <option value="true">允许打断</option>
+                <option value="false">不允许打断</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="field">
+            <span>extensions（JSON，留空表示不改）</span>
+            <textarea id="hot-extensions" rows="3" spellcheck="false" placeholder='{"search": true}'></textarea>
+          </label>
+
+          <button id="hot-apply" class="btn primary" type="button">应用</button>
+          <div id="hot-result" class="result" hidden></div>
+
+          <ul class="constraints">
+            <li>只影响<strong>当前活跃</strong>连接；新连接读 <code>init_chat_prompt</code>，可能与热更新的值不一致。</li>
+            <li>空闲 unit 没有连接可改。想改「默认人设」必须同时改 YAML 并重启。</li>
+            <li>不支持 <code>transcription</code> 类型会话，只对 <code>realtime</code> 生效。</li>
+            <li><code>model</code> / <code>voice</code> 不生效，这里不提供；改了要重启。</li>
+            <li><code>language</code> 必须被当前加载的 STT/TTS 后端支持；<code>auto</code> 需后端支持重置。</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 版本 -------------------------------------------------------------->
+      <section class="panel" data-panel="versions" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>版本历史</h2>
+            <button id="versions-refresh" class="btn ghost" type="button">刷新</button>
+          </div>
+          <p class="hint">回滚本身也是一个新版本：它不删除旧版本，只是把内容恢复成目标版本。</p>
+          <div id="versions-table" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <!-- 实例 -------------------------------------------------------------->
+      <section class="panel" data-panel="instances" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>运行实例</h2>
+            <button id="instances-refresh" class="btn ghost" type="button">刷新</button>
+          </div>
+          <div id="instances-body" class="instances"></div>
+        </div>
+      </section>
+
+      <!-- 审计 -------------------------------------------------------------->
+      <section class="panel" data-panel="audit" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>审计</h2>
+            <button id="audit-refresh" class="btn ghost" type="button">刷新</button>
+          </div>
+          <p class="hint">密钥字段在审计里只留字段名，不留值。</p>
+          <div id="audit-table" class="table-wrap"></div>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <dialog id="token-dialog" class="dialog">
+      <form method="dialog">
+        <h2>管理令牌</h2>
+        <p class="hint">
+          只存在这个标签页的 <code>sessionStorage</code> 里，关掉页面就没了。写入需要 admin 令牌；
+          operator 令牌只能改 basic / advanced。
+        </p>
+        <label class="field">
+          <span>Authorization: Bearer</span>
+          <input id="token-input" type="password" autocomplete="off" spellcheck="false" />
+        </label>
+        <label class="field">
+          <span>操作人（可选，写进审计的 X-Operator）</span>
+          <input id="actor-input" type="text" autocomplete="off" placeholder="如 zhangsan" />
+        </label>
+        <div class="dialog-actions">
+          <button value="cancel" class="btn ghost" formnovalidate>取消</button>
+          <button value="save" class="btn primary">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="ui/console/app.js"></script>
+  </body>
+</html>

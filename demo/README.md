@@ -259,6 +259,59 @@ case-insensitively against the user's organisations from HF OAuth.
 LocalStorage keys are namespaced `s2s.ws.*` (plus `s2s.transport` for the
 transport pick, and `s2s.audio.inputId` / `s2s.audio.outputId` for devices).
 
+## Deployment parameter console (`console.html`)
+
+`console.html` is the operator page served from the same origin; its backend is
+`param_api.py` + `param_platform/` mounted at `/admin/*`. It chains "edit a
+parameter → render the YAML → recreate the container → probe `/v1/pool` → record
+a version and an audit line", so **Publish** in the page really recreates the
+container; it does not just write a file.
+
+| Tab | Endpoints | Behaviour |
+|-----|-----------|-----------|
+| Parameters | `GET /admin/catalog`, `GET/POST/DELETE /admin/profiles/{p}/draft` | The draft is a **patch**: only touched keys are posted, and a secret comes back as `***` where posting it back means "leave it alone" |
+| Sessions | `POST /admin/sessions/update` | Hot-updates exactly four fields (`instructions`, `audio.input.turn_detection`, `audio.input.transcription.language`, `extensions`); everything else has to publish |
+| Versions | `GET /admin/profiles/{p}/versions`, `POST /admin/profiles/{p}/rollback` | A rollback is written as a **new** version; no state that was ever live is deleted |
+| Instances | `GET /admin/instances` | Container status plus the real `/v1/pool` `size` / `in_use` / per-unit state; a degraded read is still a 200 with `alerts` |
+| Audit | `GET /admin/profiles/{p}/audit` | Field names only, never values (a prompt is not kept) |
+
+### Where `parameter-catalog.yaml` has to live
+
+`param_platform.catalog.default_path()` takes the first readable path:
+
+1. `$PARAM_CATALOG_PATH`
+2. `<app dir>/catalog/parameter-catalog.yaml`
+3. `<app dir>/../docs/parameter-catalog.yaml`
+
+Rule 3 only holds in a source checkout: the file ships at
+`speech-to-speech-src/docs/parameter-catalog.yaml` (`parameter-catalog.md` is its
+human-readable rendering), so a local `uvicorn server:app` finds it with no
+setup. The image's build context is `demo/`, so `../docs` never gets in — pick
+exactly one placement (the same note sits at the end of `Dockerfile`):
+
+| Placement | How | When |
+|-----------|-----|------|
+| Baked in | `cp ../docs/parameter-catalog.yaml catalog/`, then uncomment the `COPY catalog/parameter-catalog.yaml /app/catalog/…` line in `Dockerfile` | Published images, long-lived deployments |
+| Mounted at run time | `-v <repo>/docs/parameter-catalog.yaml:/app/catalog/parameter-catalog.yaml:ro` | No rebuild wanted |
+| Shipped without it | The pages still load; `/admin/catalog` answers `503 catalog_unavailable` and the console shows the hint, while versions / audit / instances keep working | Voice demo only |
+
+The `COPY` stays commented because a missing file fails `docker build`, and a
+deployment that only runs the voice demo must not be blocked by the console.
+
+### Console environment variables
+
+| Variable | Default | What |
+|----------|---------|------|
+| `ADMIN_TOKEN` | empty | Bearer token for writes. Unset means every write endpoint answers `503 admin_disabled`; the read-only views stay anonymous-readable |
+| `OPERATOR_TOKEN` | empty | Second role: may draft `basic` / `advanced` parameters only — no publish, rollback or hot update |
+| `PARAM_CONFIG_DIR` | `<repo>/config` (`/config` in the image) | Profile directory: one `<profile>.yaml` plus an optional `<profile>.env` |
+| `PARAM_DB_PATH` | `/data/s2s-params.sqlite3`, else `demo/s2s-params.sqlite3` | SQLite holding drafts, versions and the audit log |
+| `PARAM_COMPOSE_FILE` / `PARAM_COMPOSE_SERVICE` | empty | Which container a publish recreates; unset refuses the publish (`compose_unavailable`) |
+| `PARAM_POOL_URL` | `http://127.0.0.1:8765` | The `/v1/pool` the publish and instances tabs probe |
+| `PARAM_VRAM_GB` | empty = skipped | VRAM budget; unset renders structurally only and says the budget was not checked |
+| `PARAM_PIPELINE_VRAM_GB` | built-in constant | Per-pipeline VRAM estimate |
+| `S2S_ADMIN_TOKEN` | read from `<profile>.env` | Token chain B forwards to the pipeline's own `/admin/sessions/update` |
+
 ## Files
 
 | File | Role |
@@ -268,8 +321,18 @@ transport pick, and `s2s.audio.inputId` / `s2s.audio.outputId` for devices).
 | `ui/chat.js` | `ChatView`: history panel, ephemeral bubbles, transcript/tool streaming, user recording replay |
 | `ui/account.js` | `Account`: HF login chip + popover, daily-limit modal |
 | `ui/dom.js` | Shared helpers: `$`, `escHtml`, `truncateError`, `DEBUG` |
+| `console.html` / `console.css` | Parameter console page (five tabs: parameters / sessions / versions / instances / audit) |
+| `ui/console/app.js` | Console shell: profile picker, status pill, tab switching, token dialog, toast |
+| `ui/console/params.js` | Parameters tab: catalog tree on the left, patch draft on the right (`***` secrets, validation result) |
+| `ui/console/sessions.js` | Sessions tab (chain B): only the four hot fields, with server codes turned into sentences |
+| `ui/console/versions.js` | Versions tab: the append-only list plus rollback (a rollback is written as a new version) |
+| `ui/console/instances.js` | Instances tab: `compose ps` and the real `/v1/pool`, rendered even when degraded |
+| `ui/console/audit.js` | Audit tab: operator, version, result, duration, field names only |
+| `ui/console/api.js` / `ui/console/html.js` | `/admin/*` client (token + `X-Operator` + the A.0 error body) and the escaping template |
 | `auth.py` | HF OAuth + per-request identity (tier, hashed keys) |
 | `limiter.py` | SQLite per-day talk-time budget (chunked server-clock reservation) |
+| `param_api.py` | The `/admin/*` HTTP layer: auth, profile validation, secret masking, one flow call per endpoint |
+| `param_platform/` | The publish chain: catalog, YAML render/validate, draft and version store, compose recreate, hot update |
 | `s2s-realtime-client.js` | Narrow demo adapter around one Agents SDK `RealtimeSession` and SDK transports with browser-owned WebSocket truncation |
 | `package.json` / `package-lock.json` | Exact official Agents SDK and browser-test dependency pins |
 | `ws/codec.js` | URL normalization + transcript extraction (pure) |

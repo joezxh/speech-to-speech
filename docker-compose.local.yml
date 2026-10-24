@@ -11,8 +11,8 @@ services:
   pipeline:
     build:
       context: .
-      dockerfile: Dockerfile.sox
-    image: speech-to-speech-local:cu130-1.0-sox
+      dockerfile: Dockerfile.local
+    image: speech-to-speech-local:cu130-1.1-sox
     command:
       - speech-to-speech
       - serve
@@ -33,6 +33,10 @@ services:
       - "${GPUSTACK_API_KEY:-not-needed}"
       - --responses_api_stream
       - --responses_api_disable_thinking
+      # 上游 LLM 不可用（5xx / 连接失败）时播报这句，与"模型答不出"的通用兜底区分开；
+      # 同时容器日志会记录 upstream_status 与 upstream_body，便于定位真实原因。
+      - --responses_api_provider_unavailable_message
+      - "语言模型服务暂时不可用，请稍后再试。"
       - --stream_batch_sentences
       - "1"
       # —— 缩短上下文长度以降低 LLM 计算量(§2:--chat_size);数值越小延迟越低、记忆越短 ——

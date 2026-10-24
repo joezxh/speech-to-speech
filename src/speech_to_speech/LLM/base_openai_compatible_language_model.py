@@ -56,6 +56,11 @@ from speech_to_speech.pipeline.messages import (
     ResponsePrefetchTransaction,
     TokenUsage,
 )
+from speech_to_speech.LLM.provider_errors import (
+    KIND_TIMEOUT,
+    KIND_UPSTREAM_UNAVAILABLE,
+    classify_provider_error,
+)
 from speech_to_speech.pipeline.speculative_turns import SpeculativeTurnTracker
 from speech_to_speech.pipeline.transcript_logging import log_exception, transcript_for_log
 from speech_to_speech.utils.utils import audio_to_wav_base64, is_out_of_band, response_wants_audio
@@ -201,6 +206,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         audio_temperature: float = 0.0,
         audio_content_type: Literal["input_audio", "audio_url"] = "input_audio",
         audio_history_turns: int = 1,
+        provider_unavailable_message: Optional[str] = None,
         **_kwargs: Any,
     ) -> None:
         self.cancel_scope = cancel_scope
@@ -218,6 +224,9 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         self.audio_history_turns = max(0, audio_history_turns)
         self.reasoning_effort = reasoning_effort
         self.request_timeout_s = float(request_timeout_s)
+        # Spoken message used when the upstream endpoint itself is unavailable
+        # (HTTP 5xx / connection failure). Empty keeps the generic fallback.
+        self.provider_unavailable_message = (provider_unavailable_message or "").strip()
         self.request_timeout = httpx.Timeout(
             self.request_timeout_s,
             connect=min(10.0, self.request_timeout_s),
@@ -289,6 +298,19 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         return None
 
     # ── subclass hooks ──────────────────────────────────────────────────────--
+
+    def _failure_fallback_text(self, failure_kind: str | None) -> str:
+        """Spoken text for a failed generation.
+
+        The generic fallback covers every failure. When the operator configured
+        ``provider_unavailable_message`` and the upstream endpoint itself was
+        unavailable (HTTP 5xx / connection failure), that message is spoken
+        instead, so the listener is told the service is down rather than that
+        the assistant cannot answer.
+        """
+        if failure_kind == KIND_UPSTREAM_UNAVAILABLE and self.provider_unavailable_message:
+            return self.provider_unavailable_message
+        return PROVIDER_FAILURE_FALLBACK
 
     @abstractmethod
     def warmup(self) -> None:
@@ -765,6 +787,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         events: Iterator[ProviderEvent] | None = None
         state = _GenState(history_items=[input_history] if input_history is not None else [])
         error_message: str | None = None
+        failure_kind: str | None = None
         generation_completed = False
         history = (
             None
@@ -828,14 +851,30 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     self.request_timeout_s,
                 )
                 error_message = f"Language model generation timed out after {self.request_timeout_s:.1f}s."
+                failure_kind = KIND_TIMEOUT
             except Exception as exc:
                 # Any other generation failure must still terminate the response: record
                 # the error and fall through to the EndOfResponse below. Without this the
                 # exception would escape process() and no EndOfResponse would be emitted,
                 # leaving st.in_response stuck and locking every subsequent response.
+                #
+                # The SDK hides the upstream body, so a provider-side 500 (for example
+                # GPUStack's "Failed to parse tools: Missing tool function") used to reach
+                # the operator as "Error code: 500 - None". Classify the failure and log
+                # the upstream status code plus the response body so the real cause is
+                # visible in the container log.
+                failure_kind, failure_detail = classify_provider_error(exc)
                 log_exception(logger, "LLM generation failed; ending the current response", exc)
+                logger.error(
+                    "LLM provider failure kind=%s detail=%s",
+                    failure_kind,
+                    failure_detail,
+                )
                 if error_message is None:
-                    error_message = f"Language model generation failed: {exc}"
+                    # Keep the original wording when the provider supplied no
+                    # extra detail, so existing error contracts stay unchanged;
+                    # upstream status/body are appended when available.
+                    error_message = f"Language model generation failed: {failure_detail}"
             finally:
                 # Store elapsed provider work before an error terminal can finish
                 # the response on the service thread.
@@ -852,7 +891,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             ):
                 state.output_emitted = True
                 yield LLMResponseChunk(
-                    text=PROVIDER_FAILURE_FALLBACK,
+                    text=self._failure_fallback_text(failure_kind),
                     selected_language=turn.selected_language,
                     runtime_config=turn.runtime_config,
                     response=turn.response,

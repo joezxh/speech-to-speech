@@ -50,9 +50,11 @@ from urllib.parse import urlsplit, urlunsplit
 import auth
 import httpx
 import limiter
+import param_api
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from param_platform import store
 from pydantic import BaseModel
 
 logger = logging.getLogger("s2s.search")
@@ -148,6 +150,11 @@ LB_FAILURE_HEADER_NAMES = (
 )
 
 app = FastAPI(title="s2s-demo")
+# Registered before the static mount at the bottom, which would otherwise answer
+# every path — /admin included. `install` also registers the console's own
+# exception type, so a refused publish keeps its status code and error code
+# instead of becoming a bare 500.
+param_api.install(app)
 
 
 @app.get("/vendor/openai-realtime-agents.umd.js", include_in_schema=False)
@@ -175,7 +182,8 @@ AUTH_ENABLED = LIMITER_ENABLED and auth.attach(app)
 
 @app.on_event("startup")
 async def _startup():
-    """Stand up the usage DB and a periodic sweeper — metered (prod Space) only."""
+    """Stand up the parameter store, and the usage DB when metering is on."""
+    await asyncio.to_thread(store.init)
     if not LIMITER_ENABLED:
         return
     limiter.init()

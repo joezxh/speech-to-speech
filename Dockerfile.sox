@@ -12,3 +12,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY cache/nltk_data /root/nltk_data
 RUN chmod -R 755 /root/nltk_data && chown -R root:root /root/nltk_data
+
+# 修复 chat-completions 序列化: 历史里的 tool_calls 缺少 "type": "function",
+# GPUStack(以及其它更严格的 OpenAI 兼容服务)会直接 500
+# ("Failed to parse messages: Missing tool call type"),
+# 于是一旦某轮调用过工具, 之后每一轮都只能回落到兜底话术。
+COPY src/speech_to_speech/LLM/chat_completions_language_model.py /usr/src/app/src/speech_to_speech/LLM/chat_completions_language_model.py

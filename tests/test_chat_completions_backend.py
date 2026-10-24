@@ -102,7 +102,13 @@ class _FakeClient:
         return self
 
 
-def _make_handler(stream=True, *, base_url="http://fake/v1", reasoning_effort=None):
+def _make_handler(
+    stream=True,
+    *,
+    base_url="http://fake/v1",
+    reasoning_effort=None,
+    provider_unavailable_message=None,
+):
     """Build a handler whose warmup hits the fake client (no network)."""
     orig_openai = base_mod.OpenAI
     base_mod.OpenAI = _FakeClient
@@ -119,6 +125,7 @@ def _make_handler(stream=True, *, base_url="http://fake/v1", reasoning_effort=No
                 disable_thinking=True,
                 reasoning_effort=reasoning_effort,
                 compact_history=False,
+                provider_unavailable_message=provider_unavailable_message,
             ),
         )
     finally:
@@ -130,6 +137,116 @@ def test_warmup_uses_request_scoped_sdk_retries():
     handler = _make_handler()
 
     assert handler.client.last_options == {"max_retries": base_mod.WARMUP_MAX_RETRIES}
+
+
+def test_upstream_5xx_logs_status_and_body_and_keeps_generic_fallback():
+    """A provider 500 must surface the upstream status code and body.
+
+    The OpenAI SDK drops the response body, so GPUStack's "Failed to parse
+    tools: Missing tool function" used to reach the operator as
+    "Error code: 500 - None".
+    """
+    h = _make_handler()
+
+    def fail(**kwargs):
+        raise InternalServerError(
+            "server failed",
+            response=httpx.Response(
+                500,
+                request=httpx.Request("POST", "https://provider.example"),
+                content=b'{"error":{"message":"Failed to parse tools: Missing tool function"}}',
+            ),
+            body=None,
+        )
+
+    h.client.chat.completions.create = fail
+    chat = Chat(10)
+    chat.add_item(make_user_message("Hallo"))
+    request = GenerateResponseRequest(
+        runtime_config=RuntimeConfig(
+            chat=chat,
+            session=RealtimeSessionCreateRequest(type="realtime", instructions="Du bist ein Roboter."),
+        ),
+        language_code="de",
+        turn_id="t",
+        turn_revision=0,
+    )
+
+    outputs = list(h.process(request))
+
+    assert outputs[0].text == base_mod.PROVIDER_FAILURE_FALLBACK
+    error = outputs[-1].error
+    assert error is not None
+    assert "upstream_status=500" in error
+    assert "Missing tool function" in error
+
+
+def test_upstream_5xx_speaks_configured_unavailable_message():
+    """A configured upstream-unavailable message replaces the generic fallback."""
+    h = _make_handler(provider_unavailable_message="Der Sprachdienst ist gerade nicht erreichbar.")
+
+    def fail(**kwargs):
+        raise InternalServerError(
+            "server failed",
+            response=httpx.Response(
+                500,
+                request=httpx.Request("POST", "https://provider.example"),
+                content=b'{"error":{"message":"boom"}}',
+            ),
+            body=None,
+        )
+
+    h.client.chat.completions.create = fail
+    chat = Chat(10)
+    chat.add_item(make_user_message("Hallo"))
+    request = GenerateResponseRequest(
+        runtime_config=RuntimeConfig(
+            chat=chat,
+            session=RealtimeSessionCreateRequest(type="realtime", instructions="Du bist ein Roboter."),
+        ),
+        language_code="de",
+        turn_id="t",
+        turn_revision=0,
+    )
+
+    outputs = list(h.process(request))
+
+    assert outputs[0].text == "Der Sprachdienst ist gerade nicht erreichbar."
+    assert outputs[-1].error is not None and "upstream_status=500" in outputs[-1].error
+
+
+def test_client_error_keeps_generic_fallback():
+    """A 4xx is a request problem, not an outage: the generic fallback stays."""
+    h = _make_handler(provider_unavailable_message="Der Sprachdienst ist gerade nicht erreichbar.")
+
+    def fail(**kwargs):
+        raise RateLimitError(
+            "rate limited",
+            response=httpx.Response(
+                429,
+                request=httpx.Request("POST", "https://provider.example"),
+                content=b'{"error":{"message":"slow down"}}',
+            ),
+            body=None,
+        )
+
+    h.client.chat.completions.create = fail
+    chat = Chat(10)
+    chat.add_item(make_user_message("Hallo"))
+    request = GenerateResponseRequest(
+        runtime_config=RuntimeConfig(
+            chat=chat,
+            session=RealtimeSessionCreateRequest(type="realtime", instructions="Du bist ein Roboter."),
+        ),
+        language_code="de",
+        turn_id="t",
+        turn_revision=0,
+    )
+
+    outputs = list(h.process(request))
+
+    assert outputs[0].text == base_mod.PROVIDER_FAILURE_FALLBACK
+    assert outputs[-1].error is not None and "upstream_status=429" in outputs[-1].error
 
 
 def _chunk(content=None, tool_calls=None, usage=None):

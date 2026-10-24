@@ -145,6 +145,11 @@ def _chat_messages(
     messages = chat.to_transformers_chat()
     for message in messages:
         for tool_call in message.get("tool_calls") or []:
+            # Chat Completions requires the discriminator on every tool call.
+            # Some OpenAI-compatible servers (GPUStack among them) reject the
+            # whole history with a 500 once an untyped call is in it, so a
+            # session that used a tool would fail every later turn.
+            tool_call.setdefault("type", "function")
             fn = tool_call.get("function")
             if fn is not None and not isinstance(fn.get("arguments"), str):
                 fn["arguments"] = json.dumps(fn.get("arguments") or {}, ensure_ascii=False)
