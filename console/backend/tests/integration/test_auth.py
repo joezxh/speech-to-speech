@@ -1,22 +1,4 @@
-import pytest
-from fastapi.testclient import TestClient
-
-from app.db.database import get_db
-from app.main import create_app
-from app.repositories.user_repository import UserRepository
-from app.services.auth_service import hash_password
-
-
-@pytest.fixture
-def client(db_session, monkeypatch, tmp_path):
-    dist = tmp_path / "dist"
-    dist.mkdir()
-    (dist / "index.html").write_text("<html></html>", encoding="utf-8")
-    monkeypatch.setattr("app.main.console_settings.static_dir", str(dist))
-    app = create_app()
-    app.dependency_overrides[get_db] = lambda: db_session
-    UserRepository(db_session).create("alice", hash_password("correct-horse"), "admin")
-    return TestClient(app)
+# `client` comes from tests/integration/conftest.py (seeded `alice`, temp DB).
 
 
 def test_login_returns_camel_case_tokens(client):

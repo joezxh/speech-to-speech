@@ -18,3 +18,13 @@ def configure_logging(level: str = "info") -> None:
         enqueue=False,
         format="{time:YYYY-MM-DDTHH:mm:ss.SSSZ} {level} {name} {message}",
     )
+
+
+def get_logger(name: str):
+    """A stdlib-`logging`-shaped handle over loguru.
+
+    The migrated modules were written against `logging`, so they interpolate
+    with %s. loguru interpolates with {}, so every migrated call site is
+    converted — this helper only fixes the name binding, not the format.
+    """
+    return logger.bind(module=name)

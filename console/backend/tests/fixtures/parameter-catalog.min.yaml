@@ -1,0 +1,42 @@
+schema: s2s-parameter-catalog-v1
+generated_from: tests@fixture
+generated_at: "2026-10-24T00:00:00Z"
+parameters:
+  - stage: vad
+    backend: silero
+    name: min_silence_ms
+    type: integer
+    default: 700
+    exposure: basic
+    effect: 判停最短静音
+  - stage: vad
+    backend: silero
+    name: speech_pad_ms
+    type: integer
+    default: 200
+    exposure: advanced
+  - stage: stt
+    backend: whisper
+    name: language
+    type: string
+    default: auto
+    exposure: expert
+  - stage: llm
+    backend: chat-completions
+    name: model_name
+    type: string
+    default: Qwen/Qwen3.5-4B
+    exposure: expert
+  - stage: llm
+    backend: responses-api
+    name: model_name
+    type: string
+    default: gpt-5.6-terra
+    exposure: expert
+  - stage: runtime
+    backend: null
+    name: torch_num_threads
+    type: integer
+    default: 4
+    exposure: ops
+    risk: 改线程数会改变实时性
