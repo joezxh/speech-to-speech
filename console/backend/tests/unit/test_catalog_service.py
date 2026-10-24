@@ -13,7 +13,9 @@ def test_load_reads_the_fixture():
     assert loaded.available is True
     assert loaded.schema == "s2s-parameter-catalog-v1"
     assert loaded.generated_from == "tests@fixture"
-    assert len(loaded.entries) == 6
+    # Six parameters plus the one `stage: env` entry the publish tests need to
+    # prove the `.env` gate (A.5).
+    assert len(loaded.entries) == 7
     assert loaded.by_key()["vad.min_silence_ms"].default == 700
 
 
@@ -24,7 +26,7 @@ def test_exposure_ladder_is_cumulative():
         "vad.min_silence_ms",
         "vad.speech_pad_ms",
     ]
-    assert len(loaded.filtered(exposure="ops")) == 6
+    assert len(loaded.filtered(exposure="ops")) == 7
 
 
 def test_unknown_exposure_is_refused():

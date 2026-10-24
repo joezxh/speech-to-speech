@@ -40,3 +40,10 @@ parameters:
     default: 4
     exposure: ops
     risk: 改线程数会改变实时性
+  - stage: env
+    backend: null
+    name: GPUSTACK_API_KEY
+    type: string
+    default: not-needed
+    exposure: ops
+    effect: 供应商凭据

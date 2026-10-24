@@ -44,6 +44,26 @@ export interface VersionRow {
   rolledBackTo: number | null
 }
 
+/** A.5：发布是同步的，返回时 pipeline 已经过探活。 */
+export interface PublishResult {
+  version: number
+  status: 'live' | 'rolled_back'
+  healthcheck: {
+    poolSize: number | null
+    inUse: number | null
+    attempts: number
+    notes: string[]
+  }
+  durationS: number
+  applied: string[]
+  warnings: unknown[]
+  auditId: string
+}
+
+export interface RollbackResult extends PublishResult {
+  rolledBackTo: number
+}
+
 /** A.8：`fields` 是字段名清单，不是值。 */
 export interface AuditRow {
   auditId: string

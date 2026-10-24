@@ -4,6 +4,8 @@ import type {
   DraftResponse,
   DiscardResponse,
   DraftSaveResponse,
+  PublishResult,
+  RollbackResult,
   VersionRow
 } from '@/types/profile'
 import type { Page } from '@/types/api'
@@ -42,3 +44,19 @@ export const getVersions = (
 
 export const getAudit = (profile: string, query: AuditQuery = {}): Promise<Page<AuditRow>> =>
   api.get<Page<AuditRow>>(`/profiles/${profile}/audit`, { params: query })
+
+// 发布是同步的：重启 ≤60s + 探活 ≤180s（失败还要回滚再探一次）。默认 30s
+// 超时会把一次成功的发布报成失败，而服务端其实已经写盘并重启了。
+const LONG_RUNNING = { timeout: 480_000 }
+
+export const publishProfile = (
+  profile: string,
+  body: { baseVersion: number | null; note: string }
+): Promise<PublishResult> =>
+  api.post<PublishResult>(`/profiles/${profile}/publish`, body, LONG_RUNNING)
+
+export const rollbackProfile = (
+  profile: string,
+  body: { targetVersion: number; note: string }
+): Promise<RollbackResult> =>
+  api.post<RollbackResult>(`/profiles/${profile}/rollback`, body, LONG_RUNNING)

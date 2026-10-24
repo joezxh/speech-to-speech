@@ -11,7 +11,7 @@ from app.deps import DbSession
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.version_repository import VersionRepository
 from app.schemas.common import iso_utc, ok
-from app.schemas.draft import DraftPatchRequest
+from app.schemas.draft import DraftPatchRequest, PublishRequest, RollbackRequest
 from app.services import draft_service, publish_flow_service
 
 router = APIRouter(prefix="/api/v1", tags=["drafts"])
@@ -62,6 +62,59 @@ def delete_draft(profile: str, request: Request, db: DbSession, user: CurrentUse
         raise ApiError("forbidden", "only an admin may discard a draft", 403)
     return ok(
         draft_service.discard_draft(db, name, actor=user.username, role=user.role, request_id=_request_id(request))
+    )
+
+
+@router.post("/profiles/{profile}/publish")
+def post_publish(
+    profile: str,
+    payload: PublishRequest,
+    request: Request,
+    db: DbSession,
+    user: CurrentUser = Depends(require_user),
+):
+    """A.5: one publish at a time, and only an admin may interrupt live calls."""
+    name = validate_profile_name(profile)
+    if user.role != "admin":
+        raise ApiError(code="forbidden", message="only an admin may publish", status=403)
+    claimed = payload.baseVersion
+    if claimed is None:
+        claimed = if_match(request.headers.get("if-match", ""))
+    return ok(
+        publish_flow_service.publish(
+            db,
+            name,
+            base_version=claimed,
+            note=payload.note,
+            actor=user.username,
+            role=user.role,
+            request_id=_request_id(request),
+        )
+    )
+
+
+@router.post("/profiles/{profile}/rollback")
+def post_rollback(
+    profile: str,
+    payload: RollbackRequest,
+    request: Request,
+    db: DbSession,
+    user: CurrentUser = Depends(require_user),
+):
+    """A.6: a rollback is a new version, never a deletion."""
+    name = validate_profile_name(profile)
+    if user.role != "admin":
+        raise ApiError(code="forbidden", message="only an admin may roll back", status=403)
+    return ok(
+        publish_flow_service.rollback(
+            db,
+            name,
+            target_version=payload.targetVersion,
+            note=payload.note,
+            actor=user.username,
+            role=user.role,
+            request_id=_request_id(request),
+        )
     )
 
 

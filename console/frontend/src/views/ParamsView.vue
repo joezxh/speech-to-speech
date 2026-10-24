@@ -7,6 +7,7 @@ import DiffTable from '@/components/DiffTable.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import ParamField from '@/components/ParamField.vue'
 import ParamTree from '@/components/ParamTree.vue'
+import PublishDialog from '@/components/PublishDialog.vue'
 import VoicePicker from '@/components/VoicePicker.vue'
 import { useConfirm } from '@/composables/useConfirm'
 import { useAuthStore } from '@/stores/auth'
@@ -39,6 +40,7 @@ const group = ref('')
 const values = ref<Values>({})
 const saveError = ref<AppError | null>(null)
 const notice = ref('')
+const publishOpen = ref(false)
 
 const deduped = computed(() => dedupe(catalogStore.entries))
 /** 表单用去重后的 193 行：同名字段只出现一次（§6.1）。 */
@@ -216,6 +218,13 @@ async function discard(): Promise<void> {
     saveError.value = error instanceof AppError ? error : new AppError('unknown', '丢弃失败')
   }
 }
+
+/** 发布后草稿已消失且盘上文件已换：表单、基线、实例状态三个都得重读。 */
+async function onPublished(): Promise<void> {
+  await reload()
+  await consoleStore.refreshStatus()
+  notice.value = '发布完成'
+}
 </script>
 
 <template>
@@ -253,6 +262,15 @@ async function discard(): Promise<void> {
         @click="save"
       >
         保存草稿
+      </a-button>
+      <!-- 本地有未保存改动时不能发：发出去的是库里的草稿，不是屏幕上看到的值。 -->
+      <a-button
+        type="primary"
+        danger
+        :disabled="dirty || draftStore.saving"
+        @click="publishOpen = true"
+      >
+        发布
       </a-button>
     </div>
 
@@ -347,7 +365,6 @@ async function discard(): Promise<void> {
       <aside class="params__preview">
         <h3>本次改动（{{ Object.keys(patch).length }}）</h3>
         <DiffTable :draft="patch" :masked="draftStore.masked" />
-        <!-- 发布入口由 Task 15 的 PublishPanel 挂在这里：草稿 → 校验 → 发布/热更 → 生效/回滚。 -->
       </aside>
     </div>
 
@@ -357,6 +374,16 @@ async function discard(): Promise<void> {
       :content="confirmContent"
       danger
       @answer="answerConfirm"
+    />
+
+    <PublishDialog
+      :open="publishOpen"
+      :profile="consoleStore.profile"
+      :base-version="draftStore.baseVersion"
+      :draft="draftStore.draft"
+      :masked="draftStore.masked"
+      @close="publishOpen = false"
+      @published="onPublished"
     />
   </div>
 </template>
