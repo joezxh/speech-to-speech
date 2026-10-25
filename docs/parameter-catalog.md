@@ -264,10 +264,10 @@
 | `responses_api_api_key` | OpenAI 兼容 LLM 的 bearer token | `responses_api_language_model_arguments.py` | `None` | 字符串（密钥） | 否 | 块 settings > `{env}` > 默认 |
 | `openai_stt_api_key` | OpenAI 兼容 STT 的 bearer token | `openai_stt_arguments.py` | `None` | 字符串；未设时回退 `OPENAI_API_KEY` | 否 | 同上 |
 | `openai_tts_api_key` | OpenAI 兼容 TTS 的 bearer token | `openai_tts_arguments.py` | `None` | 字符串；未设时回退 `OPENAI_API_KEY` | 否 | 同上 |
-| `USAGE_HASH_SECRET` | 用量库中用户标识的 HMAC 密钥 | `demo/limiter.py:50` | 进程启动随机生成 | 非空字符串 | 否 | 环境变量（无 YAML 入口） |
-| `UNLIMITED_ORGS` | 不计配额的 HF 组织白名单（逗号分隔） | `demo/auth.py:47` | `cerebras,huggingfacem4,smolagents,pollen-robotics` | 逗号分隔组织名 | 否 | 环境变量 |
-| `AUTH_DEBUG` | 打开鉴权调试日志 | `demo/auth.py:89` | `false` | 任意非空值即开启 | 否 | 环境变量 |
-| CORS 策略 | 演示服务未安装 `CORSMiddleware`，浏览器跨域默认被拒 | `demo/server.py` | 固定（无 CORS 头） | 无 | 固定 | 不可配置 |
+| `USAGE_HASH_SECRET` | 用量库中用户标识的 HMAC 密钥 | `archive/demo/limiter.py:50` | 进程启动随机生成 | 非空字符串 | 否 | 环境变量（无 YAML 入口） |
+| `UNLIMITED_ORGS` | 不计配额的 HF 组织白名单（逗号分隔） | `archive/demo/auth.py:47` | `cerebras,huggingfacem4,smolagents,pollen-robotics` | 逗号分隔组织名 | 否 | 环境变量 |
+| `AUTH_DEBUG` | 打开鉴权调试日志 | `archive/demo/auth.py:89` | `false` | 任意非空值即开启 | 否 | 环境变量 |
+| CORS 策略 | 演示服务未安装 `CORSMiddleware`，浏览器跨域默认被拒 | `archive/demo/server.py` | 固定（无 CORS 头） | 无 | 固定 | 不可配置 |
 | Realtime API 鉴权 | `/v1/realtime` 与 `/v1/pool`、`/v1/usage` 均不校验凭据 | `api/openai_realtime/websocket_router.py` | 固定（无鉴权） | 无 | 固定 | 不可配置 |
 
 **表 B**
@@ -327,8 +327,8 @@
 | `GPUSTACK_BASE_URL` | GPUStack OpenAI 兼容网关地址 | `.env.gpustack.example` → compose `--responses_api_base_url` | `http://192.168.40.30/v1-openai` | URL（含 `/v1...`） | 否 | `.env` / shell 环境 |
 | `GPUSTACK_MODEL` | GPUStack 上的模型名 | `.env.gpustack.example` → `--model_name` | `Qwen3-8B` | 字符串；须与网关注册名一致 | 否 | 同上 |
 | `GPUSTACK_API_KEY` | GPUStack 网关密钥 | `.env.gpustack.example` → `--responses_api_api_key` | `not-needed` | 字符串（密钥） | 否 | 同上 |
-| `SERPER_API_KEY` | 演示服务的 Web 搜索工具密钥 | `demo/server.py` | `None`（未设则工具不可用） | 字符串（密钥） | 否 | 环境变量 |
-| `RTC_ICE_SERVERS` | 浏览器 WebRTC 的 ICE 服务器 JSON | `demo/server.py` | `None`（仅 STUN 默认） | JSON 数组字符串 | 否 | 环境变量 |
+| `SERPER_API_KEY` | 演示服务的 Web 搜索工具密钥 | `archive/demo/server.py` | `None`（未设则工具不可用） | 字符串（密钥） | 否 | 环境变量 |
+| `RTC_ICE_SERVERS` | 浏览器 WebRTC 的 ICE 服务器 JSON | `archive/demo/server.py` | `None`（仅 STUN 默认） | JSON 数组字符串 | 否 | 环境变量 |
 | `OPENAI_API_KEY` | OpenAI 兼容 STT/TTS 的隐式密钥回退 | `STT/openai_compatible_handler.py`、TTS 同构 | `None` | 字符串（密钥） | 否 | 环境变量（优先级低于显式 `*_api_key`） |
 
 **表 B**

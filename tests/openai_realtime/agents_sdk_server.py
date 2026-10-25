@@ -65,7 +65,7 @@ def main() -> None:
     env = _ServerEnv()
     sdk_bundle = (
         Path(__file__).parents[2]
-        / "demo/node_modules/@openai/agents-realtime/dist/bundle/openai-realtime-agents.umd.js"
+        / "archive/demo/node_modules/@openai/agents-realtime/dist/bundle/openai-realtime-agents.umd.js"
     )
 
     @env.app.get("/test/sdk-page", response_class=HTMLResponse)
@@ -75,7 +75,7 @@ def main() -> None:
     @env.app.get("/test/sdk.js")
     async def sdk_javascript():
         if not sdk_bundle.is_file():
-            raise HTTPException(status_code=503, detail="Run npm ci in demo/")
+            raise HTTPException(status_code=503, detail="Run npm ci in archive/demo/")
         return FileResponse(sdk_bundle, media_type="text/javascript")
 
     @env.app.get("/test/state")

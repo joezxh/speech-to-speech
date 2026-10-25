@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -66,4 +66,12 @@ def mount_spa(app: FastAPI, dist_dir: str | Path) -> None:
         candidate = dist / full_path
         if full_path and candidate.is_file() and dist.resolve() in candidate.resolve().parents:
             return FileResponse(candidate, headers=_IMMUTABLE)
+        # A path that names a file but is not in dist is a *removed* asset (the
+        # archived demo's /main.js, /style.css, …), never a client-side route.
+        # Answering index.html here would turn a 404 into `200 text/html`, and
+        # the browser then blames the script instead of the deletion. Real
+        # assets never reach this branch: /assets, /worklets, /vendor and the
+        # API prefixes are all registered before this catch-all.
+        if Path(full_path).suffix:
+            raise HTTPException(status_code=404, detail="Not Found")
         return FileResponse(index, headers=_NO_STORE)
