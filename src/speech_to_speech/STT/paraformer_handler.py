@@ -11,7 +11,7 @@ from speech_to_speech.pipeline.console import console
 from speech_to_speech.pipeline.handler_types import STTIn, STTOut
 from speech_to_speech.pipeline.messages import PartialTranscription, Transcription
 from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
-from speech_to_speech.utils.model_monitor import audio_summary, _truncate
+from speech_to_speech.utils.model_monitor import _truncate, audio_summary
 from speech_to_speech.utils.utils import TORCH_DEVICES, resolve_device
 
 logger = logging.getLogger(__name__)

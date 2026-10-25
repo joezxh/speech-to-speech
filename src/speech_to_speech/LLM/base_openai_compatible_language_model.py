@@ -37,6 +37,11 @@ from speech_to_speech.LLM.chat import (
     make_user_audio_message,
 )
 from speech_to_speech.LLM.compaction_prompt import CompactGenerateFn, build_compactor
+from speech_to_speech.LLM.provider_errors import (
+    KIND_TIMEOUT,
+    KIND_UPSTREAM_UNAVAILABLE,
+    classify_provider_error,
+)
 from speech_to_speech.LLM.text_prompt import build_text_system_prompt
 from speech_to_speech.LLM.utils import (
     language_name_for_prompt,
@@ -55,11 +60,6 @@ from speech_to_speech.pipeline.messages import (
     ResponseIncompleteReason,
     ResponsePrefetchTransaction,
     TokenUsage,
-)
-from speech_to_speech.LLM.provider_errors import (
-    KIND_TIMEOUT,
-    KIND_UPSTREAM_UNAVAILABLE,
-    classify_provider_error,
 )
 from speech_to_speech.pipeline.speculative_turns import SpeculativeTurnTracker
 from speech_to_speech.pipeline.transcript_logging import log_exception, transcript_for_log
