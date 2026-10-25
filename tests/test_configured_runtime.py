@@ -657,6 +657,6 @@ def test_configured_display_policy_wraps_startup(config, monkeypatch, command, s
 
     config.client.update(settings)
     observed = []
-    monkeypatch.setattr(runtime, "_run_configured_command", lambda *_: observed.append(console.quiet))
+    monkeypatch.setattr(runtime, "_run_configured_command", lambda *_args, **_kwargs: observed.append(console.quiet))
     runtime.run_configured_command(command, config)
     assert observed == [command != "serve" and not settings]

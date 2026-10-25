@@ -13,6 +13,12 @@ from time import monotonic
 from typing import TYPE_CHECKING, Any, Literal
 
 from speech_to_speech.config import ConfigurationError, ResolvedConfig
+from speech_to_speech.console_integration import (
+    ConsoleAttachment,
+    ConsoleOptions,
+    StartupError,
+    attachment_for_runtime,
+)
 
 if TYPE_CHECKING:
     from speech_to_speech.api.openai_realtime.audio_client import RealtimeAudioClientConfig
@@ -311,7 +317,13 @@ def _build_runtime(arguments: dict[str, ParsedArguments], stop_event: Event) -> 
     return result
 
 
-def build_configured_server(config: ResolvedConfig, stop_event: Event, *, local: bool = False) -> ConfiguredRuntime:
+def build_configured_server(
+    config: ResolvedConfig,
+    stop_event: Event,
+    *,
+    local: bool = False,
+    console_attachment: ConsoleAttachment | None = None,
+) -> ConfiguredRuntime:
     """Publish one definition through a server, with an optional loopback client."""
     _validate_counts(config)
     if len(config.pipelines) != 1:
@@ -334,6 +346,7 @@ def build_configured_server(config: ResolvedConfig, stop_event: Event, *, local:
             llm_proxy_config=build_llm_proxy_config(args.module_kwargs, args.llm_backend)
             if args.module_kwargs.enable_llm_proxy
             else None,
+            console_attachment=console_attachment,
         )
         result._resources.append(result.server)
         result._handlers.append(result.server)
@@ -348,7 +361,12 @@ def build_configured_server(config: ResolvedConfig, stop_event: Event, *, local:
     return result
 
 
-def run_configured_command(command: Literal["serve", "local", "talk"], config: ResolvedConfig) -> None:
+def run_configured_command(
+    command: Literal["serve", "local", "talk"],
+    config: ResolvedConfig,
+    *,
+    console_options: ConsoleOptions | None = None,
+) -> None:
     """Own CLI signal handlers and always stop constructed resources."""
     from speech_to_speech.pipeline.console import conversation_output
 
@@ -357,10 +375,15 @@ def run_configured_command(command: Literal["serve", "local", "talk"], config: R
         settings.get("verbose", False) or settings.get("print_json", False)
     )
     with conversation_output(conversation_only):
-        _run_configured_command(command, config)
+        _run_configured_command(command, config, console_options=console_options)
 
 
-def _run_configured_command(command: Literal["serve", "local", "talk"], config: ResolvedConfig) -> None:
+def _run_configured_command(
+    command: Literal["serve", "local", "talk"],
+    config: ResolvedConfig,
+    *,
+    console_options: ConsoleOptions | None = None,
+) -> None:
     from speech_to_speech.pipeline.transcript_logging import set_log_transcripts, warn_if_log_transcripts_enabled
 
     stop_event = Event()
@@ -382,8 +405,11 @@ def _run_configured_command(command: Literal["serve", "local", "talk"], config: 
             from speech_to_speech.s2s_pipeline import setup_logger
 
             setup_logger(config.runtime.get("log_level", "info"))
+            console_attachment = attachment_for_runtime(console_options, config.runtime)
             with model_startup_output(command == "local" and console.quiet):
-                result = build_configured_server(config, stop_event, local=command == "local")
+                result = build_configured_server(
+                    config, stop_event, local=command == "local", console_attachment=console_attachment
+                )
             set_log_transcripts(
                 result.client.config.log_transcripts
                 if command == "local"
@@ -391,7 +417,11 @@ def _run_configured_command(command: Literal["serve", "local", "talk"], config: 
             )
             warn_if_log_transcripts_enabled()
             result.start()
+            # stop() clears the server, so keep the reference to inspect it after the wait.
+            server = result.server
             result.wait()
+            if getattr(server, "startup_failed", False):
+                raise StartupError("the Realtime server could not bind its port; console integration aborted.")
     finally:
         stop_event.set()
         try:

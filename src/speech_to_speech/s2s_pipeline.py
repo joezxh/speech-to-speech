@@ -35,6 +35,12 @@ from speech_to_speech.backend_registry import (
     HandlerContext,
     create_backend_handler,
 )
+from speech_to_speech.console_integration import (
+    ConsoleAttachment,
+    ConsoleOptions,
+    StartupError,
+    attachment_for_server,
+)
 from speech_to_speech.pipeline.cancel_scope import CancelScope
 from speech_to_speech.pipeline.console import console, model_startup_output
 from speech_to_speech.pipeline.queue_types import (
@@ -57,6 +63,18 @@ from speech_to_speech.STT.transcription_notifier import TranscriptionNotifier
 from speech_to_speech.utils.thread_manager import ThreadManager
 from speech_to_speech.utils.utils import resolve_device
 from speech_to_speech.VAD.vad_handler import VADHandler
+
+# Prefer locally-bundled NLTK data so it never has to fetch punkt/tagger over a
+# proxied/air-gapped egress that trips the SSRF guard (CWE-918). On Windows the
+# data lives in the repo's cache/nltk_data; in the container it is mounted at
+# /root/nltk_data. NLTK_DATA, if set, takes precedence. Missing dirs are skipped.
+for _nltk_dir in (
+    os.environ.get("NLTK_DATA"),
+    str(Path(__file__).resolve().parents[2] / "cache" / "nltk_data"),
+    "/root/nltk_data",
+):
+    if _nltk_dir and os.path.isdir(_nltk_dir) and _nltk_dir not in nltk.data.path:
+        nltk.data.path.insert(0, _nltk_dir)
 
 # Ensure that the necessary NLTK resources are available
 for _pkg, _path in (
@@ -716,6 +734,7 @@ def build_pipeline(
     stop_event: Event,
     *,
     host: str | None = None,
+    console_attachment: ConsoleAttachment | None = None,
 ) -> ThreadManager:
     """Build a pool of pipeline units behind one server."""
     from speech_to_speech.api.openai_realtime.server import RealtimeServer
@@ -742,6 +761,7 @@ def build_pipeline(
         llm_proxy_config=(
             build_llm_proxy_config(module_kwargs, args.llm_backend) if module_kwargs.enable_llm_proxy else None
         ),
+        console_attachment=console_attachment,
     )
 
     handlers: list[Any] = []
@@ -751,7 +771,12 @@ def build_pipeline(
     return ThreadManager(handlers)
 
 
-def build_local_pipeline(args: ParsedArguments, stop_event: Event) -> ThreadManager:
+def build_local_pipeline(
+    args: ParsedArguments,
+    stop_event: Event,
+    *,
+    console_attachment: ConsoleAttachment | None = None,
+) -> ThreadManager:
     """Compose the canonical server and audio client over a forced loopback URL."""
 
     from speech_to_speech.api.openai_realtime.audio_client import (
@@ -769,7 +794,7 @@ def build_local_pipeline(args: ParsedArguments, stop_event: Event) -> ThreadMana
     tool_response_create = True
     if local_audio.local_audio_tool_module:
         tools, tool_executor, tool_response_create = load_realtime_tool_module(local_audio.local_audio_tool_module)
-    server_manager = build_pipeline(args, stop_event, host="127.0.0.1")
+    server_manager = build_pipeline(args, stop_event, host="127.0.0.1", console_attachment=console_attachment)
     voice_choices: list[str] = []
     voice = None
     if args.tts_backend.name == "phonon":
@@ -805,21 +830,37 @@ def build_local_pipeline(args: ParsedArguments, stop_event: Event) -> ThreadMana
     return ThreadManager([*server_manager.handlers, client])
 
 
-def run_pipeline_command(command: Literal["serve", "local"], argv: Sequence[str]) -> None:
+def run_pipeline_command(
+    command: Literal["serve", "local"],
+    argv: Sequence[str],
+    *,
+    console_options: ConsoleOptions | None = None,
+) -> None:
     """Run the server alone or compose it with the loopback audio client."""
 
     args = parse_arguments(argv, command=command)
 
     from speech_to_speech.pipeline.console import conversation_output
 
+    console_attachment = attachment_for_server(
+        console_options,
+        "127.0.0.1" if command == "local" else args.realtime_server_kwargs.host,
+        args.realtime_server_kwargs.port,
+    )
+
     conversation_only = command == "local" and not (
         args.local_audio_kwargs.verbose or args.local_audio_kwargs.local_audio_print_json
     )
     with conversation_output(conversation_only):
-        _run_parsed_pipeline_command(command, args)
+        _run_parsed_pipeline_command(command, args, console_attachment=console_attachment)
 
 
-def _run_parsed_pipeline_command(command: Literal["serve", "local"], args: ParsedArguments) -> None:
+def _run_parsed_pipeline_command(
+    command: Literal["serve", "local"],
+    args: ParsedArguments,
+    *,
+    console_attachment: ConsoleAttachment | None = None,
+) -> None:
     """Run a parsed command with its terminal display policy already applied."""
 
     setup_logger(args.module_kwargs.log_level)
@@ -848,7 +889,9 @@ def _run_parsed_pipeline_command(command: Literal["serve", "local"], args: Parse
     stop_event = Event()
     with model_startup_output(command == "local" and console.quiet):
         pipeline_manager = (
-            build_local_pipeline(args, stop_event) if command == "local" else build_pipeline(args, stop_event)
+            build_local_pipeline(args, stop_event, console_attachment=console_attachment)
+            if command == "local"
+            else build_pipeline(args, stop_event, console_attachment=console_attachment)
         )
 
     # Set up graceful shutdown handler
@@ -872,6 +915,12 @@ def _run_parsed_pipeline_command(command: Literal["serve", "local"], args: Parse
             console.print("\n[yellow]Shutting down gracefully...[/yellow]")
             pipeline_manager.stop()
             console.print("[green]✓ Pipeline stopped successfully[/green]")
+
+    # uvicorn reports a failed bind from inside its own thread, where the
+    # SystemExit disappears; the server handler flags it instead.
+    for handler in pipeline_manager.handlers:
+        if getattr(handler, "startup_failed", False):
+            raise StartupError("the Realtime server could not bind its port; console integration aborted.")
 
 
 def main() -> None:
