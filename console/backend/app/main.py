@@ -19,6 +19,7 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.services import (
     bootstrap_service,
     identity_service,
+    instance_seed,
     metering_service,
     publish_flow_service,
     turn_latency_indexer,
@@ -58,6 +59,14 @@ async def lifespan(app: FastAPI):
                 logger.warning("recovered an interrupted publish: {}", outcome)
         except Exception as exc:  # noqa: BLE001 - a bad DB must not stop the API from booting
             logger.error("startup recovery skipped: {}", exc)
+
+        # P1.0: declarative seed is idempotent; a missing/empty path is a no-op.
+        try:
+            for alert in instance_seed.apply_seed(session):
+                logger.warning("instances seed: {}", alert)
+        except Exception as exc:  # noqa: BLE001 - a bad seed file must not stop the API
+            session.rollback()
+            logger.error("instances seed skipped: {}", exc)
     finally:
         session.close()
 
