@@ -1204,9 +1204,12 @@ class TestWebRTCLoopback:
         finally:
             await pc.close()
 
-    async def test_delete_location_hangs_up(self, server_env):
+    async def test_delete_location_hangs_up(self, server_env, monkeypatch):
         """DELETE on the Location URL advertised by the 201 releases the unit;
-        an unknown call id answers 404."""
+        an unknown call id answers 404. P1.6: the endpoint is fail-closed on
+        S2S_ADMIN_TOKEN, so an unauthenticated hangup is 401 before the id check."""
+        monkeypatch.setenv("S2S_ADMIN_TOKEN", "expected")
+        auth = {"Authorization": "Bearer expected"}
         pc = RTCPeerConnection()
         try:
             pc.createDataChannel("oai-events")
@@ -1224,13 +1227,22 @@ class TestWebRTCLoopback:
                 assert resp.status_code == 201
                 location = resp.headers["location"]
 
+                unauthed = await client.delete(
+                    f"http://127.0.0.1:{server_env.port}{location}",
+                    timeout=10.0,
+                )
+                assert unauthed.status_code == 401
+
                 missing = await client.delete(
                     f"http://127.0.0.1:{server_env.port}/v1/realtime/calls/no-such-call",
+                    headers=auth,
                     timeout=10.0,
                 )
                 assert missing.status_code == 404
 
-                hangup = await client.delete(f"http://127.0.0.1:{server_env.port}{location}", timeout=10.0)
+                hangup = await client.delete(
+                    f"http://127.0.0.1:{server_env.port}{location}", headers=auth, timeout=10.0
+                )
                 assert hangup.status_code == 200
         finally:
             await pc.close()

@@ -994,8 +994,18 @@ def create_app(
         )
 
     @app.delete("/v1/realtime/calls/{call_id}")
-    async def webrtc_hangup_endpoint(call_id: str) -> Response:
-        """Hang up a WebRTC call — the Location URL advertised by the POST above."""
+    async def webrtc_hangup_endpoint(call_id: str, request: Request) -> Response:
+        """Hang up a WebRTC call — the Location URL advertised by the POST above.
+
+        P1.6: same fail-closed admin token check as /admin/sessions/update; the
+        call id is guessable, so an unauthenticated hangup lets anyone drop
+        someone else's call.
+        """
+        expected = os.environ.get("S2S_ADMIN_TOKEN", "").strip()
+        if not expected:
+            return _admin_error(503, "admin_disabled", "S2S_ADMIN_TOKEN is not configured on this service")
+        if not hmac.compare_digest(_admin_bearer(request).encode(), expected.encode()):
+            return _admin_error(401, "unauthorized", "a valid Bearer token is required")
         for unit in pool:
             session = unit.session
             if (
