@@ -90,25 +90,61 @@ def test_a_clean_run_does_not_raise(monkeypatch):
     pipeline_module._run_parsed_pipeline_command("serve", _args())
 
 
-def test_run_pipeline_command_resolves_the_attachment_from_the_server_args(monkeypatch):
+def test_run_pipeline_command_hands_the_options_to_the_parsed_command(monkeypatch):
     seen = {}
     options = ConsoleOptions(autostart=True, home=None, static_dir=None)
 
     monkeypatch.setattr(pipeline_module, "parse_arguments", lambda argv, command: _args(port=9100))
     monkeypatch.setattr(
         pipeline_module,
-        "attachment_for_server",
-        lambda opts, host, port, **kw: seen.update(host=host, port=port) or "sentinel",
-    )
-    monkeypatch.setattr(
-        pipeline_module,
         "_run_parsed_pipeline_command",
-        lambda command, args, **kw: seen.update(attachment=kw.get("console_attachment")),
+        lambda command, args, **kw: seen.update(options=kw.get("console_options")),
     )
 
     pipeline_module.run_pipeline_command("serve", [], console_options=options)
 
-    assert seen == {"host": "127.0.0.1", "port": 9100, "attachment": "sentinel"}
+    assert seen == {"options": options}
+
+
+def test_the_console_is_resolved_from_the_server_address_and_handed_to_the_builder(monkeypatch):
+    seen = {}
+    options = ConsoleOptions(autostart=True, home=None, static_dir=None)
+
+    class FakeManager:
+        handlers = []
+
+        def start(self):
+            pass
+
+        def wait(self):
+            pass
+
+        def stop(self):
+            pass
+
+    def fake_build(args, event, **kwargs):
+        seen["attachment"] = kwargs.get("console_attachment")
+        return FakeManager()
+
+    monkeypatch.setattr(
+        pipeline_module,
+        "attachment_for_server",
+        lambda opts, host, port, **kw: seen.update(host=host, port=port, options=opts) or "sentinel",
+    )
+    monkeypatch.setattr(pipeline_module, "prepare_all_args", lambda _args: None)
+    monkeypatch.setattr(pipeline_module, "set_log_transcripts", lambda _v: None)
+    monkeypatch.setattr(pipeline_module, "warn_if_log_transcripts_enabled", lambda: None)
+    monkeypatch.setattr(pipeline_module, "signal", SimpleNamespace(SIGINT=2, SIGTERM=15, signal=lambda *_a: None))
+    monkeypatch.setattr(pipeline_module, "build_pipeline", fake_build)
+
+    pipeline_module._run_parsed_pipeline_command("serve", _args(port=9100), console_options=options)
+
+    assert seen == {
+        "host": "127.0.0.1",
+        "port": 9100,
+        "options": options,
+        "attachment": "sentinel",
+    }
 
 
 def test_configured_runtime_forwards_the_attachment(monkeypatch):
@@ -139,7 +175,7 @@ def test_configured_runtime_forwards_the_attachment(monkeypatch):
     assert captured["console_attachment"] is attachment
 
 
-def _patch_configured_command(monkeypatch, server):
+def _patch_configured_command(monkeypatch, server, wait_error=None):
     """Stand in for the model-loading construction so only the wiring is exercised."""
     from speech_to_speech import configured_runtime as runtime_module
 
@@ -154,6 +190,8 @@ def _patch_configured_command(monkeypatch, server):
         def wait(self):
             # ConfiguredRuntime.stop() clears its server reference before returning.
             self.server = None
+            if wait_error is not None:
+                raise wait_error
 
         def stop(self):
             pass
@@ -189,4 +227,32 @@ def test_configured_command_raises_when_the_server_never_bound(monkeypatch):
     _patch_configured_command(monkeypatch, SimpleNamespace(startup_failed=True))
 
     with pytest.raises(StartupError):
+        runtime_module._run_configured_command("serve", SimpleNamespace(runtime={}, client=None))
+
+
+def test_a_worker_failure_still_names_the_bind_when_the_server_never_bound(monkeypatch):
+    from speech_to_speech import configured_runtime as runtime_module
+
+    # The dying server thread records the bind failure but raises from wait(); the
+    # caller must still hear about the port rather than a generic worker error.
+    _patch_configured_command(
+        monkeypatch,
+        SimpleNamespace(startup_failed=True),
+        wait_error=runtime_module.ConfiguredRuntimeError("A configured worker, listener, or client failed."),
+    )
+
+    with pytest.raises(StartupError):
+        runtime_module._run_configured_command("serve", SimpleNamespace(runtime={}, client=None))
+
+
+def test_a_worker_failure_without_a_bind_failure_is_not_relabelled(monkeypatch):
+    from speech_to_speech import configured_runtime as runtime_module
+
+    _patch_configured_command(
+        monkeypatch,
+        SimpleNamespace(startup_failed=False),
+        wait_error=runtime_module.ConfiguredRuntimeError("A configured worker, listener, or client failed."),
+    )
+
+    with pytest.raises(runtime_module.ConfiguredRuntimeError):
         runtime_module._run_configured_command("serve", SimpleNamespace(runtime={}, client=None))

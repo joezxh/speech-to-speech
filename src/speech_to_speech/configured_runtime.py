@@ -419,7 +419,16 @@ def _run_configured_command(
             result.start()
             # stop() clears the server, so keep the reference to inspect it after the wait.
             server = result.server
-            result.wait()
+            try:
+                result.wait()
+            except ConfiguredRuntimeError:
+                # The server thread flags the failed bind and then dies, which surfaces
+                # here as a worker failure; name the port rather than the worker.
+                if getattr(server, "startup_failed", False):
+                    raise StartupError(
+                        "the Realtime server could not bind its port; console integration aborted."
+                    ) from None
+                raise
             if getattr(server, "startup_failed", False):
                 raise StartupError("the Realtime server could not bind its port; console integration aborted.")
     finally:

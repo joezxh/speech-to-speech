@@ -839,33 +839,32 @@ def run_pipeline_command(
     """Run the server alone or compose it with the loopback audio client."""
 
     args = parse_arguments(argv, command=command)
-    # The console reports its integration line before any model loads, so logging must be up first.
-    setup_logger(args.module_kwargs.log_level)
 
     from speech_to_speech.pipeline.console import conversation_output
-
-    console_attachment = attachment_for_server(
-        console_options,
-        "127.0.0.1" if command == "local" else args.realtime_server_kwargs.host,
-        args.realtime_server_kwargs.port,
-    )
 
     conversation_only = command == "local" and not (
         args.local_audio_kwargs.verbose or args.local_audio_kwargs.local_audio_print_json
     )
     with conversation_output(conversation_only):
-        _run_parsed_pipeline_command(command, args, console_attachment=console_attachment)
+        _run_parsed_pipeline_command(command, args, console_options=console_options)
 
 
 def _run_parsed_pipeline_command(
     command: Literal["serve", "local"],
     args: ParsedArguments,
     *,
-    console_attachment: ConsoleAttachment | None = None,
+    console_options: ConsoleOptions | None = None,
 ) -> None:
     """Run a parsed command with its terminal display policy already applied."""
 
     setup_logger(args.module_kwargs.log_level)
+    # Load the console before any model so a missing backend fails fast, and log its
+    # integration line now that logging is configured rather than swallowed.
+    console_attachment = attachment_for_server(
+        console_options,
+        "127.0.0.1" if command == "local" else args.realtime_server_kwargs.host,
+        args.realtime_server_kwargs.port,
+    )
     # Set the transcript gate and warn before any conversation is processed, so an operator
     # sees the notice ahead of the first turn rather than after content is already logged.
     set_log_transcripts(args.module_kwargs.log_transcripts)

@@ -233,9 +233,11 @@ def test_startup_wires_the_gate_and_warns_before_processing(monkeypatch):
             log_transcripts=True,
             num_pipelines=1,
             enable_live_transcription=False,
-        )
+        ),
+        realtime_server_kwargs=SimpleNamespace(host="127.0.0.1", port=8765),
     )
     manager = SimpleNamespace(
+        handlers=[],
         start=lambda: events.append("start"),
         wait=lambda: events.append("wait"),
         stop=lambda: events.append("stop"),
@@ -247,7 +249,7 @@ def test_startup_wires_the_gate_and_warns_before_processing(monkeypatch):
     monkeypatch.setattr(
         s2s_pipeline,
         "build_pipeline",
-        lambda _args, _stop_event: events.append("build") or manager,
+        lambda _args, _stop_event, **_kwargs: events.append("build") or manager,
     )
     monkeypatch.setattr(s2s_pipeline.signal, "signal", lambda *_args: None)
     original_warning = s2s_pipeline.warn_if_log_transcripts_enabled

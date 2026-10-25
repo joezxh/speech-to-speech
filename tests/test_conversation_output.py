@@ -49,7 +49,7 @@ def test_local_display_policy_is_applied_before_pipeline_startup(monkeypatch, ca
 
     observed = []
 
-    def check_startup(command, args):
+    def check_startup(command, args, **_kwargs):
         observed.append(command)
         assert console.quiet is quiet
         assert logging.getLogger("speech_to_speech.test_backend").isEnabledFor(logging.INFO) is not quiet
