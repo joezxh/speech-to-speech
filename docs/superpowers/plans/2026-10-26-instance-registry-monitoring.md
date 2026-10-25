@@ -1032,7 +1032,9 @@ def test_two_failures_do_not_evict_three_do(reg):
 
 
 def test_recovery_needs_two_successes(reg):
-    reg.observe_failure("pipe-a", "x"); reg.observe_failure("pipe-a", "x"); reg.observe_failure("pipe-a", "x")
+    # 不用分号同行语句：仓库 ruff `select = ["E", …]` 会报 E702。
+    for _ in range(3):
+        reg.observe_failure("pipe-a", "x")
     assert reg.get("pipe-a").status == "offline"
     reg.observe_success("pipe-a", _pool(), 5)
     assert reg.get("pipe-a").status == "offline"  # 1 次不恢复
@@ -1510,6 +1512,10 @@ async def run_forever() -> None:
     from app.db.database import SessionLocal  # noqa: PLC0415 - 避免 import 环
 
     ticks = 0
+    # 修正：prune 每小时一次，不跟随 usage 采样节奏（计划初稿把 prune 放在 30s
+    # 采样分支内，与本函数 docstring 矛盾）；实现改为独立时间闸门。
+    pruned_after_s = 3600
+    last_prune = time.monotonic()
     while True:
         await asyncio.sleep(allocator.probe_interval_s)
         session = SessionLocal()
@@ -1523,6 +1529,8 @@ async def run_forever() -> None:
 
                 deltas = allocator_service.drain_counters()
                 await asyncio.to_thread(sample_metrics, session, deltas)
+            if time.monotonic() - last_prune >= pruned_after_s:
+                last_prune = time.monotonic()
                 await asyncio.to_thread(prune_metrics, session)
         except Exception as exc:  # noqa: BLE001
             logger.warning("instance monitor tick failed: {}", exc)
@@ -1534,7 +1542,7 @@ async def run_forever() -> None:
 - [ ] **Step 4: 运行确认通过**
 
 Run: `.\.venv\Scripts\python.exe -m pytest tests/unit/test_instance_monitor.py -v`
-Expected: PASS（6 个用例）。本任务阶段 `run_forever` 引用 `allocator.drain_counters`（Task 13 才交付）：lifespan 只在 `mode!="off"` 或配了 seed 时才启动巡检，而默认开关是 off，所以 P1.2 阶段不会触发 ImportError；测试全部直接调 `probe_all`/`sample_metrics`，不经 `run_forever`。
+Expected: PASS（5 个用例。计划初稿写 6 为笔误，测试文件实际 5 个）。本任务阶段 `run_forever` 引用 `allocator.drain_counters`（Task 13 才交付）：lifespan 只在 `mode!="off"` 或配了 seed 时才启动巡检，而默认开关是 off，所以 P1.2 阶段不会触发 ImportError；测试全部直接调 `probe_all`/`sample_metrics`，不经 `run_forever`。
 
 - [ ] **Step 5: lifespan 接线**
 
@@ -1616,7 +1624,10 @@ def _collect_registry(profile, version, rows):
         state = view.get(row.instance_id)
         reachable = state is not None and state.pool is not None
         if not reachable:
-            alerts.append(f"pool_unreachable:{row.instance_id}")
+            # 修正：与 §11 “含错误摘要”一致，告警为三段式
+            # `pool_unreachable:{id}:{error|not_observed}`；测试断言同步。
+            error = state.pool.error if state is not None and state.pool else "not_observed"
+            alerts.append(f"pool_unreachable:{row.instance_id}:{error}")
         elif state.pool.stuck:
             alerts.append(f"pool_stuck:{row.instance_id}")
         if row.max_sessions_hint and reachable and state.pool.size != row.max_sessions_hint:
@@ -1699,6 +1710,8 @@ def test_instances_aggregates_registry_rows(client, db_session, monkeypatch):
     assert ids == {"pipe-a", "pipe-b"}
     row_a = next(r for r in data["instances"] if r["instance_id"] == "pipe-a")
     assert row_a["status"] == "online" and row_a["free"] == 2
+    assert data["pool"] is None  # 本机不在注册表视图里 → 降级语义不变
+    assert "pool_unreachable:pipe-b:not_observed" in data["alerts"]
     instance_monitor.reset_for_tests()
 ```
 
@@ -2285,8 +2298,8 @@ git commit -m "feat(console): AllocatorStore protocol and in-memory implementati
 
 **Files:**
 - Create: `console/backend/app/services/allocator.py`
-- Modify: `console/backend/app/services/instance_monitor.py`（`sample_metrics` 接真实计数器）、`console/backend/app/services/calls_service.py`（新增反向 scheme helper）
-- Test: `console/backend/tests/unit/test_allocator.py`、`console/backend/tests/unit/test_calls_service.py`（追加）
+- Modify: `console/backend/app/services/instance_monitor.py`（`sample_metrics` 接真实计数器）、`console/backend/app/services/instances_service.py`（`pending_grants` 接线）
+- Test: `console/backend/tests/unit/test_allocator.py`、`console/backend/tests/unit/test_calls_service.py`（仓库内原本不存在此文件，本任务新建；handshake_url 的既有用例在 tests/demo/test_calls_api.py，不动）
 
 **Interfaces:**
 - Consumes: `InMemoryAllocatorStore`（Task 12）、`instance_monitor.registry`、`allocator` 设置
@@ -2488,7 +2501,7 @@ def two_online(monkeypatch):
 async def test_grant_shape_matches_the_demo_contract(two_online):
     grant = await allocator.allocate("s-1")
     assert grant["state"] == "granted" and grant["session_id"] == "s-1"
-    assert grant["connect_url"] == "ws://pipe-a:8765/v1/realtime"  # free ratio 1.0 > 0.5
+    assert grant["connect_url"] == "ws://pipe-a:8765/v1/realtime"  # free ratio 1.0 > 0.4
     assert grant["expires_in"] == 60
 
 
@@ -2754,7 +2767,8 @@ git commit -m "feat(console): dual-mode session entry, local allocation behind l
 **Interfaces:**
 - Consumes: P1.3/P1.4 后的 `GET /api/v1/instances` 响应（`summary` + `instances[]`）、`GET /instances/{id}/metrics` 响应
 - Produces：
-  - `types/api.d.ts` 新增 `InstancesSummary`、`InstanceRow`、`InstanceMetricPoint`（字段名与后端 `instances_service._collect_registry`/`schemas.instance.metric_point` 逐字一致）；`InstanceSnapshot` 保留旧字段并追加 `summary: InstancesSummary`、`instances: InstanceRow[]`
+  - `types/api.d.ts` 新增 `InstancesSummary`、`InstanceRow`、`InstanceMetricPoint`（字段名与后端 `instances_service._collect_registry`/`schemas.instance.metric_point` 逐字一致）；`InstanceSnapshot` 保留旧字段并追加 `summary?: InstancesSummary`、`instances?: InstanceRow[]`
+    - 修正：`summary`/`instances` 定为可选而非必填。后端 `collect` 双路径里 `_collect_legacy`（注册表为空的单实例直连模式）不返回这两键，若类型写死必填会与运行时不符、并在 Task 16 强制 `?.` 之前制造假阳。视图层以 `snapshot.instances ?? []` 处理。
   - `api/instances.ts`：`getInstances`（既有）、`getInstance(id)`、`getInstanceMetrics(id, window)`、`postInstanceAction(id, 'drain'|'undrain'|'probe')`
   - `utils/instances-view.ts` 纯函数：`statusColor(status: string): string`、`statusLabelKey(status: string): string`、`dedupeByLatestObserver(points: InstanceMetricPoint[]): InstanceMetricPoint[]`（同一 `observedAt±1s` 内按 `instance_id` 取最新一行，不累加，spec §10）、`capacityPercent(row: InstanceRow): number`
 
@@ -2865,7 +2879,11 @@ export function dedupeByLatestObserver(points: InstanceMetricPoint[]): InstanceM
   for (const point of points) {
     const bucket = point.observedAt.slice(0, 19) // 秒粒度：两台 console 同时刻的重复采样归同一桶
     const kept = byBucket.get(bucket)
-    if (!kept || kept.observedAt < point.observedAt) byBucket.set(bucket, point)
+    // 修正：同桶内「取最新」用 Date 解析比较，不用字符串比较。后端 iso_utc 可能产出
+    // 带/不带毫秒或不同时区后缀的 ISO，字符串序会在 `...Z` 与 `...500Z` 之间判错。
+    if (!kept || new Date(kept.observedAt).getTime() < new Date(point.observedAt).getTime()) {
+      byBucket.set(bucket, point)
+    }
   }
   return [...byBucket.values()].sort((a, b) => a.observedAt.localeCompare(b.observedAt))
 }
@@ -2916,12 +2934,16 @@ polyline 三条：size/free/probe 各一色；x 轴按 `observedAt` 等距；悬
 
 - [ ] **Step 3: i18n 同步中英**
 
-`zh-CN.ts` 新增：`instances.status.{unknown,online,degraded,offline,draining}`、`instances.summary.*`、`instances.action.{drain,undrain,probe}`、`instances.drain.confirm`、`instances.trend.window` 等 key；按 `i18n/index.ts` 的英文回退结构同步英文词条（spec §14）。
+修正（实现时定案）：本仓所有运维视图（InstancesView/InstanceCard/VersionsView…）均未接 `useI18n`/`t()`，直接用中文字面量；`i18n/` 只有 `zh-CN` 一个 locale，`index.ts` 注明「第二个 locale 是一个文件的距离」。因此 Task 16 不为 instances 单独引入 `t()`：状态中文标签用视图内 `STATUS_LABEL` 映射（与每个既有视图一致），`statusLabelKey()` 仅作为 Task 15 已测的机器键 helper 保留。给 `zh-CN.ts` 加一串无人 `t()` 消费的 `instances.*` key 只会成为死配置，故不加。若将来真正接 i18n，再连同全站一起接。
+
+（原计划：`zh-CN.ts` 新增 `instances.status.*` 等 key 并同步英文——因上述现状不成立而删去。）
 
 - [ ] **Step 4: 验证**
 
-Run（`console/frontend`）: `npm run test` 然 `npm run build` 然 `npm run lint`
-Expected: vitest 全绿；`vue-tsc --noEmit && vite build` 通过；eslint 0 warning。
+Run（`console/frontend`）: `npm run test` 然 `npx vue-tsc --noEmit` 然 `npx vite build` 然 `npx eslint <本次文件> --max-warnings 0`
+Expected: instances-view 组测全绿；vue-tsc 对本次改动文件零错误；`vite build` 产出 `InstancesView-*.js` chunk；eslint exit 0。
+
+修正：不用整条 `npm run build`（= `vue-tsc --noEmit && vite build`）作为闸门——仓内已有一处与本 Task 无关的 `sent-audio.spec.ts` WIP 会使 `vue-tsc` 全量报 TS2554/TS2345。改跑 `npx vite build`（不含 tsc 门）验证 bundle，另用 `npx vue-tsc --noEmit` 过滤本批文件名确认零错。
 
 - [ ] **Step 5: 提交**
 
