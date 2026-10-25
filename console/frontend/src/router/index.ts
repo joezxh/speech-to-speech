@@ -20,7 +20,7 @@ export const routes: RouteRecordRaw[] = [
       {
         path: '',
         name: 'voice',
-        component: () => import('@/views/VoicePlaceholderView.vue'),
+        component: () => import('@/views/VoiceView.vue'),
         meta: { face: 'voice' }
       },
       {

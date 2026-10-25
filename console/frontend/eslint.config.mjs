@@ -32,7 +32,9 @@ const browserGlobals = {
 }
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**', 'public/vendor/**'] },
+  // `public/worklets/**` 是逐字节拷进 dist 的 AudioWorklet 源码：它跑在 `AudioWorkletGlobalScope`
+  // 里（没有 `window`、没有模块导入），交给出货前那一份原文，不参与 lint。
+  { ignores: ['dist/**', 'node_modules/**', 'public/vendor/**', 'public/worklets/**'] },
   js.configs.recommended,
   ...vue.configs['flat/recommended'],
   {

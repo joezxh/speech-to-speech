@@ -1,0 +1,606 @@
+// 彩色只属于声音：界面本身是无彩度的，只有 orb / 弧线 / 状态色带颜色。
+:root {
+  --voice-bg: #0a0b10;
+  --voice-surface: #13151c;
+  --voice-surface-2: #1b1e29;
+  --voice-border: rgba(255, 255, 255, 0.08);
+  --voice-border-strong: rgba(255, 255, 255, 0.16);
+  --voice-text: #f5f6fa;
+  --voice-dim: rgba(245, 246, 250, 0.65);
+  --voice-faint: rgba(245, 246, 250, 0.42);
+  --voice-accent: #8b7dff;
+  --voice-listening: #22d3ee;
+  --voice-processing: #f59e0b;
+  --voice-error: #ff6a75;
+  --voice-ready: #34d399;
+  --voice-queued: #94a3b8;
+}
+
+// ── 对话页嵌在外壳里的高度契约（§3.2.4）────────────────────────────────
+// `.shell__content` 是 `flex: 1 1 auto; min-height: 0`，所以这里写 `height: 100%`
+// 而不是 `min-height: 100vh`：后者会把页脚推到视口外，外壳的滚动条一闪就被
+// `overflow: hidden` 藏掉，舞台高度只剩下一条缝。
+.v-page {
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  // 三行：头部（IdentityBlock）/ 舞台（`minmax(0, 1fr)` 允许被压缩）/ 页脚
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  // `CameraPip` 的绝对定位基准就是这一层（见 `.v-pip`）。
+  position: relative;
+  background: var(--voice-bg);
+  color: var(--voice-text);
+  font-size: 14px;
+}
+
+// 头部只剩 IdentityBlock 与两行鸣谢。账号 chip 与工具 / 历史 / 设置三枚按钮
+// 被 `VoiceView` `Teleport` 到外壳顶栏的 `#shell-actions`，不在这一层；About 是
+// `IdentityBlock` 里的圆钮，随头部留在舞台。
+.v-head {
+  padding: 20px 24px 0;
+}
+
+.v-ident {
+  max-width: 560px;
+
+  &__head { display: flex; align-items: center; gap: 8px; }
+  &__title { color: var(--voice-text); font-size: 15px; font-weight: 600; }
+  &__title:hover { color: var(--voice-accent); }
+  &__blurb { margin: 4px 0 8px; color: var(--voice-dim); font-size: 13px; line-height: 1.5; }
+}
+
+.v-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+  color: var(--voice-faint);
+
+  a { color: var(--voice-dim); }
+  a:hover { color: var(--voice-text); }
+  &__label { margin-right: 6px; }
+}
+
+.v-sep { margin: 0 6px; opacity: 0.5; }
+
+// `Teleport` 到 `#shell-actions` 的四个按钮仍然带 `.v-icon`：`voice.less` 是全局
+// 样式（不是 scoped），被传送出去的节点照样命中，长得与旧页一致。
+.v-actions { display: flex; align-items: center; gap: 8px; }
+
+.v-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--voice-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--voice-dim);
+  cursor: pointer;
+
+  &:hover { color: var(--voice-text); border-color: var(--voice-border-strong); }
+  &--sm { width: 20px; height: 20px; border: 0; }
+}
+
+// 图标几何（fill / stroke / stroke-width）全部写在 index.html 的 <symbol> 里。
+// 这里只给尺寸与颜色：<use> 会把 symbol 克隆进 shadow tree，而表现属性优先于
+// 继承来的 CSS，所以在这儿写 fill / stroke 也覆盖不动里面的形状。
+.v-i {
+  width: 18px;
+  height: 18px;
+  color: inherit;
+}
+
+.v-icon--sm .v-i { width: 14px; height: 14px; }
+
+.v-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--voice-accent);
+}
+
+.v-account {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--voice-border);
+  border-radius: 999px;
+  background: var(--voice-surface);
+  color: var(--voice-dim);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover { color: var(--voice-text); }
+  &.is-spent { color: var(--voice-error); border-color: color-mix(in srgb, var(--voice-error) 40%, transparent); }
+  &--signin { color: var(--voice-text); border-color: var(--voice-border-strong); }
+  &__avatar { border-radius: 50%; }
+  &__tier { margin: 0; font-size: 11px; letter-spacing: 0.08em; color: var(--voice-faint); }
+  &__remaining { margin: 2px 0 8px; font-size: 13px; }
+  &__link { display: block; font-size: 12px; }
+}
+
+.v-stage {
+  // 嵌进外壳后舞台不再是整页：orb 仍在这一层里居中，PiP 以这一层为基准贴左下。
+  position: relative;
+  // grid 子项默认 `min-height: auto`，内容一多就顶破 `1fr`，把页脚挤出可视区。
+  min-height: 0;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 18px;
+  padding: 24px 16px 40px;
+  overflow: hidden;
+}
+
+.v-orb-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+}
+
+.v-side {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--voice-border-strong);
+  background: color-mix(in srgb, var(--voice-surface-2) 80%, #2a2e3c);
+  color: var(--voice-dim);
+  cursor: pointer;
+
+  &:hover { color: var(--voice-text); }
+  &--stop:hover { color: var(--voice-error); border-color: color-mix(in srgb, var(--voice-error) 50%, transparent); }
+}
+
+.v-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: clamp(140px, min(38vw, 46vh), 320px);
+  aspect-ratio: 1 / 1;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--glow, var(--voice-accent));
+  cursor: pointer;
+
+  &:disabled { cursor: default; }
+  &__glow {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, var(--glow) 0%, transparent 65%);
+    filter: blur(28px);
+    opacity: calc(0.38 + 0.42 * var(--glow-strength, 0));
+    transition: opacity 120ms linear;
+  }
+  &__ring {
+    position: absolute;
+    width: 82%;
+    height: 82%;
+    border-radius: 50%;
+    border: 1.5px solid color-mix(in srgb, var(--glow) 35%, transparent);
+    opacity: 0.4;
+  }
+  &__ring--outer {
+    width: 96%;
+    height: 96%;
+    opacity: 0.18;
+    transform: scale(0.98);
+  }
+  &__core {
+    position: relative;
+    width: 72%;
+    height: 72%;
+    border-radius: 50%;
+    border: 2px solid color-mix(in srgb, var(--glow) 40%, transparent);
+    background: radial-gradient(
+      circle at 35% 28%,
+      color-mix(in srgb, var(--glow) 28%, transparent),
+      color-mix(in srgb, var(--glow) 10%, transparent) 55%,
+      color-mix(in srgb, var(--glow) 5%, transparent)
+    );
+    display: grid;
+    place-items: center;
+  }
+  &__ind {
+    width: 44%;
+    height: 44%;
+    display: grid;
+    place-items: center;
+    // 指示器跟随球体颜色轴（.v-orb 上的 --glow），不写死正文色。
+    color: inherit;
+    opacity: 0.9;
+
+    // demo 的指示器都是「占球心的百分比」（.circle-indicator 44% / svg 60%，
+    // demo/style.css:685-703），因为球体在 140–320px 间自适应。写死 18px 会让
+    // 大屏上的球心缩成一个小点，小屏上又溢出。
+    .v-i { width: 60%; height: 60%; }
+    .v-spinner { width: 48%; height: 48%; border-width: 3px; }
+    .v-dots { gap: 8%; }
+    .v-dots i { width: 15%; height: auto; aspect-ratio: 1 / 1; }
+    .v-bars { gap: 10%; height: 42%; }
+    .v-bars i { width: 8%; height: 100%; }
+  }
+
+  // 九态只用一条轴：--glow。
+  &[data-state="idle"] { --glow: var(--voice-ready); }
+  &[data-state="connecting"] { --glow: #facd15; }
+  &[data-state="your-turn"] { --glow: var(--voice-accent); }
+  &[data-state="queued"] { --glow: var(--voice-queued); }
+  &[data-state="listening"],
+  &[data-state="user-speaking"] { --glow: var(--voice-listening); }
+  &[data-state="processing"] { --glow: var(--voice-processing); }
+  &[data-state="ai-speaking"] { --glow: var(--voice-accent); }
+  &[data-state="error"] { --glow: var(--voice-error); }
+}
+
+.v-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  animation: v-spin 900ms linear infinite;
+}
+
+.v-dots,
+.v-bars {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  i { display: block; background: currentColor; border-radius: 999px; }
+}
+
+.v-dots i { width: 5px; height: 5px; animation: v-dot 1s ease-in-out infinite; }
+.v-dots i:nth-child(2) { animation-delay: 0.15s; }
+.v-dots i:nth-child(3) { animation-delay: 0.3s; }
+
+.v-bars i { width: 3px; height: 10px; animation: v-bar 900ms ease-in-out infinite; }
+.v-bars i:nth-child(2) { animation-delay: 120ms; }
+.v-bars i:nth-child(3) { animation-delay: 240ms; }
+.v-bars i:nth-child(4) { animation-delay: 360ms; }
+.v-bars i:nth-child(5) { animation-delay: 480ms; }
+
+@keyframes v-spin { to { transform: rotate(360deg); } }
+@keyframes v-dot { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+@keyframes v-bar { 0%, 100% { transform: scaleY(0.4); } 50% { transform: scaleY(1.6); } }
+
+.mic-gate {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: grid;
+  place-items: center;
+
+  &__arc { position: absolute; inset: 0; width: 80px; height: 80px; }
+  &__track { stroke: var(--voice-border-strong); stroke-width: 2.5; }
+  &__fill {
+    stroke: color-mix(in srgb, var(--voice-listening) 70%, transparent);
+    stroke-width: 2.5;
+    stroke-dasharray: 100 100;
+    transition: stroke-dashoffset 80ms linear;
+  }
+  &__hit { stroke: transparent; stroke-width: 12; cursor: grab; }
+  &__handle { fill: var(--voice-dim); }
+  &.is-gating &__handle { fill: var(--voice-ready); }
+  &.is-open &__fill { stroke: var(--voice-ready); }
+}
+
+.v-caption {
+  margin: 0;
+  font-size: 17px;
+  color: var(--voice-text);
+  text-align: center;
+
+  &--error { color: var(--voice-error); font-size: 14px; max-width: 48ch; }
+}
+
+.v-sub { margin: -8px 0 0; max-width: 46ch; text-align: center; font-size: 12.5px; color: var(--voice-faint); }
+
+.v-queue {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+
+  &__body { margin: 0; font-size: 13px; color: var(--voice-dim); }
+  &__actions { display: flex; gap: 8px; }
+}
+
+.v-join {
+  border: 0 !important;
+  background: var(--voice-accent) !important;
+  color: #0a0b10 !important;
+  font-weight: 600;
+  border-radius: 999px !important;
+
+  &:hover { background: color-mix(in srgb, var(--voice-accent) 85%, #fff) !important; }
+}
+
+.v-leave {
+  border-radius: 999px !important;
+  border-color: var(--voice-border-strong) !important;
+  background: transparent !important;
+  color: var(--voice-dim) !important;
+}
+
+.v-foot {
+  padding: 0 0 20px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--voice-faint);
+
+  a { color: var(--voice-dim); }
+}
+
+// ── 历史抽屉里的转写条目（demo `#chat-history` 的三种形态）──────────────
+.transcript {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.transcript__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  border: 1px solid var(--voice-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--voice-surface) 92%, transparent);
+
+  // 临时条目（partial）半透明：与旧页的 `.hist-item.transient` 同义。
+  &.is-partial { opacity: 0.6; }
+  &--tool { border-color: color-mix(in srgb, var(--voice-processing) 40%, transparent); }
+  &--assistant { border-color: color-mix(in srgb, var(--voice-accent) 32%, transparent); }
+}
+
+.transcript__role {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--voice-faint);
+}
+
+.transcript__item--tool .transcript__role { color: var(--voice-processing); }
+.transcript__item--assistant .transcript__role { color: var(--voice-accent); }
+
+.transcript__text { white-space: pre-wrap; word-break: break-word; }
+
+// 用户条目原音：标签 + 原生 <audio controls>，与 demo 的 `.hist-audio` 同名同形。
+.hist-audio {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &__label { font-size: 10.5px; color: var(--voice-faint); }
+  audio { width: 100%; height: 32px; }
+}
+
+// tool 条目：Input / Output / Snapshot 三段，包在 <details> 里默认折叠。
+.transcript__tool {
+  border-top: 1px dashed var(--voice-border);
+  padding-top: 4px;
+
+  &-name { cursor: pointer; font-size: 11.5px; color: var(--voice-processing); }
+  &-label {
+    margin: 6px 0 2px;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--voice-faint);
+  }
+  &-json {
+    margin: 0;
+    max-height: 140px;
+    overflow: auto;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: #0d1326;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+  }
+  &-image { margin-top: 4px; width: 100%; border-radius: 6px; }
+}
+
+// 助手条目的计时块：与 demo 的 `.hist-timings` 同名同形（`style.css:2724-2754`）。
+// summary 撑到 44px 是触控目标，不是装饰——历史抽屉在手机宽度下也要能用拇指展开。
+.hist-timings {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--voice-faint);
+
+  summary {
+    min-height: 44px;
+    padding: 12px 0;
+    cursor: pointer;
+    touch-action: manipulation;
+
+    &:focus-visible { outline: 2px solid var(--voice-accent); outline-offset: 3px; }
+  }
+
+  .timing-status { margin: 0; color: var(--voice-text); }
+
+  dl {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 16px;
+    margin: 8px 0;
+  }
+
+  dt { color: var(--voice-faint); }
+  dd { margin: 0; color: var(--voice-text); font-variant-numeric: tabular-nums; }
+
+  // 口径句：说明「为什么七行加起来不等于 E2E」，不折叠也不隐藏。
+  p:last-child { margin: 8px 0 0; line-height: 1.45; }
+}
+
+.v-bubbles {
+  position: absolute;
+  top: 8px;
+  right: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.v-bubble {
+  max-width: 34ch;
+  padding: 6px 10px;
+  border: 1px solid var(--voice-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--voice-surface) 92%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+
+  &__role { display: block; font-size: 10px; letter-spacing: 0.08em; color: var(--voice-faint); text-transform: uppercase; }
+  &--tool &__role { color: var(--voice-processing); }
+  &--assistant &__role { color: var(--voice-accent); }
+}
+
+.v-bubble-enter-active,
+.v-bubble-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
+.v-bubble-enter-from,
+.v-bubble-leave-to { opacity: 0; transform: translateY(-4px); }
+
+.v-pip {
+  // 旧页整页铺满时 `fixed` 与 `absolute` 等价；嵌进外壳后必须改 `absolute`，
+  // 否则滚动或侧栏折叠时 PiP 会飘到运维台侧栏上。
+  position: absolute;
+  left: 20px;
+  bottom: 20px;
+  width: 148px;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--voice-border-strong);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+
+  &__feed { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+  &__flash { position: absolute; inset: 0; background: #fff; opacity: 0; transition: opacity 120ms ease; }
+  &__flash.is-on { opacity: 0.6; }
+  &__label { position: absolute; left: 6px; bottom: 6px; font-size: 10px; color: var(--voice-dim); }
+}
+
+.v-latency-wrap { display: grid; justify-items: center; gap: 6px; }
+
+.v-latency {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+
+  &__chip {
+    padding: 3px 8px;
+    border: 1px solid var(--voice-border);
+    border-radius: 999px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--voice-dim);
+  }
+  &__label { margin-right: 6px; color: var(--voice-faint); }
+  &__more { font-size: 11.5px; color: var(--voice-faint); }
+  &__more summary { cursor: pointer; }
+  &__more ul { margin: 4px 0 0; padding-left: 16px; }
+}
+
+// 弹层里的共用块（Tools / Settings / About 都用）。
+.v-hint {
+  display: block;
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--voice-faint);
+}
+
+.v-tool {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+
+  &--sep { border-top: 1px solid var(--voice-border); }
+  &__info { display: grid; gap: 2px; }
+  &__name { font-size: 13.5px; }
+  &__desc { font-size: 11.5px; color: var(--voice-faint); }
+}
+
+.v-field {
+  display: grid;
+  gap: 6px;
+  padding: 4px 0 10px;
+
+  &__label { font-size: 12.5px; color: var(--voice-dim); }
+}
+
+.v-gate-meter {
+  height: 4px;
+  margin-top: 2px;
+  border-radius: 999px;
+  background: var(--voice-surface-2);
+  overflow: hidden;
+
+  span { display: block; height: 100%; background: var(--voice-ready); }
+}
+
+.v-gate-ends { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--voice-faint); }
+
+.v-wide { width: 100%; }
+.v-empty { margin: 12px; color: var(--voice-faint); font-size: 12.5px; }
+
+.v-pipe {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+
+  &__title { margin: 16px 0 0; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--voice-faint); }
+  &__end { font-size: 12px; color: var(--voice-dim); }
+  &__stage { display: grid; grid-template-columns: 44px 1fr; gap: 2px 10px; padding-left: 4px; border-left: 1px solid var(--voice-border); }
+  &__tag { font-size: 10.5px; letter-spacing: 0.08em; color: var(--voice-accent); }
+  &__job { font-size: 12px; color: var(--voice-dim); }
+  &__stage a { grid-column: 2; font-size: 11.5px; }
+}
+
+.v-about__version { margin: 16px 0 0; font-size: 11.5px; color: var(--voice-faint); }
+
+.v-limit {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 8px 0 4px;
+
+  &__badge svg { width: 64px; height: 60px; }
+  &__title { margin: 0; font-size: 19px; }
+  &__msg { margin: 0; font-size: 13px; color: var(--voice-dim); }
+  &__cta { margin-top: 6px; padding: 8px 18px; border-radius: 999px; }
+  &__note { margin: 0; font-size: 11.5px; color: var(--voice-faint); }
+}
+
+@media (max-width: 720px) {
+  .v-head { padding: 14px 16px 0; }
+  .v-ident__blurb { display: none; }
+  .v-bubbles { right: 12px; }
+  .v-pip { width: 104px; left: 12px; bottom: 12px; }
+}
