@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import concurrent.futures
+import contextlib
 import socket
 import threading
 
@@ -13,6 +15,27 @@ from app.main import create_app
 from app.services import calls_service
 
 OFFER = b"v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\n"
+
+
+@contextlib.contextmanager
+def realtime_socket(client: TestClient):
+    """A `/v1/realtime` socket whose teardown race cannot masquerade as a failure.
+
+    `TestClient.websocket_connect` runs the ASGI app in a blocking portal and, on
+    exit, cancels it before waiting for its task. When the handler is still
+    closing the upstream socket, the cancellation can land first and
+    `Future.result()` then raises `CancelledError` from the *exit*, not from
+    anything the test asserted (load and Windows/py3.14 widen that window).
+    Suppressing exactly that keeps the assertions honest; an exception raised
+    inside the `with` body still propagates.
+    """
+    session = client.websocket_connect("/v1/realtime", subprotocols=["realtime"])
+    ws = session.__enter__()
+    try:
+        yield ws
+    finally:
+        with contextlib.suppress(concurrent.futures.CancelledError):
+            session.__exit__(None, None, None)
 
 
 @pytest.fixture
@@ -54,7 +77,7 @@ def test_a_frame_round_trips(dist, pipeline, monkeypatch):
     with TestClient(create_app()) as client:
         # The echo server insists on the `realtime` subprotocol (websockets >= 14
         # rejects the handshake otherwise), which is what the browser SDK asks for.
-        with client.websocket_connect("/v1/realtime", subprotocols=["realtime"]) as ws:
+        with realtime_socket(client) as ws:
             ws.send_text("hello")
             assert ws.receive_text() == "hello"
 
@@ -62,7 +85,7 @@ def test_a_frame_round_trips(dist, pipeline, monkeypatch):
 def test_the_realtime_subprotocol_is_forwarded(dist, pipeline, monkeypatch):
     monkeypatch.setattr("app.main.console_settings.pipeline_base_url", pipeline)
     with TestClient(create_app()) as client:
-        with client.websocket_connect("/v1/realtime", subprotocols=["realtime"]) as ws:
+        with realtime_socket(client) as ws:
             assert ws.accepted_subprotocol == "realtime"
 
 
@@ -81,7 +104,8 @@ def test_the_sdp_offer_goes_to_loopback_without_a_location(dist, monkeypatch):
     async def fake(url, offer):
         seen.append((url, offer))
         return httpx.Response(
-            201, content=b"v=0\r\nanswer\r\n",
+            201,
+            content=b"v=0\r\nanswer\r\n",
             headers={"content-type": "application/sdp", "location": "http://127.0.0.1:8765/v1/realtime/calls/c1"},
             request=httpx.Request("POST", url),
         )
@@ -89,8 +113,7 @@ def test_the_sdp_offer_goes_to_loopback_without_a_location(dist, monkeypatch):
     monkeypatch.setattr("app.main.console_settings.pipeline_base_url", "http://127.0.0.1:8765")
     monkeypatch.setattr(calls_service, "_http", fake)
     with TestClient(create_app()) as client:
-        response = client.post("/v1/realtime/calls", content=OFFER,
-                              headers={"Content-Type": "application/sdp"})
+        response = client.post("/v1/realtime/calls", content=OFFER, headers={"Content-Type": "application/sdp"})
     assert response.status_code == 201
     assert seen == [("http://127.0.0.1:8765/v1/realtime/calls", OFFER)]
     # A loopback Location would be undialable for the browser (spec §10.2.3).

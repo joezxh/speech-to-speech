@@ -145,3 +145,34 @@ docker compose -f <所用compose文件> exec pipeline \
 - **多并发**：默认单流水线，可用 `--num_pipelines N` 提升并发（需更多显存/算力）。
 - **镜像构建**：`Dockerfile` 基于 `nvidia/cuda:12.8.1`；需先安装
   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/) 才能使用 GPU。
+
+---
+
+## 8. 镜像回退
+
+console 与 pipeline 是**同一个镜像里的两个进程**，所以回退镜像会同时换掉两者。
+不存在“只退控制台”的做法（要能单独退就得拆镜像，那会放弃单镜像拓扑）。
+
+```bash
+# 发版时：给当前镜像打一个可回退的版本 tag
+docker tag s2s:latest s2s:2.0.0
+
+# 回退时：整个镜像退回，不许重新构建
+S2S_IMAGE_TAG=2.0.0 docker compose up -d --no-build
+docker compose exec pipeline supervisorctl -c /etc/supervisor/supervisord.conf status
+```
+
+回退后要确认三件事，它们互不连带：
+
+| 对象 | 回退方式 | 说明 |
+|---|---|---|
+| 镜像（代码） | `S2S_IMAGE_TAG=<旧版本>` + `--no-build` | console 与 pipeline 一起退 |
+| 配置 | 控制台「版本」页回滚到上一个 live 版本 | 不影响代码 |
+| 数据（审计/用量） | 不回退 | 只增不改 |
+
+`--no-build` 是必须的：不带它，compose 会按当前工作区重新构建，你以为在回退，
+实际是重新部署了 HEAD。
+
+回退后如果控制台起来但参数页报 `pool_unreachable`，先看
+`docker compose exec pipeline tail -50 /var/log/supervisor/pipeline-stderr.log`：
+那是 pipeline 没起来，不是回退失败。

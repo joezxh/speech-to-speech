@@ -231,8 +231,9 @@ cover/
 .tox/
 uv.lock
 # `pytest --basetemp` on Windows: the session-end cleanup fails with WinError 5
-# and leaves the directory behind, so keep it out of `git status`.
-.pytest-tmp/
+# and leaves the directory behind, so keep it (and the numbered variants a
+# second run picks) out of `git status`.
+.pytest-tmp*/
 
 # JavaScript dependencies
 node_modules/

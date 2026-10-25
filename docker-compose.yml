@@ -38,6 +38,10 @@ services:
     # depends_on:
     #   llama:
     #     condition: service_healthy
+    # Every release is this one tag. Rolling back is
+    # `S2S_IMAGE_TAG=<old> docker compose up -d --no-build`: console and
+    # pipeline move together because they share the image (spec §12 R21).
+    image: s2s:${S2S_IMAGE_TAG:-latest}
     build:
       context: .
       dockerfile: ${DOCKERFILE:-Dockerfile}

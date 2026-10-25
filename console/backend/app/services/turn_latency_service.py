@@ -202,7 +202,8 @@ def read(
 
 
 TURN_PROMPT = """## 轮次摘要（与上面同一时间窗，共 {count} 条）
-状态：completed {completed} / failed {failed} / cancelled {cancelled} / incomplete {incomplete}，failureRate {failure_rate}
+状态：completed {completed} / failed {failed} / cancelled {cancelled}
+      / incomplete {incomplete}，failureRate {failure_rate}
 e2e：p50 {e2e_p50} / p95 {e2e_p95} / max {e2e_max}
 stt：p50 {stt_p50} / p95 {stt_p95}
 llm：p50 {llm_p50} / p95 {llm_p95}

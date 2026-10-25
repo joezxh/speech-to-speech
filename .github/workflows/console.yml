@@ -84,3 +84,8 @@ jobs:
           docker compose -f docker-compose.yml config | tee /tmp/cfg.yml
           grep -q '8000:8000' /tmp/cfg.yml
           ! grep -q '8765:8765' /tmp/cfg.yml
+      - name: pipeline image name is tag-controlled
+        run: |
+          docker compose -f docker-compose.yml config > /tmp/cfg.yml
+          grep -q 'image: s2s:' /tmp/cfg.yml
+          S2S_IMAGE_TAG=9.9.9 docker compose -f docker-compose.yml config | grep -q 'image: s2s:9.9.9'

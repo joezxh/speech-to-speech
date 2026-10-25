@@ -15,9 +15,10 @@ from __future__ import annotations
 import base64
 import json
 import re
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 SOURCES = ("console-stdout.log", "console-stderr.log", "pipeline-stdout.log", "pipeline-stderr.log")
 PROCESSES = ("console", "pipeline")
