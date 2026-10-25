@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from queue import Empty, Queue
 from threading import Event as ThreadingEvent
-from typing import Any, Callable, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Callable, Literal, TypeVar
 
 import numpy as np
 from fastapi import FastAPI, Request, Response, WebSocket, WebSocketDisconnect
@@ -56,6 +56,9 @@ from speech_to_speech.pipeline.log_context import pipeline_log_ctx
 from speech_to_speech.pipeline.messages import AUDIO_RESPONSE_DONE, PIPELINE_END, AudioOutput
 from speech_to_speech.pipeline.speculative_turns import TurnOutputHeld
 from speech_to_speech.pipeline.transcript_logging import log_exception
+
+if TYPE_CHECKING:
+    from speech_to_speech.console_integration import ConsoleAttachment
 
 # aiortc (the 'webrtc' extra) is optional. Import it here, at module load,
 # rather than lazily in the calls endpoint: the av/cryptography C extensions
@@ -532,9 +535,11 @@ def create_app(
     pool: list[PipelineUnit],
     stop_event: ThreadingEvent,
     llm_proxy_config: LLMProxyConfig | None = None,
+    *,
+    console_attachment: ConsoleAttachment | None = None,
 ) -> FastAPI:
     @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async def pipeline_lifespan(app: FastAPI) -> AsyncIterator[None]:
         # One send loop per pipeline unit; each polls its own queues and forwards
         # to the websocket currently attached via unit.session.
         send_tasks = [asyncio.create_task(_send_loop_for(unit)) for unit in pool]
@@ -553,6 +558,19 @@ def create_app(
                     await sess.transport.close()
                 except Exception:
                     pass
+
+    lifespan = pipeline_lifespan
+    if console_attachment is not None:
+        # Starlette does not propagate a mounted app's lifespan, so the console's
+        # background work (admin bootstrap, publish recovery, indexer, sweeper)
+        # is entered explicitly here.
+        @asynccontextmanager
+        async def integrated_lifespan(app: FastAPI) -> AsyncIterator[None]:
+            async with console_attachment.lifespan(console_attachment.app):
+                async with pipeline_lifespan(app):
+                    yield
+
+        lifespan = integrated_lifespan
 
     app = FastAPI(lifespan=lifespan)
 
@@ -1325,5 +1343,10 @@ def create_app(
             except Exception as e:
                 logger.error(f"Pipeline {unit.index} send loop error: {e}")
                 await asyncio.sleep(0.1)
+
+    if console_attachment is not None:
+        # Must stay last: Mount("/") matches everything, so every /v1/* route,
+        # /docs, /redoc and /openapi.json has to be registered before it.
+        app.mount("/", console_attachment.app)
 
     return app
