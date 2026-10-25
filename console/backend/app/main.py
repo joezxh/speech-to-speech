@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager, suppress
 from fastapi import FastAPI
 from loguru import logger
 
+from app.config import allocator as allocator_settings
 from app.config import app as app_settings
 from app.config import console as console_settings
 from app.config import demo as demo_settings
@@ -19,6 +20,7 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.services import (
     bootstrap_service,
     identity_service,
+    instance_monitor,
     instance_seed,
     metering_service,
     publish_flow_service,
@@ -81,9 +83,19 @@ async def lifespan(app: FastAPI):
     # worker), reading the pipeline's own log file. It never blocks a request.
     indexer = asyncio.create_task(turn_latency_indexer.run_forever())
 
+    # P1.2: resident instance monitor. Only when the allocator/registry feature
+    # is configured — mode "off" with no seed keeps the task from starting.
+    monitor: asyncio.Task | None = None
+    if allocator_settings.mode != "off" or allocator_settings.seed_path.strip():
+        monitor = asyncio.create_task(instance_monitor.run_forever())
+
     try:
         yield
     finally:
+        if monitor is not None:
+            monitor.cancel()
+            with suppress(asyncio.CancelledError):
+                await monitor
         indexer.cancel()
         with suppress(asyncio.CancelledError):
             await indexer
