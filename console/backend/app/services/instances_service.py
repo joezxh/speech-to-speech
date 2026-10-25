@@ -13,6 +13,7 @@ from typing import Any
 
 from app.config import allocator, console
 from app.repositories.instance_repository import InstanceRepository
+from app.services import allocator as allocator_service
 from app.services import instance_monitor, pool, process_probe
 
 
@@ -128,8 +129,6 @@ def _collect_registry(
         )
     if not info.running:
         alerts.append("pipeline_stopped")
-    # pending_grants 在 P1.4 Task 13 接 allocator.pending_count()；本阶段先置 0 保留键位
-    # （前端 Task 15 已按可缺省字段处理）。
     summary = {
         "instances_total": len(instances),
         "online": sum(1 for i in instances if i["status"] == "online"),
@@ -139,7 +138,8 @@ def _collect_registry(
         "slots_total": sum(i["size"] or 0 for i in instances),
         "slots_in_use": sum(i["in_use"] or 0 for i in instances),
         "slots_free": sum(i["free"] or 0 for i in instances),
-        "pending_grants": 0,  # Task 13 接线：改 allocator.pending_count() 并删上行注释
+        # P1.4 已交付：本机已签发未领取的 grant 数（spec §10）。
+        "pending_grants": allocator_service.pending_count(),
     }
     legacy_pool = local.pool if local is not None and local.pool else None
     return {
