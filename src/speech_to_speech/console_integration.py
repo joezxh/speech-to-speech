@@ -228,8 +228,19 @@ def attachment_for_server(
     """Resolve the attachment for a known bind address, or None when off."""
 
     if options is None or not options.autostart:
+        logger.info("console: integrated=false")
         return None
-    return load_console(options, pipeline_base_url=probe_base_url(host, port), loader=loader)
+    base_url = probe_base_url(host, port)
+    attachment = load_console(options, pipeline_base_url=base_url, loader=loader)
+    logger.info("console: integrated=true | %s  ui=/  console=/console  api=/api  realtime=/v1/realtime", base_url)
+    logger.info(
+        "console: home=%s  static=%s  env_file=%s",
+        attachment.home,
+        attachment.static_dir,
+        attachment.home / ".env",
+    )
+    logger.info("console: PIPELINE_BASE_URL=%s (self)", base_url)
+    return attachment
 
 
 def attachment_for_runtime(

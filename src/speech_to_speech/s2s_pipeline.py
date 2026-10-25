@@ -839,6 +839,8 @@ def run_pipeline_command(
     """Run the server alone or compose it with the loopback audio client."""
 
     args = parse_arguments(argv, command=command)
+    # The console reports its integration line before any model loads, so logging must be up first.
+    setup_logger(args.module_kwargs.log_level)
 
     from speech_to_speech.pipeline.console import conversation_output
 

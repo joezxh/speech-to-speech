@@ -246,3 +246,27 @@ def test_attachment_for_runtime_falls_back_to_the_defaults(tmp_path):
     attachment = attachment_for_runtime(options, {}, loader=lambda home: _fake_module(home))
 
     assert attachment.pipeline_base_url == "http://127.0.0.1:8765"
+
+
+def test_the_off_switch_logs_one_line(tmp_path, caplog):
+    options = ConsoleOptions(autostart=False, home=tmp_path / "nope", static_dir=tmp_path / "nope2")
+
+    with caplog.at_level(logging.INFO, logger="speech_to_speech.console_integration"):
+        attachment_for_server(options, "127.0.0.1", 8765, loader=lambda home: _fake_module(home))
+
+    assert [record.getMessage() for record in caplog.records] == ["console: integrated=false"]
+
+
+def test_the_on_switch_logs_where_things_mounted(tmp_path, caplog):
+    options = _prepared(tmp_path)
+
+    with caplog.at_level(logging.INFO, logger="speech_to_speech.console_integration"):
+        attachment_for_server(options, "0.0.0.0", 9100, loader=lambda home: _fake_module(home))
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert (
+        "console: integrated=true | http://127.0.0.1:9100  ui=/  console=/console  api=/api  realtime=/v1/realtime"
+        in messages
+    )
+    assert any(f"static={options.static_dir}" in message for message in messages)
+    assert "console: PIPELINE_BASE_URL=http://127.0.0.1:9100 (self)" in messages
