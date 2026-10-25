@@ -71,4 +71,60 @@ export interface InstanceSnapshot {
   pool: { size: number; inUse: number; units: PoolUnit[] } | null
   usage: Record<string, unknown> | null
   alerts: string[]
+  // 注册表非空才有；单实例 legacy 直连路径不返回这两键，故可选。
+  summary?: InstancesSummary
+  instances?: InstanceRow[]
+}
+
+/** 机器级状态：由 registry 巡检推导，与 unit 级 (idle/active/draining/stuck) 绝不混用。 */
+export type InstanceStatus = 'unknown' | 'online' | 'degraded' | 'offline' | 'draining'
+
+/** 字段名与后端 instances_service._collect_registry 逐字一致（snake_case）。 */
+export interface InstanceRow {
+  instance_id: string
+  base_url: string
+  status: InstanceStatus
+  weight: number
+  enabled: boolean
+  drain_requested: boolean
+  size: number | null
+  in_use: number | null
+  free: number | null
+  stuck: number | null
+  probe_ms: number | null
+  p95_probe_ms: number | null
+  units: PoolUnit[]
+  last_error: string
+  observed_by: string
+  declared_mismatch: boolean
+}
+
+export interface InstancesSummary {
+  instances_total: number
+  online: number
+  offline: number
+  degraded: number
+  draining: number
+  slots_total: number
+  slots_in_use: number
+  slots_free: number
+  pending_grants: number
+}
+
+/** 字段名与后端 schemas.instance.metric_point 逐字一致（camelCase）。 */
+export interface InstanceMetricPoint {
+  observedAt: string
+  observedBy: string
+  kind: 'sample' | 'state_change'
+  status: string
+  size: number | null
+  inUse: number | null
+  free: number | null
+  stuck: number | null
+  probeMs: number | null
+  allocOk: number
+  allocFailNoInstance: number
+  allocFailInstance503: number
+  evictCount: number
+  recoverCount: number
 }
