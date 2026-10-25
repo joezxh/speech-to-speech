@@ -48,13 +48,15 @@ class HealthResult:
     notes: list[str] = field(default_factory=list)
 
 
-def pool_url() -> str:
-    return console.pipeline_base_url.rstrip("/")
+def pool_url(base_url: str | None = None) -> str:
+    """`base_url` lets a caller probe *another* instance (P1.1); without it the
+    console keeps talking to its own co-located pipeline exactly as before."""
+    return (base_url or console.pipeline_base_url).rstrip("/")
 
 
-def read_pool(timeout: float = 5.0) -> PoolState:
+def read_pool(timeout: float = 5.0, base_url: str | None = None) -> PoolState:
     try:
-        response = httpx.get(f"{pool_url()}/v1/pool", timeout=timeout)
+        response = httpx.get(f"{pool_url(base_url)}/v1/pool", timeout=timeout)
         response.raise_for_status()
         body = response.json()
     except httpx.HTTPError as exc:
@@ -71,10 +73,10 @@ def read_pool(timeout: float = 5.0) -> PoolState:
     )
 
 
-def read_usage(timeout: float = 5.0) -> dict[str, Any] | None:
+def read_usage(timeout: float = 5.0, base_url: str | None = None) -> dict[str, Any] | None:
     """`None` rather than an empty dict: “no data” must not look like zero."""
     try:
-        response = httpx.get(f"{pool_url()}/v1/usage", timeout=timeout)
+        response = httpx.get(f"{pool_url(base_url)}/v1/usage", timeout=timeout)
         response.raise_for_status()
         body = response.json()
     except (httpx.HTTPError, ValueError):
