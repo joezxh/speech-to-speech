@@ -372,8 +372,10 @@ git commit -m "feat(console): param_instance + param_instance_metric tables, ale
 **Interfaces:**
 - Consumes: `ParamInstance`/`ParamInstanceMetric`（Task 2）、conftest 的 `db_session` fixture
 - Produces:
-  - `InstanceRepository(session)`：`list_all() -> list[ParamInstance]`、`get_by_instance_id(instance_id) -> ParamInstance | None`、`set_drain(instance_id, *, drain: bool, updated_by: str) -> ParamInstance | None`、`set_enabled(instance_id, *, enabled: bool, updated_by: str) -> ParamInstance | None`
-  - `InstanceMetricRepository(session)`：`insert_many(rows: list[dict]) -> int`、`window(instance_id, *, since: datetime, observed_by: str | None = None) -> list[ParamInstanceMetric]`、`latest_observed_at() -> datetime | None`、`prune_before(cutoff: datetime) -> int`
+  - `InstanceRepository(session)`：`list_all() -> list[ParamInstance]`、`get_by_instance_id(instance_id) -> ParamInstance | None`、`upsert_seed(*, instance_id, base_url, weight, max_sessions_hint, labels, updated_by="seed") -> tuple[ParamInstance, str]`（Task 4 消费）、`set_drain(instance_id, *, drain: bool, updated_by: str) -> ParamInstance | None`、`set_enabled(instance_id, *, enabled: bool, updated_by: str) -> ParamInstance | None`
+  - `InstanceMetricRepository(session)`：`insert_many(rows: list[dict]) -> int`、`window(instance_id, *, since: datetime, observed_by: str | None = None) -> list[ParamInstanceMetric]`、`latest_observed_at() -> datetime | None`（**返回 aware UTC**）、`prune_before(cutoff: datetime) -> int`
+
+  ⚠ SQLite 把 `DateTime(timezone=True)` 读回为 **naive UTC**（已实测），Postgres 读回 aware。任何要与 `utcnow()` 比较的读出值必须先 `replace(tzinfo=UTC)`（仓库同一惯例见 `schemas/common.py:iso_utc`、`identity_service.py:97`），否则 `TypeError: can't compare offset-naive and offset-aware datetimes`。写入侧无此问题：本应用一律存 UTC，绑参时丢时区不改数值。
 
 - [ ] **Step 1: 写失败测试**
 
@@ -522,7 +524,7 @@ class InstanceRepository:
 ```python
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -530,6 +532,15 @@ from sqlalchemy.orm import Session
 from app.models.param_instance_metric import ParamInstanceMetric
 
 _COUNT_COLUMNS = ("alloc_ok", "alloc_fail_no_instance", "alloc_fail_instance_503", "evict_count", "recover_count")
+
+
+def _as_aware(value: datetime | None) -> datetime | None:
+    """SQLite round-trips `DateTime(timezone=True)` as a *naive* UTC value; Postgres
+    returns it aware. Consumers compare against `utcnow()`, so normalize here and
+    never let a naive value leak out (same idiom as `schemas/common.py:iso_utc`)."""
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
 
 
 class InstanceMetricRepository:
@@ -558,7 +569,7 @@ class InstanceMetricRepository:
         return list(self.session.scalars(stmt))
 
     def latest_observed_at(self) -> datetime | None:
-        return self.session.scalar(select(func.max(ParamInstanceMetric.observed_at)))
+        return _as_aware(self.session.scalar(select(func.max(ParamInstanceMetric.observed_at))))
 
     def prune_before(self, cutoff: datetime) -> int:
         result = self.session.execute(delete(ParamInstanceMetric).where(ParamInstanceMetric.observed_at < cutoff))
@@ -643,7 +654,8 @@ def test_base_url_conflict_warns_and_keeps_db_value(db_session, tmp_path, monkey
                      max_sessions_hint=None, labels={})
     monkeypatch.setattr(allocator_settings, "seed_path", _seed_file(tmp_path))
     alerts = instance_seed.apply_seed(db_session)
-    assert "instance_seed_conflict" in alerts
+    # 告警带实例 id（`name:instance_id`），多 console 排障时要知道是哪台。
+    assert "instance_seed_conflict:pipe-a" in alerts
     assert repo.get_by_instance_id("pipe-a").base_url == "http://old:8765"  # DB 为准（spec §7）
 
 
@@ -653,7 +665,7 @@ def test_instance_missing_from_seed_only_warns(db_session, tmp_path, monkeypatch
                      max_sessions_hint=None, labels={})
     monkeypatch.setattr(allocator_settings, "seed_path", _seed_file(tmp_path))
     alerts = instance_seed.apply_seed(db_session)
-    assert "instance_removed_from_seed" in alerts
+    assert "instance_removed_from_seed:pipe-z" in alerts
     assert repo.get_by_instance_id("pipe-z") is not None  # 不删除
 ```
 
@@ -731,7 +743,8 @@ def apply_seed(session: Session) -> list[str]:
 ```python
         # P1.0: declarative seed is idempotent; a missing/empty path is a no-op.
         try:
-            instance_seed.apply_seed(session)
+            for alert in instance_seed.apply_seed(session):
+                logger.warning("instances seed: {}", alert)
         except Exception as exc:  # noqa: BLE001 - a bad seed file must not stop the API
             session.rollback()
             logger.error("instances seed skipped: {}", exc)
