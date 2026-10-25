@@ -243,6 +243,17 @@ class CallRecord:
     def set_output(self, **kwargs: Any) -> None:
         self.output.update(kwargs)
 
+    def mark_first_byte(self) -> None:
+        """First token / first audio chunk of this call, relative to `start_ts`.
+
+        Only handlers that can see the boundary call this, and calling it more
+        than once keeps the first value. A category that never calls it shows
+        `first_byte_not_instrumented` on the console instead of a guess, which
+        is the difference between "no data" and "0 ms" (A.14).
+        """
+        if "first_byte_s" not in self.output:
+            self.output["first_byte_s"] = round(time.time() - self.start_ts, 4)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "category": self.category,

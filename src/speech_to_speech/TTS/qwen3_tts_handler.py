@@ -889,6 +889,8 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
                     total_audio_bytes = 0
                     for audio_chunk in audio_iter:
                         if first_audio:
+                            # First audio block: this call's first byte (A.14).
+                            rec.mark_first_byte()
                             self._log_first_audio_latency(tts_input)
                             first_audio = False
                         if isinstance(audio_chunk, (bytes, bytearray)):

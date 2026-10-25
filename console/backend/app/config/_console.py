@@ -16,6 +16,12 @@ class ConsoleSettings(BaseSettings):
     restart_mode: str = "supervisor"
     verifier_mode: str = "reject"
 
+    # A.14 reads the tail of this file. The pipeline chooses its own path via
+    # `MODEL_METRICS_LOG` (default `model_metrics.log`, relative to /app), so the
+    # console follows the same env var and defaults to the same place: one
+    # container, one filesystem, no mount to configure.
+    model_metrics_log: str = "/app/model_metrics.log"
+
     # Voice library (A.18). The audio never leaves this volume, and nothing here
     # is on the publish path: a voice is picked, then written as a draft value.
     voice_data_dir: str = "/app/data/voices"

@@ -1968,7 +1968,6 @@
           <div class="rt-bar" data-level="bad" style="margin-top: 6px"><i style="width: 91.4%"></i></div>
           <ul class="alerts" style="margin: 10px 0 0">
             <li><code>vram_pressure</code> · 显存占比 91.4% ≥ 90%，新会话可能直接 OOM</li>
-            <li><code>runtime_degraded</code> · <code>tts</code> 段在 300s 窗口内没有任何调用指标</li>
           </ul>
         </div>
       </div>
@@ -2004,7 +2003,7 @@
             <div class="rt-row"><span class="rt-row__k">繁忙</span><span class="rt-row__v">1 / 1 <small>占用中</small></span></div>
             <div class="rt-row"><span class="rt-row__k">队列</span><span class="rt-row__v rt-na">不可用 · <code>queue_depth_not_exposed</code></span></div>
             <div class="rt-row"><span class="rt-row__k">首字节</span><span class="rt-row__v">142 ms</span></div>
-            <div class="rt-row"><span class="rt-row__k">p50 / p95</span><span class="rt-row__v" style="color: var(--warning)">386 / 1 240 ms <small>较上一窗口 +212%</small></span></div>
+            <div class="rt-row"><span class="rt-row__k">p50 / p95</span><span class="rt-row__v" style="color: var(--warning)">386 / 1 240 ms <small>取自 300s 窗口 · 较上一窗口 +212%</small></span></div>
           </div>
         </article>
 
@@ -2045,7 +2044,9 @@
 
       <p class="hint" style="margin: -4px 0 0">
         「繁忙」四张卡相同，因为它取自 <span class="mono">/v1/pool</span> 的会话池（四段共用）；
-        「显存」是调用期间的整卡峰值；两者都不是单段独占量。
+        「显存」是调用期间的整卡峰值；两者都不是单段独占量。<br />
+        「模型未加载」与「进程未起」是两回事：TTS 卡的 <code>no_metrics_window</code> 表示进程 RUNNING
+        但窗口内没有任何调用指标，<code>pipeline_stopped</code> 只在进程没起来时出现。
       </p>
 
       <div class="panel" style="margin-top: 14px">

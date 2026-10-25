@@ -63,7 +63,10 @@ export const ALERT_TEXT: Record<string, string> = {
   pool_unreachable: '无法连接 pipeline 池',
   pool_stuck: '有 unit 卡在 stuck，需要重启 pipeline',
   pipeline_stopped: 'pipeline 进程未运行',
-  usage_unavailable: '用量数据不可读'
+  usage_unavailable: '用量数据不可读',
+  // A.14：模型侧的告警，和上面容器侧的语义分开
+  vram_pressure: '显存接近打满（利用率 ≥ 90%）',
+  runtime_degraded: '运行时采集超时，下面是上一帧数据'
 }
 
 /** 未知码原样返回：宁可让运维看到一个英文码，也不要让一条告警消失。 */

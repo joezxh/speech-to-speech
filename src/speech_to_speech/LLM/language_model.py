@@ -655,6 +655,9 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 try:
                     with bind_active_turn_latency_tracker(tracker):
                         for chunk in self._generate(active_chat, language_code, gen, ctx, runtime_config, response):
+                            # First streamed chunk is this call's first byte; the
+                            # mark is idempotent, so every chunk may call it.
+                            rec.mark_first_byte()
                             chunk.selected_language = request.selected_language
                             chunk.response_key = request.response_key
                             chunk.prefetch_transaction = request.prefetch_transaction
