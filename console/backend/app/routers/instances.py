@@ -17,4 +17,6 @@ def get_instances(
 ):
     """A.10: a degraded read is still a 200."""
     latest = VersionRepository(db).latest_live(profile)
-    return ok(instances_service.collect(profile, int(latest.version) if latest else None))
+    return ok(
+        instances_service.collect(profile, int(latest.version) if latest else None, db=db)
+    )

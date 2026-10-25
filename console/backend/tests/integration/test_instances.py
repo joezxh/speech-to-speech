@@ -114,3 +114,36 @@ def test_status_trusts_a_serving_pool_when_there_is_no_supervisor(client, monkey
     data = client.get("/api/v1/status", headers=_auth(client)).json()["data"]
 
     assert data["pipeline"] == "ok"
+
+
+def test_instances_aggregates_registry_rows(client, db_session, monkeypatch):
+    from app.models.param_instance import ParamInstance
+    from app.services import instance_monitor
+    from app.services.instance_registry import RuntimeState
+    from app.services.pool import PoolState
+
+    db_session.add(ParamInstance(instance_id="pipe-a", base_url="http://a:8765", weight=1,
+                                 labels_json={}, enabled=True, drain_requested=False))
+    db_session.add(ParamInstance(instance_id="pipe-b", base_url="http://b:8765", weight=1,
+                                 labels_json={}, enabled=True, drain_requested=True))
+    db_session.commit()
+    state_a = RuntimeState(instance_id="pipe-a", base_url="http://a:8765")
+    instance_monitor.registry._states["pipe-a"] = state_a
+    instance_monitor.registry.observe_success("pipe-a",
+        PoolState(reachable=True, size=4, in_use=2, units=()), 12)
+    instance_monitor.registry._states["pipe-b"] = RuntimeState(instance_id="pipe-b", base_url="http://b:8765")
+    instance_monitor.registry.set_drain("pipe-b", True)
+    # 注册表路径下不得回退到 legacy 直连读，否则 monkeypatch 基线会被误触发
+    monkeypatch.setattr(pool, "read_pool",
+                        lambda timeout=5.0, base_url=None: pytest.fail("legacy read_pool called"))
+
+    data = client.get("/api/v1/instances", headers=_auth(client)).json()["data"]
+    assert data["summary"]["instances_total"] == 2
+    assert data["summary"]["draining"] == 1
+    ids = {row["instance_id"] for row in data["instances"]}
+    assert ids == {"pipe-a", "pipe-b"}
+    row_a = next(r for r in data["instances"] if r["instance_id"] == "pipe-a")
+    assert row_a["status"] == "online" and row_a["free"] == 2
+    assert data["pool"] is None  # 本机不在注册表视图里 → 降级语义不变
+    assert "pool_unreachable:pipe-b:not_observed" in data["alerts"]
+    instance_monitor.reset_for_tests()
