@@ -25,8 +25,9 @@ backend/            FastAPI app (PYTHONPATH=/app/console)
   app/repositories/ sqlite access (sqlalchemy 2.x, alembic migrations)
   app/config/       pydantic-settings groups: auth, console, database
   app/core/         app factory, spa mounting, logging, security helpers
-  scripts/          seed_admin.py — the only script (there is no self-service signup)
+  scripts/          seed_admin.py (first operator) and dump_schema_sql.py (init SQL)
   alembic/          migration environment; `alembic upgrade head` runs it
+    sql/            init-sqlite.sql / init-postgresql.sql — generated, do not edit
   tests/            unit/ and integration/ (httpx TestClient)
 frontend/           Vue 3 + TS + Pinia + ant-design-vue, built by Vite
   src/views/        ParamsView, VersionsView, AuditView, SessionsView, VoicesView…
@@ -55,6 +56,34 @@ insensitive). In the container they come from `config/prod.env`.
 | `SUPERVISOR_SOCKET` | `/run/s2s-console/supervisor.sock` | process status and restarts |
 | `LOG_DIR` | `/var/log/supervisor` | read-only source for the log panel |
 | `DATA_DIR` | `/app/data` | turn-latency cursor, voice library |
+
+## Provisioning a database
+
+`alembic/sql/` holds the whole schema as plain SQL, one file per dialect:
+
+| file | run it with | floor |
+|---|---|---|
+| `init-sqlite.sql` | `sqlite3 /app/data/console.sqlite3 < init-sqlite.sql` | SQLite 3.35+ (the version stamp is an `INSERT … RETURNING`) |
+| `init-postgresql.sql` | `psql -v ON_ERROR_STOP=1 -f init-postgresql.sql` | PostgreSQL 12+ |
+
+Both files create the six tables (`param_user`, `param_draft`,
+`param_version`, `param_audit`, `voices`, `turn_latency`), the two indexes, and
+the `alembic_version` row set to the current head — so a database provisioned
+from either file is **already migrated** and the next `alembic upgrade head` is
+a no-op. That matters because the image does not migrate on boot.
+
+They are generated, not written by hand, by `alembic upgrade head --sql` for
+each dialect. After adding a migration, regenerate and commit both:
+
+```bash
+cd console/backend
+python scripts/dump_schema_sql.py
+```
+
+`tests/unit/test_schema_sql.py` fails if either file stops covering a model
+column or stamps the wrong revision, so the regeneration cannot be forgotten
+silently. For an existing database use `alembic upgrade head` instead of these
+files — they assume an empty database.
 
 ## Working on it
 

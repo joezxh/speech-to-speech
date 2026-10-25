@@ -11,6 +11,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
+from sqlalchemy.dialects import postgresql, sqlite
+
 from app.repositories import turn_latency_repository as repo
 
 BASE = datetime(2026, 10, 24, 10, 0, tzinfo=UTC)
@@ -40,9 +43,7 @@ def _row(**overrides):
 def test_upsert_keeps_one_row_and_the_later_value(db_session):
     repo.upsert_many(db_session, [_row(status="cancelled")])
     repo.upsert_many(db_session, [_row(status="completed", e2e_ms=5000)])
-    rows = repo.fetch(
-        db_session, start=BASE - timedelta(minutes=1), end=BASE + timedelta(minutes=1)
-    )
+    rows = repo.fetch(db_session, start=BASE - timedelta(minutes=1), end=BASE + timedelta(minutes=1))
     assert len(rows) == 1
     assert rows[0].status == "completed"
     assert rows[0].e2e_ms == 5000
@@ -52,6 +53,14 @@ def test_seconds_become_milliseconds_and_none_stays_none():
     assert repo.to_ms(6.26) == 6260
     assert repo.to_ms(None) is None
     assert repo.to_ms(0) == 0
+
+
+@pytest.mark.parametrize("dialect", [sqlite.dialect(), postgresql.dialect()])
+def test_the_upsert_compiles_for_both_dialect_inserts(dialect):
+    # `alembic/sql/init-postgresql.sql` ships, so the statement cannot be built
+    # from SQLite's insert and hoped to work: it has to compile on both.
+    sql = str(repo.build_upsert(dialect.name, [_row()]).compile(dialect=dialect))
+    assert "ON CONFLICT (response_key, turn_revision) DO UPDATE" in sql
 
 
 def test_p95_is_nearest_rank_not_interpolated():
@@ -70,7 +79,5 @@ def test_prune_keeps_rows_after_the_cutoff(db_session):
     )
     removed = repo.prune(db_session, before=BASE - timedelta(hours=24))
     assert removed == 1
-    rows = repo.fetch(
-        db_session, start=BASE - timedelta(days=7), end=BASE + timedelta(minutes=1)
-    )
+    rows = repo.fetch(db_session, start=BASE - timedelta(days=7), end=BASE + timedelta(minutes=1))
     assert [row.response_key for row in rows] == ["new"]

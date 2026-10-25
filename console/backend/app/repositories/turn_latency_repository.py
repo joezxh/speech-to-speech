@@ -2,33 +2,43 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import delete, func, select
+from sqlalchemy.dialects.postgresql import insert as postgres_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
+from sqlalchemy.sql.dml import Insert
 
 from app.models.turn_latency import TurnLatencyRow
 
+# `alembic/sql/init-postgresql.sql` exists, so the upsert has to compile for
+# both. The construct is dialect-bound (compiling SQLite's under PostgreSQL
+# raises AttributeError), so the choice is made before the statement is built.
+_DIALECT_INSERTS = {"postgresql": postgres_insert, "sqlite": sqlite_insert}
 
-def upsert_many(session: Session, rows: list[dict]) -> int:
+
+def build_upsert(dialect: str, rows: list[dict[str, Any]]) -> Insert:
     """Insert or overwrite by (response_key, turn_revision), in one statement.
 
     A turn legitimately logs twice — `cancelled` and then, when a tool call keeps
     it alive, `completed`. Overwriting keeps "one row per turn revision", so the
     panel's count is turns, not log lines.
     """
-    if not rows:
-        return 0
-    statement = sqlite_insert(TurnLatencyRow).values(rows)
-    statement = statement.on_conflict_do_update(
+    insert = _DIALECT_INSERTS.get(dialect, sqlite_insert)
+    statement = insert(TurnLatencyRow).values(rows)
+    return statement.on_conflict_do_update(
         index_elements=[TurnLatencyRow.response_key, TurnLatencyRow.turn_revision],
         set_={
-            column: statement.excluded[column]
-            for column in rows[0]
-            if column not in ("response_key", "turn_revision")
+            column: statement.excluded[column] for column in rows[0] if column not in ("response_key", "turn_revision")
         },
     )
-    session.execute(statement)
+
+
+def upsert_many(session: Session, rows: list[dict[str, Any]]) -> int:
+    if not rows:
+        return 0
+    session.execute(build_upsert(session.get_bind().dialect.name, rows))
     session.commit()
     return len(rows)
 
@@ -60,20 +70,18 @@ def fetch(
     status: list[str] | None = None,
     limit: int = 100,
 ) -> list[TurnLatencyRow]:
-    statement = select(TurnLatencyRow).where(
-        TurnLatencyRow.logged_at >= start, TurnLatencyRow.logged_at <= end
-    )
+    statement = select(TurnLatencyRow).where(TurnLatencyRow.logged_at >= start, TurnLatencyRow.logged_at <= end)
     if status:
         statement = statement.where(TurnLatencyRow.status.in_(list(status)))
     statement = statement.order_by(TurnLatencyRow.logged_at.desc()).limit(limit)
     return list(session.scalars(statement).all())
 
 
-def count_in_window(
-    session: Session, *, start: datetime, end: datetime, status: list[str] | None = None
-) -> int:
-    statement = select(func.count()).select_from(TurnLatencyRow).where(
-        TurnLatencyRow.logged_at >= start, TurnLatencyRow.logged_at <= end
+def count_in_window(session: Session, *, start: datetime, end: datetime, status: list[str] | None = None) -> int:
+    statement = (
+        select(func.count())
+        .select_from(TurnLatencyRow)
+        .where(TurnLatencyRow.logged_at >= start, TurnLatencyRow.logged_at <= end)
     )
     if status:
         statement = statement.where(TurnLatencyRow.status.in_(list(status)))
