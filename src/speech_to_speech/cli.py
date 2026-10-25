@@ -10,6 +10,13 @@ from speech_to_speech.api.openai_realtime.audio_client import (
     load_realtime_tool_module,
     run_realtime_audio_client,
 )
+from speech_to_speech.console_integration import (
+    AUTOSTART_ENV,
+    ConsoleIntegrationError,
+    ConsoleOptions,
+    StartupError,
+    parse_console_arguments,
+)
 from speech_to_speech.pipeline.transcript_logging import (
     set_log_transcripts,
     warn_if_log_transcripts_enabled,
@@ -21,6 +28,21 @@ _LEGACY_MODE_COMMANDS: dict[str, Command] = {
     "realtime": "serve",
     "local": "local",
 }
+
+CONSOLE_HELP = """
+Console integration (same process, same port):
+  --with-console        Merge the console backend into this process and publish
+                        the console frontend on the same port. Off by default.
+  --no-with-console     Override CONSOLE_AUTOSTART for this run.
+
+Environment:
+  CONSOLE_AUTOSTART     true/false, same as --with-console. Default: false.
+  CONSOLE_HOME          Directory containing app/main.py. Default: <repo>/console/backend
+  CONSOLE_STATIC_DIR    Built frontend directory. Default: <repo>/console/frontend/dist
+
+With the switch on, "/" and "/console/*" serve the console frontend, "/api/*" serves
+the console API, and "/v1/*" keeps serving the Realtime API from the same listener.
+"""
 
 
 def _command_parser() -> argparse.ArgumentParser:
@@ -196,7 +218,7 @@ def parse_talk_arguments(argv: Sequence[str]) -> RealtimeAudioClientConfig:
     )
 
 
-def _run_file_command(command: Command, command_args: list[str]) -> None:
+def _run_file_command(command: Command, command_args: list[str], console_options: ConsoleOptions) -> None:
     from speech_to_speech.config import ConfigurationError, load_config, resolve_config
 
     parser = argparse.ArgumentParser(prog=f"speech-to-speech {command}", allow_abbrev=False, exit_on_error=False)
@@ -230,19 +252,23 @@ def _run_file_command(command: Command, command_args: list[str]) -> None:
     try:
         from speech_to_speech.configured_runtime import run_configured_command
 
-        run_configured_command(command, config)
+        run_configured_command(command, config, console_options=console_options)
+    except ConsoleIntegrationError as exc:
+        parser.exit(2, f"Configuration error: {exc}\n")
     except ConfigurationError:
         parser.exit(2, "Configuration error: check the configured runtime and client settings.\n")
+    except StartupError:
+        parser.exit(1, "Startup failed: the Realtime server could not bind its port.\n")
     except Exception:
         parser.exit(1, "Configured startup failed; check the selected backends and runtime resources.\n")
 
 
-def main() -> None:
-    command, command_args = parse_command()
+def _dispatch(command: Command, command_args: list[str], console_options: ConsoleOptions) -> None:
     if any(
-        argument.startswith("-f") or argument == "--file" or argument.startswith("--file=") for argument in command_args
+        argument.startswith("-f") or argument == "--file" or argument.startswith("--file=")
+        for argument in command_args
     ):
-        _run_file_command(command, command_args)
+        _run_file_command(command, command_args, console_options)
         return
     if any(argument == "--name" or argument.startswith("--name=") for argument in command_args):
         _command_parser().error("--name requires a configuration file.")
@@ -255,7 +281,58 @@ def main() -> None:
 
     from speech_to_speech.s2s_pipeline import run_pipeline_command
 
-    run_pipeline_command(command, command_args)
+    run_pipeline_command(command, command_args, console_options=console_options)
+
+
+def main() -> None:
+    argv = list(sys.argv[1:])
+    try:
+        console_options, argv = parse_console_arguments(argv)
+    except ConsoleIntegrationError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+
+    wants_help = any(argument in {"-h", "--help"} for argument in argv)
+    try:
+        command, command_args = parse_command(argv)
+    except SystemExit as exc:
+        if exc.code == 0 and wants_help:
+            print(CONSOLE_HELP)
+        raise
+
+    if command == "talk":
+        if console_options.explicit:
+            _command_parser().error(
+                "talk does not accept --with-console; it only connects to a listener that already runs."
+            )
+        if console_options.autostart:
+            # An environment switch must not break a command that has nothing to host.
+            print(f"Warning: {AUTOSTART_ENV}=true is ignored for 'talk'.", file=sys.stderr)
+            console_options = ConsoleOptions(
+                autostart=False,
+                explicit=console_options.explicit,
+                home=console_options.home,
+                static_dir=console_options.static_dir,
+            )
+    elif console_options.autostart:
+        try:
+            console_options.validate()
+        except ConsoleIntegrationError as exc:
+            print(f"Configuration error: {exc}", file=sys.stderr)
+            raise SystemExit(2) from None
+
+    try:
+        _dispatch(command, command_args, console_options)
+    except SystemExit as exc:
+        if exc.code == 0 and wants_help and command in {"serve", "local"}:
+            print(CONSOLE_HELP)
+        raise
+    except ConsoleIntegrationError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+    except StartupError as exc:
+        print(f"Startup failed: {exc}", file=sys.stderr)
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":

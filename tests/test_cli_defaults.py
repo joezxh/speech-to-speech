@@ -453,7 +453,7 @@ def test_main_dispatches_legacy_modes_to_pipeline_commands(mode, command, monkey
     monkeypatch.setattr(sys, "argv", ["speech-to-speech", "--mode", mode, "--port", "9876"])
     monkeypatch.setattr(
         "speech_to_speech.s2s_pipeline.run_pipeline_command",
-        lambda selected_command, command_args: calls.append((selected_command, command_args)),
+        lambda selected_command, command_args, **kwargs: calls.append((selected_command, command_args)),
     )
 
     main()
@@ -706,7 +706,7 @@ pipelines:
     monkeypatch.setitem(
         sys.modules,
         "speech_to_speech.configured_runtime",
-        SimpleNamespace(run_configured_command=lambda command, config: calls.append((command, config))),
+        SimpleNamespace(run_configured_command=lambda command, config, **kwargs: calls.append((command, config))),
     )
     return path, calls
 
@@ -791,7 +791,7 @@ def test_name_requires_file(monkeypatch):
 def test_file_cli_hides_runtime_error(configured_cli, monkeypatch, capsys):
     path, _ = configured_cli
 
-    def fail(*_args):
+    def fail(*_args, **_kwargs):
         raise RuntimeError("provider SECRET_MARKER https://user:password@host")
 
     monkeypatch.setitem(
@@ -882,3 +882,94 @@ def test_parse_arguments_preserves_kitten_backend_options():
 def test_parse_arguments_rejects_unsupported_kitten_device():
     with pytest.raises(SystemExit):
         parse_arguments(["--tts", "kitten", "--kitten_device", "cuda"])
+
+
+def test_help_documents_the_console_switch(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "--help"])
+    with pytest.raises(SystemExit, match="0"):
+        main()
+    output = capsys.readouterr().out
+    for token in ("--with-console", "CONSOLE_AUTOSTART", "CONSOLE_HOME", "CONSOLE_STATIC_DIR"):
+        assert token in output
+
+
+def test_top_level_help_documents_the_console_switch(monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "--help"])
+    with pytest.raises(SystemExit, match="0"):
+        main()
+    assert "--with-console" in capsys.readouterr().out
+
+
+def test_talk_rejects_the_explicit_switch(monkeypatch, capsys):
+    monkeypatch.delenv("CONSOLE_AUTOSTART", raising=False)
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "talk", "--with-console"])
+    with pytest.raises(SystemExit, match="2"):
+        main()
+    assert "--with-console" in capsys.readouterr().err
+
+
+def test_talk_ignores_the_environment_with_a_warning(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setenv("CONSOLE_AUTOSTART", "true")
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "talk"])
+    monkeypatch.setattr("speech_to_speech.cli.run_realtime_audio_client", lambda config: calls.append(config))
+
+    main()
+
+    assert len(calls) == 1
+    assert "CONSOLE_AUTOSTART" in capsys.readouterr().err
+
+
+def test_an_illegal_switch_value_exits_two(monkeypatch, capsys):
+    monkeypatch.setenv("CONSOLE_AUTOSTART", "maybe")
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve"])
+
+    with pytest.raises(SystemExit, match="2"):
+        main()
+
+    assert "CONSOLE_AUTOSTART" in capsys.readouterr().err
+
+
+def test_a_missing_console_backend_exits_two_before_loading_models(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("CONSOLE_AUTOSTART", "true")
+    monkeypatch.setenv("CONSOLE_HOME", str(tmp_path / "missing"))
+    monkeypatch.setenv("CONSOLE_STATIC_DIR", str(tmp_path / "missing-dist"))
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve"])
+
+    def explode(*_args, **_kwargs):
+        raise AssertionError("the pipeline must not be built")
+
+    monkeypatch.setattr("speech_to_speech.s2s_pipeline.run_pipeline_command", explode)
+
+    with pytest.raises(SystemExit, match="2"):
+        main()
+
+    assert "CONSOLE_HOME" in capsys.readouterr().err
+
+
+def test_the_switch_reaches_the_runtime(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "--with-console"])
+    monkeypatch.setattr(
+        "speech_to_speech.s2s_pipeline.run_pipeline_command",
+        lambda command, argv, **kwargs: seen.update(options=kwargs["console_options"]),
+    )
+    monkeypatch.setattr("speech_to_speech.console_integration.ConsoleOptions.validate", lambda self: None)
+
+    main()
+
+    assert seen["options"].autostart is True
+
+
+def test_file_mode_passes_the_options_down(configured_cli, monkeypatch):
+    path, _calls = configured_cli
+    seen = {}
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "-f", str(path), "--name", "primary"])
+    monkeypatch.setattr(
+        "speech_to_speech.cli._run_file_command",
+        lambda command, args, options: seen.update(options=options),
+    )
+
+    main()
+
+    assert seen["options"].autostart is False
