@@ -1,14 +1,21 @@
 """The console switches are read in exactly one place (spec §3)."""
 from __future__ import annotations
 
+import logging
+import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from speech_to_speech.console_integration import (
     AUTOSTART_ENV,
+    ConsoleAttachment,
     ConsoleIntegrationError,
     ConsoleOptions,
+    attachment_for_runtime,
+    attachment_for_server,
+    load_console,
     parse_console_arguments,
     probe_base_url,
     probe_host,
@@ -121,3 +128,121 @@ def test_probe_host_maps_wildcards_to_something_dialable(host, dialable):
 def test_probe_base_url_brackets_ipv6():
     assert probe_base_url("0.0.0.0", 8765) == "http://127.0.0.1:8765"
     assert probe_base_url("::1", 9000) == "http://[::1]:9000"
+
+
+def _fake_module(home: Path, *, lifespan_marker=None):
+    return SimpleNamespace(
+        __file__=str(home / "app" / "main.py"),
+        app=object(),
+        lifespan=lifespan_marker or (lambda _app: None),
+    )
+
+
+def _prepared(tmp_path):
+    backend = tmp_path / "backend"
+    (backend / "app").mkdir(parents=True)
+    (backend / "app" / "main.py").write_text("app = None\n", encoding="utf-8")
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    (dist / "index.html").write_text("<html></html>", encoding="utf-8")
+    return ConsoleOptions(autostart=True, home=backend, static_dir=dist)
+
+
+def test_load_console_preloads_the_env_file_without_overriding_real_env(tmp_path, monkeypatch):
+    options = _prepared(tmp_path)
+    (options.home / ".env").write_text(
+        "JWT_SECRET_KEY=from-file\nDATABASE_URL=sqlite:///dev.db\nSTATIC_DIR=/wrong\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("JWT_SECRET_KEY", raising=False)
+    monkeypatch.delenv("STATIC_DIR", raising=False)
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///real.db")
+
+    load_console(options, pipeline_base_url="http://127.0.0.1:8765", loader=lambda home: _fake_module(home))
+
+    assert os.environ["JWT_SECRET_KEY"] == "from-file"
+    assert os.environ["DATABASE_URL"] == "sqlite:///real.db"
+    assert os.environ["STATIC_DIR"] == str(options.static_dir)
+
+
+def test_load_console_forces_the_self_url_and_warns(tmp_path, monkeypatch, caplog):
+    options = _prepared(tmp_path)
+    monkeypatch.setenv("PIPELINE_BASE_URL", "http://127.0.0.1:8000")
+    with caplog.at_level(logging.WARNING, logger="speech_to_speech.console_integration"):
+        load_console(options, pipeline_base_url="http://127.0.0.1:9100", loader=lambda home: _fake_module(home))
+
+    assert os.environ["PIPELINE_BASE_URL"] == "http://127.0.0.1:9100"
+    assert "PIPELINE_BASE_URL" in caplog.text
+
+
+def test_load_console_returns_a_usable_attachment(tmp_path):
+    options = _prepared(tmp_path)
+    marker = lambda _app: None  # noqa: E731 - identity matters, not style
+    attachment = load_console(
+        options, pipeline_base_url="http://127.0.0.1:8765", loader=lambda home: _fake_module(home, lifespan_marker=marker)
+    )
+
+    assert isinstance(attachment, ConsoleAttachment)
+    assert attachment.lifespan is marker
+    assert attachment.static_dir == options.static_dir
+    assert attachment.pipeline_base_url == "http://127.0.0.1:8765"
+
+
+def test_load_console_rejects_a_shadowing_app_package(tmp_path):
+    options = _prepared(tmp_path)
+    stray = SimpleNamespace(__file__="/usr/lib/python3/site-packages/app/main.py", app=object(), lifespan=lambda a: None)
+
+    with pytest.raises(ConsoleIntegrationError, match="shadowing"):
+        load_console(options, pipeline_base_url="http://127.0.0.1:8765", loader=lambda home: stray)
+
+
+def test_load_console_reports_missing_entry_point_symbols(tmp_path):
+    options = _prepared(tmp_path)
+    broken = SimpleNamespace(__file__=str(options.home / "app" / "main.py"), app=None, lifespan=None)
+
+    with pytest.raises(ConsoleIntegrationError, match="entry point"):
+        load_console(options, pipeline_base_url="http://127.0.0.1:8765", loader=lambda home: broken)
+
+
+def test_the_importer_names_the_fix_when_the_backend_cannot_be_imported(tmp_path):
+    from speech_to_speech import console_integration
+
+    empty = tmp_path / "empty-home"
+    empty.mkdir()
+
+    with pytest.raises(ConsoleIntegrationError) as excinfo:
+        console_integration._import_console_main(empty)
+
+    message = str(excinfo.value)
+    assert "requirements.txt" in message
+    assert "JWT_SECRET_KEY" in message
+
+
+def test_attachment_is_none_when_the_switch_is_off(tmp_path):
+    options = ConsoleOptions(autostart=False, home=tmp_path / "nope", static_dir=tmp_path / "nope2")
+
+    assert attachment_for_server(options, "127.0.0.1", 8765, loader=lambda home: _fake_module(home)) is None
+
+
+def test_attachment_for_server_uses_a_dialable_self_url(tmp_path):
+    options = _prepared(tmp_path)
+    attachment = attachment_for_server(options, "0.0.0.0", 9100, loader=lambda home: _fake_module(home))
+
+    assert attachment.pipeline_base_url == "http://127.0.0.1:9100"
+
+
+def test_attachment_for_runtime_reads_the_server_block(tmp_path):
+    options = _prepared(tmp_path)
+
+    attachment = attachment_for_runtime(
+        options, {"server": {"host": "0.0.0.0", "port": 9200}}, loader=lambda home: _fake_module(home)
+    )
+
+    assert attachment.pipeline_base_url == "http://127.0.0.1:9200"
+
+
+def test_attachment_for_runtime_falls_back_to_the_defaults(tmp_path):
+    options = _prepared(tmp_path)
+
+    attachment = attachment_for_runtime(options, {}, loader=lambda home: _fake_module(home))
+
+    assert attachment.pipeline_base_url == "http://127.0.0.1:8765"

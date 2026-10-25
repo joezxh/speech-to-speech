@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Sequence
+import sys
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +100,93 @@ class ConsoleOptions:
             )
 
 
+@dataclass(frozen=True)
+class ConsoleAttachment:
+    """The console ASGI app plus everything the parent app needs to host it."""
+
+    app: Any
+    lifespan: Any
+    home: Path
+    static_dir: Path
+    pipeline_base_url: str
+
+
+def _preload_env_file(path: Path) -> None:
+    """Fill gaps in ``os.environ`` from a .env file; real variables always win."""
+
+    if not path.is_file():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            os.environ.setdefault(key, value)
+
+
+def _override_env(name: str, value: str) -> None:
+    existing = os.environ.get(name)
+    if existing is not None and existing != value:
+        logger.warning("%s=%r is overridden with %r by the console integration", name, existing, value)
+    os.environ[name] = value
+
+
+def _import_console_main(home: Path) -> Any:
+    sys.path.insert(0, str(home))
+    try:
+        # The console package is imported by name because that is what its own
+        # modules do (``from app.core...``); the sys.path entry stays in place.
+        import app.main as module
+    except Exception as exc:  # noqa: BLE001 - every import failure needs the same guidance
+        raise ConsoleIntegrationError(
+            f"importing the console backend from {home} failed: {exc}. "
+            "Install its dependencies with 'pip install -r console/backend/requirements.txt' "
+            f"and set JWT_SECRET_KEY in {home / '.env'}."
+        ) from exc
+    return module
+
+
+def load_console(
+    options: ConsoleOptions,
+    *,
+    pipeline_base_url: str,
+    loader: Any = None,
+) -> ConsoleAttachment:
+    """Make the console importable with the right settings, then import it."""
+
+    if not options.autostart:
+        raise ConsoleIntegrationError("load_console() requires autostart; check the switch before calling it.")
+    _preload_env_file(options.home / ".env")
+    # The console probes the pipeline it serves, and it serves this process.
+    _override_env("PIPELINE_BASE_URL", pipeline_base_url)
+    _override_env("STATIC_DIR", str(options.static_dir))
+
+    module = (loader or _import_console_main)(options.home)
+
+    module_file = Path(getattr(module, "__file__", "") or "")
+    if not module_file.is_file() or options.home.resolve() not in module_file.resolve().parents:
+        raise ConsoleIntegrationError(
+            f"the imported 'app' package is {module_file or '<unknown>'}, which is not inside {options.home}. "
+            "A different 'app' package is shadowing the console; set CONSOLE_HOME or use a dedicated venv."
+        )
+    app = getattr(module, "app", None)
+    lifespan = getattr(module, "lifespan", None)
+    if app is None or not callable(lifespan):
+        raise ConsoleIntegrationError(
+            f"{module_file} does not expose 'app' and 'lifespan'; this is not a console backend entry point."
+        )
+    return ConsoleAttachment(
+        app=app,
+        lifespan=lifespan,
+        home=options.home,
+        static_dir=options.static_dir,
+        pipeline_base_url=pipeline_base_url,
+    )
+
+
 def parse_console_arguments(argv: Sequence[str]) -> tuple[ConsoleOptions, list[str]]:
     """Strip the two switches from argv and resolve the effective options.
 
@@ -126,4 +215,32 @@ def parse_console_arguments(argv: Sequence[str]) -> tuple[ConsoleOptions, list[s
     return (
         ConsoleOptions(autostart=autostart, explicit=explicit is True, home=home, static_dir=static_dir),
         remaining,
+    )
+
+
+def attachment_for_server(
+    options: ConsoleOptions | None,
+    host: str,
+    port: int,
+    *,
+    loader: Any = None,
+) -> ConsoleAttachment | None:
+    """Resolve the attachment for a known bind address, or None when off."""
+
+    if options is None or not options.autostart:
+        return None
+    return load_console(options, pipeline_base_url=probe_base_url(host, port), loader=loader)
+
+
+def attachment_for_runtime(
+    options: ConsoleOptions | None,
+    runtime: Mapping[str, Any],
+    *,
+    loader: Any = None,
+) -> ConsoleAttachment | None:
+    """Same as :func:`attachment_for_server` for the YAML ``runtime.server`` block."""
+
+    server = runtime.get("server") or {}
+    return attachment_for_server(
+        options, str(server.get("host", "127.0.0.1")), int(server.get("port", 8765)), loader=loader
     )
