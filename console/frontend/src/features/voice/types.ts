@@ -107,6 +107,12 @@ export interface VoiceSettings {
   audioOutputId: string
 }
 
+/** 部署实际连的那一个 pipeline（`PIPELINE_BASE_URL` / `PIPELINE_CONTAINER`）。 */
+export interface PipelineInfo {
+  baseUrl: string
+  container: string
+}
+
 /** `/api/config` — Task 17. `lb` is a boolean; the LB address never comes down. */
 export interface VoiceConfig {
   search: boolean
@@ -117,6 +123,7 @@ export interface VoiceConfig {
   iceServers: RTCIceServer[]
   startupGreeting: string
   auth: boolean
+  pipeline: PipelineInfo
 }
 
 /** `speech_to_speech.turn_latency` v1/v2 (demo/turn-latency.js:2-18). */

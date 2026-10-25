@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { dbToPercent, GATE_MAX_DB, GATE_OFF_DB } from '../audio/meter'
 import type { VoiceSettings } from '../types'
@@ -7,7 +7,13 @@ import type { VoiceSettings } from '../types'
 const props = defineProps<{
   open: boolean
   serverUrl: string
+  /** `allowDirect` 的两种面：直连（无 LB）或 LB 授权。 */
+  mode: 'direct' | 'load-balancer'
+  /** 本次部署实际连的 pipeline，只读展示（`PIPELINE_BASE_URL` / `PIPELINE_CONTAINER`）。
+   *  可选：老后端 / 门未重启时不带这个字段，面板退成两行占位而不是报错。 */
+  pipeline?: { baseUrl: string; container: string }
   transportLocked: boolean
+  rtcAvailable: boolean
   voices: string[]
   inputs: Array<{ id: string; label: string }>
   outputs: Array<{ id: string; label: string }>
@@ -21,6 +27,7 @@ const emit = defineEmits<{
 }>()
 
 const draft = ref<VoiceSettings>({ ...props.settings, tools: { ...props.settings.tools } })
+const pipeline = computed(() => props.pipeline ?? { baseUrl: '', container: '' })
 
 // 每次打开都从 store 重取：面板是「照镜子」，不是第二个状态容器。
 watch(
@@ -48,19 +55,39 @@ function save(): void {
     <a-form layout="vertical">
       <a-form-item label="Speech-to-speech server URL">
         <a-input :value="props.serverUrl" disabled />
-        <small class="v-hint">Same origin as this page. The address is pinned by the deployment, not typed here.</small>
+        <small class="v-hint">
+          {{
+            props.mode === 'direct'
+              ? 'Direct: the browser dials this realtime endpoint. When the deployment pins nothing, it is the console’s own /v1/realtime proxy.'
+              : 'Load balancer: the page posts /api/session (same origin) and the server hands out a connect URL.'
+          }}
+        </small>
+      </a-form-item>
+
+      <!-- 只读：当前部署真正使用的 pipeline，不是用户可改的偏好。 -->
+      <a-form-item label="Pipeline">
+        <div class="v-endpoint">
+          <span class="v-endpoint__tag">{{ pipeline.container || 'pipeline' }}</span>
+          <code class="v-endpoint__url">{{ pipeline.baseUrl || 'not configured' }}</code>
+          <router-link class="v-endpoint__link" :to="{ name: 'params' }">运维台 ↗</router-link>
+        </div>
+        <small class="v-hint">
+          Status probes (/v1/pool), parameter updates and the voice link all go to this one pipeline.
+        </small>
       </a-form-item>
 
       <a-form-item label="Transport">
         <a-select v-model:value="draft.transport" :disabled="props.transportLocked">
           <a-select-option value="ws">WebSocket</a-select-option>
-          <a-select-option value="webrtc">WebRTC</a-select-option>
+          <a-select-option value="webrtc" :disabled="!props.rtcAvailable">WebRTC</a-select-option>
         </a-select>
         <small class="v-hint">
           {{
             props.transportLocked
               ? 'Locked to WebSocket: this deployment pins the upstream URL.'
-              : 'How audio travels to the server. Applies on the next conversation.'
+              : props.rtcAvailable
+                ? 'How audio travels to the server. Applies on the next conversation.'
+                : 'WebSocket only: WebRTC needs a pinned upstream URL (SPEECH_TO_SPEECH_URL).'
           }}
         </small>
       </a-form-item>

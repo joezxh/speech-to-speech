@@ -552,6 +552,30 @@
   &__label { font-size: 12.5px; color: var(--voice-dim); }
 }
 
+// Settings 里那一行只读的 pipeline：容器名 + 基址 + 回运维台的入口。
+.v-endpoint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  border: 1px solid var(--voice-border);
+  border-radius: 8px;
+  background: #0d1326;
+
+  &__tag {
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--voice-accent) 18%, transparent);
+    color: var(--voice-accent);
+    font-size: 11px;
+  }
+
+  &__url { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--voice-dim); word-break: break-all; }
+
+  &__link { margin-left: auto; font-size: 11.5px; }
+}
+
 .v-gate-meter {
   height: 4px;
   margin-top: 2px;

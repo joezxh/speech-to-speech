@@ -41,7 +41,7 @@ async function submit(): Promise<void> {
 <template>
   <div class="login">
     <form class="login__card" @submit.prevent="submit">
-      <h1 class="login__title">S2S 部署参数控制台</h1>
+      <h1 class="login__title">S2S 控制台</h1>
 
       <label class="login__label" for="username">用户名</label>
       <a-input id="username" v-model:value="username" autocomplete="username" :disabled="pending" />

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { TranscriptReducer } from '@/features/voice/transport/events'
+import type { ToolCallRecord, ToolResultRecord } from '@/features/voice/transport/events'
 import { LIVE_STATES } from '@/features/voice/types'
 import type {
   MeResponse,
@@ -37,6 +38,18 @@ export const DEFAULT_SETTINGS: VoiceSettings = {
 /** 客户端报的是 transport 状态；orb 只有九态，`connected` 画成 `listening`。 */
 export type VoiceStatus = VoiceState | 'connected' | 'closed'
 
+const PAINTED = new Set<VoiceState>([
+  'idle',
+  'connecting',
+  'queued',
+  'your-turn',
+  'listening',
+  'user-speaking',
+  'processing',
+  'ai-speaking',
+  'error'
+])
+
 function storage(): Storage | null {
   try {
     return typeof localStorage === 'undefined' ? null : localStorage
@@ -60,7 +73,8 @@ const EMPTY_CONFIG: VoiceConfig = {
   rtc: false,
   iceServers: [],
   startupGreeting: '',
-  auth: false
+  auth: false,
+  pipeline: { baseUrl: '', container: '' }
 }
 
 export const useVoiceStore = defineStore('voice', () => {
@@ -79,11 +93,28 @@ export const useVoiceStore = defineStore('voice', () => {
   function setState(next: VoiceStatus): void {
     // `closed` 不是一种画面：关闭后停在当前状态，由页面决定是否回到 `idle`。
     if (next === 'closed') return
-    state.value = next === 'connected' ? 'listening' : next
+    if (next === 'connected') {
+      state.value = 'listening'
+      return
+    }
+    // 未知状态直接忽略：写进 `state` 只会让 `OrbStage` 的 INDICATOR 查空。
+    if (!PAINTED.has(next)) return
+    state.value = next
   }
 
   function applyEvent(event: any): void {
     if (!reducer.apply(event)) return
+    entries.value = [...reducer.entries]
+  }
+
+  /** 工具调用的两段式：先占位，再接结果（`TranscriptReducer.toolCall/toolResult`）。 */
+  function applyToolCall(call: ToolCallRecord): void {
+    if (!reducer.toolCall(call)) return
+    entries.value = [...reducer.entries]
+  }
+
+  function applyToolResult(result: ToolResultRecord): void {
+    if (!reducer.toolResult(result)) return
     entries.value = [...reducer.entries]
   }
 
@@ -143,6 +174,8 @@ export const useVoiceStore = defineStore('voice', () => {
     live,
     setState,
     applyEvent,
+    applyToolCall,
+    applyToolResult,
     attachLatency,
     resetTranscript,
     loadSettings,

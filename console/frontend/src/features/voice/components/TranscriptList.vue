@@ -13,7 +13,7 @@ const playingKey = ref('')
 
 const ROLE_LABEL: Record<TranscriptEntry['role'], string> = {
   user: 'You',
-  tool: 'Tool',
+  tool: 'Tool call',
   assistant: 'Assistant'
 }
 
@@ -50,7 +50,8 @@ function onAudioStop(): void {
       :class="[`transcript__item--${entry.role}`, { 'is-partial': entry.partial }]"
     >
       <span class="transcript__role">{{ ROLE_LABEL[entry.role] }}</span>
-      <span class="transcript__text">{{ entry.text }}</span>
+      <!-- tool 条目把名字放在 <summary> 里（设计基线 2759-2770），不再多一行文本。 -->
+      <span v-if="!entry.tool" class="transcript__text">{{ entry.text }}</span>
 
       <!-- 用户条目：只有带音频的条目才有播放器（demo 也只在 websocket 分支产生原音）。 -->
       <AudioReplay

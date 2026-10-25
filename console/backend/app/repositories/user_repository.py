@@ -21,6 +21,10 @@ class UserRepository:
         self.session.refresh(row)
         return row
 
+    def update_password(self, user: ParamUser, password_hash: str) -> None:
+        user.password_hash = password_hash
+        self.session.commit()
+
     def touch_login(self, user: ParamUser) -> None:
         user.last_login_at = utcnow()
         self.session.commit()

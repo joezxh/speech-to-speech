@@ -53,9 +53,68 @@ insensitive). In the container they come from `config/prod.env`.
 | `PARAM_CATALOG_PATH` | `/app/catalog/parameter-catalog.yaml` | mounted read-only from `docs/parameter-catalog.yaml` |
 | `STATIC_DIR` | `/app/console/static` | the built SPA; a missing directory fails at boot |
 | `PIPELINE_BASE_URL` | `http://127.0.0.1:8765` | loopback inside the container |
+| `PIPELINE_CONTAINER` | `speech-to-speech-local-pipeline-1` | label only: the container behind `PIPELINE_BASE_URL`, shown in the voice page's Settings |
 | `SUPERVISOR_SOCKET` | `/run/s2s-console/supervisor.sock` | process status and restarts |
 | `LOG_DIR` | `/var/log/supervisor` | read-only source for the log panel |
 | `DATA_DIR` | `/app/data` | turn-latency cursor, voice library |
+
+## Pointing the console at a local pipeline-1
+
+On a dev box the pipeline runs as its own container
+(`docker-compose.local.yml`, compose project `speech-to-speech-local`, service
+`pipeline` → container `speech-to-speech-local-pipeline-1`, published on
+`0.0.0.0:8765`). Three consumers read the same two settings, so there is exactly
+one place to change:
+
+| path | consumer | uses |
+|---|---|---|
+| `GET /v1/pool` | `services/pool.py` → `/api/v1/status`, `/api/v1/instances` | `PIPELINE_BASE_URL` |
+| `POST /internal/sessions/update` | `services/hot_update_service.py` (parameter publish) | `PIPELINE_BASE_URL` |
+| `WS /v1/realtime`, `POST /v1/realtime/calls` | `routers/realtime.py` (the browser's voice link) | `PIPELINE_BASE_URL` |
+
+`.env` for that setup:
+
+```dotenv
+PIPELINE_BASE_URL=http://127.0.0.1:8765
+PIPELINE_CONTAINER=speech-to-speech-local-pipeline-1
+# SPEECH_TO_SPEECH_URL stays empty: the browser dials same-origin /v1/realtime
+# and this process proxies it. Filling it pins the upstream and disables the LB
+# face, queueing and sign-in.
+```
+
+The browser never learns `8765`: `npm run dev` proxies `/v1` (with `ws: true`) to
+the console on `:8000`, which forwards the socket to the pipeline. Same-origin
+means no second CORS surface, and `8765` stays unpublished in the container
+deployment.
+
+### Verifying the wire, in order
+
+```bash
+# 1. the pipeline itself answers
+curl -s http://127.0.0.1:8765/v1/pool          # {"size":1,"in_use":0,"units":[…]}
+docker ps --filter name=pipeline --format '{{.Names}} {{.Status}} {{.Ports}}'
+
+# 2. the console advertises the same endpoint (no token needed)
+curl -s http://127.0.0.1:8000/api/config       # …"pipeline":{"baseUrl":"http://127.0.0.1:8765",…}
+
+# 3. the status probe reaches it (JWT required)
+curl -s -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8000/api/v1/status
+                                               # "pipeline": "ok"
+
+# 4. the voice link upgrades and the pipeline greets the socket
+python - <<'PY'
+import asyncio, websockets
+async def main():
+    async with websockets.connect("ws://127.0.0.1:8000/v1/realtime", max_size=None) as ws:
+        print((await ws.recv())[:120])          # session.created
+asyncio.run(main())
+PY
+```
+
+On a dev box there is no supervisord, so the process probe answers `unknown`;
+`/api/v1/status` then trusts `/v1/pool` for its single word — answering means
+serving. Inside the container the probe still wins: a stopped program reports
+`unreachable` even if a stale socket answers.
 
 ## Provisioning a database
 

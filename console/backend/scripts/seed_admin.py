@@ -1,4 +1,4 @@
-"""Create the first operator account. There is no self-service registration."""
+"""Create the first operator account, or reset one password. No self-service registration."""
 from __future__ import annotations
 
 import argparse
@@ -14,6 +14,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--username", required=True)
     parser.add_argument("--role", default="admin", choices=["admin", "operator"])
     parser.add_argument("--password-stdin", action="store_true")
+    parser.add_argument(
+        "--update-password",
+        action="store_true",
+        help="reset the password of an existing user instead of failing",
+    )
     args = parser.parse_args(argv)
 
     if args.password_stdin:
@@ -28,9 +33,14 @@ def main(argv: list[str] | None = None) -> int:
 
     with SessionLocal() as session:
         repo = UserRepository(session)
-        if repo.by_username(args.username) is not None:
-            print(f"user {args.username} already exists", file=sys.stderr)
-            return 1
+        existing = repo.by_username(args.username)
+        if existing is not None:
+            if not args.update_password:
+                print(f"user {args.username} already exists", file=sys.stderr)
+                return 1
+            repo.update_password(existing, hash_password(password))
+            print(f"updated the password of {existing.role} {args.username}")
+            return 0
         repo.create(args.username, hash_password(password), args.role)
     print(f"created {args.role} {args.username}")
     return 0

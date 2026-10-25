@@ -18,7 +18,8 @@ import QueueOverlay from '@/features/voice/components/QueueOverlay.vue'
 import SettingsDialog from '@/features/voice/components/SettingsDialog.vue'
 import ToolsDialog from '@/features/voice/components/ToolsDialog.vue'
 import { openCamera, snapshot } from '@/features/voice/tools/camera'
-import { S2sClient } from '@/features/voice/transport/s2s-client'
+import { buildDirectWsUrl, S2sClient } from '@/features/voice/transport/s2s-client'
+import type { ToolCallRecord, ToolResultRecord } from '@/features/voice/transport/events'
 import type { Bubble, ToolCall, ToolDef, VoiceSettings } from '@/features/voice/types'
 import { useShellStore } from '@/stores/shell'
 import { useVoiceStore } from '@/stores/voice'
@@ -101,9 +102,18 @@ const CONNECT_ERRORS: Record<string, string> = {
 
 const serverKey = computed(() => store.config.search)
 const searchAvailable = computed(() => serverKey.value || Boolean(searchKey.value))
-const serverUrl = computed(() => store.config.s2sUrl || `${location.protocol}//${location.host}`)
+/**
+ * 设置里展示的其实不是“用户输入的地址”，而是本次会话真正 dial 的那一刻（demo 也把
+ * 这个字段做成只读）。直连模式列出 ws 地址，LB 模式列出授权接口，二者都不是猜的。
+ */
+const serverUrl = computed(() => {
+  if (!store.config.allowDirect) return '/api/session → load balancer'
+  return buildDirectWsUrl(store.config.s2sUrl) || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/v1/realtime`
+})
 // 上游地址被钉死时 WebRTC 的 /api/calls 代理也只转发那一个地址，因此传输方式不可选。
 const transportLocked = computed(() => !store.config.allowDirect)
+/** WebRTC 需要服务端能直连 SDP 入口；同源反代只有 WS 一条路（rtc=false）。 */
+const rtcAvailable = computed(() => Boolean(store.config.rtc) && !transportLocked.value)
 
 const caption = computed(() => {
   if (micError.value) return MIC_ERRORS[micError.value] ?? micError.value
@@ -177,7 +187,6 @@ function say(role: Bubble['role'], text: string): void {
 async function runTool(call: ToolCall) {
   if (call.name === 'web_search') {
     const args = JSON.parse(call.arguments || '{}') as { query?: string }
-    say('tool', `Searching for “${args.query ?? ''}”`)
     return { output: await search(args.query ?? '', searchKey.value, store.grant?.sessionId ?? '') }
   }
   if (call.name === 'camera_snapshot') {
@@ -188,6 +197,20 @@ async function runTool(call: ToolCall) {
     return image ? { output: 'Here is the current camera frame.', image } : { output: 'The camera is not available right now.' }
   }
   return { output: `Unknown tool: ${call.name}` }
+}
+
+/** 气泡只搬一句话；完整 Input/Output 由 `store.applyToolCall/Result` 落进历史条目。 */
+function describeTool(call: ToolCallRecord): string {
+  if (call.name === 'web_search') {
+    try {
+      const args = JSON.parse(call.arguments || '{}') as { query?: string }
+      return `Searching for “${args.query ?? ''}”`
+    } catch {
+      return 'Searching the web'
+    }
+  }
+  if (call.name === 'camera_snapshot') return 'Capturing a camera frame'
+  return `Running ${call.name}`
 }
 
 async function connect(): Promise<void> {
@@ -205,6 +228,10 @@ async function connect(): Promise<void> {
   }
   client = new S2sClient({
     transport: store.config.rtc && store.settings.transport === 'webrtc' ? 'webrtc' : 'websocket',
+    // 没有 LB 的部署不再请求 `/api/session`（那个接口在直连模式下是 404），
+    // 而是直接 dial：钉死的地址优先，否则走同源 `/v1/realtime` 反代。
+    allowDirect: store.config.allowDirect,
+    directUrl: store.config.s2sUrl,
     sessionUrl: '/api/session',
     callsUrl: '/api/calls',
     voice: store.settings.voice,
@@ -232,6 +259,14 @@ async function connect(): Promise<void> {
     // 气泡只搬「刚刚发生的一件事」，完整转写归历史抽屉。
     if (detail?.type === 'conversation.item.input_audio_transcription.completed') say('user', detail.transcript)
     if (detail?.type === 'response.audio_transcript.done') say('assistant', detail.transcript)
+  })
+  client.addEventListener('tool-call', (event: Event) => {
+    const call = (event as CustomEvent).detail as ToolCallRecord
+    store.applyToolCall(call)
+    say('tool', describeTool(call))
+  })
+  client.addEventListener('tool-result', (event: Event) => {
+    store.applyToolResult((event as CustomEvent).detail as ToolResultRecord)
   })
   client.addEventListener('level', (event: Event) => {
     const db = (event as CustomEvent).detail.db as number
@@ -273,7 +308,12 @@ async function connect(): Promise<void> {
     vad = await startLocalVad({
       stream: mic,
       isEnabled: () => Boolean(client),
-      onChange: (speaking) => store.setState(speaking ? 'user-speaking' : 'listening')
+      // 本地 VAD 只是「比服务端早一拍」的提示：它能把自己推成 user-speaking，
+      // 但不能把 `ai-speaking` / `processing` 这些真相覆盖回去。
+      onChange: (speaking) => {
+        if (speaking) store.setState('user-speaking')
+        else if (store.state === 'user-speaking') store.setState('listening')
+      }
     })
   }
   if (store.settings.tools.camera) await startCamera()
@@ -502,7 +542,10 @@ onBeforeUnmount(() => {
     <SettingsDialog
       v-model:open="settingsOpen"
       :server-url="serverUrl"
+      :mode="store.config.allowDirect ? 'direct' : 'load-balancer'"
+      :pipeline="store.config.pipeline"
       :transport-locked="transportLocked"
+      :rtc-available="rtcAvailable"
       :voices="VOICES"
       :inputs="inputs"
       :outputs="outputs"

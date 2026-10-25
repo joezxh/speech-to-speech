@@ -10,6 +10,10 @@ class ConsoleSettings(BaseSettings):
     param_catalog_path: str = "/app/catalog/parameter-catalog.yaml"
     static_dir: str = "/app/console/static"
     pipeline_base_url: str = "http://127.0.0.1:8765"
+    # Display-only label for the container behind `pipeline_base_url`. The console
+    # never talks to docker; the label exists so the voice page can say *which*
+    # pipeline it is bound to instead of showing a bare host:port.
+    pipeline_container: str = "speech-to-speech-local-pipeline-1"
     pipeline_timeout_s: float = 180.0
     supervisor_socket: str = "/run/s2s-console/supervisor.sock"
     supervisor_program: str = "pipeline"

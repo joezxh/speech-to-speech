@@ -20,6 +20,17 @@ def _db_ok(db) -> bool:
     return True
 
 
+def _pipeline_ok(info, reachable: bool) -> bool:
+    """The top bar's one word. `running` comes from supervisor, which only exists
+    inside the deployment container; on a dev box (`RESTART_MODE=noop`) the probe
+    answers `unknown`, and then `/v1/pool` is the honest witness: if it answers,
+    the pipeline is serving the exact endpoint the voice link dials.
+    """
+    if not reachable:
+        return False
+    return info.running or info.state == "unknown"
+
+
 def snapshot(db, profile: str) -> dict[str, Any]:
     """Never raises for a downstream failure: A.11 wants a 200 with the facts."""
     db_ok = _db_ok(db)
@@ -33,6 +44,6 @@ def snapshot(db, profile: str) -> dict[str, Any]:
         "catalogCommit": catalog_service.load().generated_from,
         "validatorMode": validator_service.mode(),
         "db": "ok" if db_ok else "unavailable",
-        "pipeline": "ok" if (info.running and reachable) else "unreachable",
+        "pipeline": "ok" if _pipeline_ok(info, reachable) else "unreachable",
         "internalTokenConfigured": bool(os.environ.get("S2S_INTERNAL_TOKEN", "").strip()),
     }

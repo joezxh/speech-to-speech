@@ -14,4 +14,6 @@ export interface DemoConfig {
   iceServers: IceServer[]
   startupGreeting: string
   auth: boolean
+  /** 这一次部署实际连的 pipeline；静态值，不在这个接口里做健康检查。 */
+  pipeline: { baseUrl: string; container: string }
 }

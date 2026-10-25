@@ -101,3 +101,16 @@ def test_status_sees_a_configured_internal_token(client, monkeypatch):
     data = client.get("/api/v1/status", headers=_auth(client)).json()["data"]
     assert data["internalTokenConfigured"] is True
     assert data["pipeline"] == "ok"
+
+
+def test_status_trusts_a_serving_pool_when_there_is_no_supervisor(client, monkeypatch):
+    # 开发机上 `RESTART_MODE=noop`，探针只能答 unknown；这时 /v1/pool 能应答
+    # 就是“pipeline 正在服务”的唯一证据，顶栏不能因为缺 supervisor 而报不可达。
+    monkeypatch.setattr(
+        pool, "read_pool", lambda timeout=5.0: pool.PoolState(reachable=True, size=1)
+    )
+    process_probe.set_probe(process_probe.NullProbe("no supervisor on a dev box"))
+
+    data = client.get("/api/v1/status", headers=_auth(client)).json()["data"]
+
+    assert data["pipeline"] == "ok"

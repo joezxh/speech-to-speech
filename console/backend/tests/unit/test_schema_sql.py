@@ -13,10 +13,10 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-
-import app.models  # noqa: F401 - registers the tables on Base.metadata
 from alembic.config import Config
 from alembic.script import ScriptDirectory
+
+import app.models  # noqa: F401 - registers the tables on Base.metadata
 from app.db.base import Base
 
 BACKEND = Path(__file__).resolve().parents[2]

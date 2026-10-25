@@ -17,6 +17,8 @@ KEYS = {
     "iceServers",
     "startupGreeting",
     "auth",
+    # Which pipeline the console is bound to (status probe, hot updates, WS proxy).
+    "pipeline",
 }
 
 
@@ -36,6 +38,15 @@ def test_config_is_a_bare_object_and_needs_no_token(client):
     # A.13 rule 1: the demo face never carries the /api/v1 envelope.
     assert "code" not in body and "data" not in body
     assert set(body) == KEYS
+
+
+def test_config_points_the_voice_page_at_the_same_pipeline_as_the_probes(client, monkeypatch):
+    monkeypatch.setattr("app.config.console.pipeline_base_url", "http://127.0.0.1:8765")
+    monkeypatch.setattr("app.config.console.pipeline_container", "pipeline-1")
+
+    body = client.get("/api/config").json()
+
+    assert body["pipeline"] == {"baseUrl": "http://127.0.0.1:8765", "container": "pipeline-1"}
 
 
 def test_config_never_returns_the_load_balancer_address(client, monkeypatch):

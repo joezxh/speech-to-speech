@@ -28,6 +28,13 @@ export interface S2sClientOptions {
   transport: 'websocket' | 'webrtc'
   sessionUrl: string
   callsUrl: string
+  /**
+   * `GET /api/config` 的 `allowDirect`：真 = 这个部署没有 LB，浏览器直连
+   * `directUrl`（或同源反代），不再请求 `/api/session`（demo/main.js:944-953）。
+   */
+  allowDirect: boolean
+  /** 部署钉死的 s2s 地址（`config.s2sUrl`）。空串 = 走同源 `/v1/realtime` 反代。 */
+  directUrl: string
   voice: string
   instructions: string
   tools: ToolDef[]
@@ -45,6 +52,64 @@ export interface S2sClientOptions {
 function codedError(message: string, code: string, extra?: Record<string, unknown>): Error {
   return Object.assign(new Error(message), { code }, extra)
 }
+
+/**
+ * 把用户/部署给的地址规整成 realtime WebSocket URL——与 demo/main.js:962-980 的
+ * `buildDirectWsUrl` 同一套规则：裸主机补 `ws://`（公网补 `wss://`），http→ws、
+ * https→wss，没有路径时补 `/v1/realtime`，已有路径/查询原样保留。
+ * 空输入返回 `''`，调用方据此回退到同源反代。
+ */
+export function buildDirectWsUrl(raw: string): string {
+  let value = (raw || '').trim()
+  if (!value) return ''
+  if (!/^wss?:\/\//i.test(value)) {
+    if (/^https?:\/\//i.test(value)) {
+      value = value.replace(/^http/i, 'ws')
+    } else {
+      const isLocal = /^(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(value)
+      value = (isLocal ? 'ws://' : 'wss://') + value
+    }
+  }
+  try {
+    const url = new URL(value)
+    if (url.pathname === '' || url.pathname === '/') url.pathname = '/v1/realtime'
+    return url.toString()
+  } catch {
+    return value
+  }
+}
+
+/**
+ * 没有钉死上游时的入口：同源 `/v1/realtime`。控制台后端在 `routers/realtime.py`
+ * 里把它逐帧转给 `PIPELINE_BASE_URL`（本地 = pipeline-1 的 8765），因此浏览器
+ * 既不需要知道 pipeline 地址，也不会撞上跨域。
+ */
+export function sameOriginRealtimeUrl(href: string = globalThis.location?.href ?? ''): string {
+  if (!href) return ''
+  try {
+    const url = new URL(href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    url.pathname = '/v1/realtime'
+    url.search = ''
+    url.hash = ''
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
+/** orb 只画这九态；`connected`/`closed` 是 transport 词，由 store 归一。 */
+const PAINTED_STATES = new Set([
+  'idle',
+  'connecting',
+  'queued',
+  'your-turn',
+  'listening',
+  'user-speaking',
+  'processing',
+  'ai-speaking',
+  'error'
+])
 
 /**
  * One conversation. Every event other than audio is forwarded verbatim as
@@ -106,6 +171,9 @@ export class S2sClient extends EventTarget {
 
   private setStatus(next: string): void {
     if (this.status === next) return
+    // 只发九态（外加 `closed`）：一个拼错的状态名会让 orb 的 INDICATOR 查空，
+    // 画出一个没有图标的球，而且没有任何报错。
+    if (next !== 'closed' && !PAINTED_STATES.has(next)) return
     this.status = next
     this.emit('status', { status: next })
   }
@@ -177,18 +245,36 @@ export class S2sClient extends EventTarget {
     })
   }
 
+  /**
+   * 直连分支的入口：钉死的地址优先，否则同源反代。demo 在 `allowDirect` 时
+   * 也是这样绕开 `/api/session` —— 那个接口只在 LB 模式存在，没有 LB 时是 404。
+   */
+  private directSocketUrl(): string {
+    const pinned = buildDirectWsUrl(this.options.directUrl)
+    const url = pinned || sameOriginRealtimeUrl()
+    if (!url) throw codedError('Enter a speech-to-speech server URL in Settings.', 'no-server-url')
+    return url
+  }
+
   async connect(): Promise<void> {
     if (this.session) throw new Error('Already connected')
     let url: string
     if (this.options.transport === 'websocket') {
-      this.setStatus('creating-session')
-      const { grant, waited } = await this.acquireGrant()
-      if (this.closed) throw codedError('connect aborted', 'aborted')
-      // A queued grant holds a slot for seconds only, and the browser needs a user
-      // gesture to resume the AudioContext — so wait for the click before dialling.
-      if (waited) await this.awaitJoin(grant)
-      this.emit('session', { grant })
-      url = grant.connectUrl
+      if (this.options.allowDirect) {
+        this.setStatus('connecting')
+        url = this.directSocketUrl()
+        // 没有 grant：额度/心跳只属于 LB 模式，直连部署两者都不存在。
+        this.emit('direct', { url })
+      } else {
+        this.setStatus('connecting')
+        const { grant, waited } = await this.acquireGrant()
+        if (this.closed) throw codedError('connect aborted', 'aborted')
+        // A queued grant holds a slot for seconds only, and the browser needs a user
+        // gesture to resume the AudioContext — so wait for the click before dialling.
+        if (waited) await this.awaitJoin(grant)
+        this.emit('session', { grant })
+        url = grant.connectUrl
+      }
     } else {
       url = new URL(this.options.callsUrl, globalThis.location?.href).href
     }
@@ -238,14 +324,30 @@ export class S2sClient extends EventTarget {
         parameters: definition.parameters,
         strict: false,
         execute: async (args: unknown, _context: unknown, details: any) => {
-          const result = await this.options.executeTool?.({
+          const call: ToolCall = {
             name: definition.name,
             arguments: JSON.stringify(args ?? {}),
             callId: details?.toolCall?.callId ?? ''
-          })
-          if (!result) throw new Error(`No executor for ${definition.name}`)
-          if (result.image) this.session?.addImage(result.image, { triggerResponse: false })
-          return result.output
+          }
+          // 会话列表的 tool 条目由执行器驱动，而不是等服务端回显：
+          // 无论 pipeline 是否转发 `conversation.item.created`，这里都一定发生。
+          this.emit('tool-call', call)
+          try {
+            const result = await this.options.executeTool?.(call)
+            if (!result) throw new Error(`No executor for ${definition.name}`)
+            this.emit('tool-result', { ...call, output: result.output, image: result.image ?? '' })
+            if (result.image) this.session?.addImage(result.image, { triggerResponse: false })
+            return result.output
+          } catch (error: any) {
+            // 失败也要留痕：条目里写清原因，再把错误抛回 SDK，让模型知道工具没成。
+            this.emit('tool-result', {
+              ...call,
+              output: `Tool failed: ${error?.message ?? String(error)}`,
+              image: '',
+              failed: true
+            })
+            throw error
+          }
         }
       })
     )

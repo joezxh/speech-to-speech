@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from app.config import demo
+from app.config import console, demo
 
 
 def ice_servers(raw: str) -> list[dict[str, Any]]:
@@ -39,4 +39,10 @@ def config() -> dict[str, Any]:
         "iceServers": ice_servers(demo.rtc_ice_servers),
         "startupGreeting": demo.startup_greeting.strip(),
         "auth": demo.auth_enabled,
+        # Which pipeline this console is wired to. Read from settings, so the
+        # voice page shows the same host the status probe and the WS proxy use.
+        "pipeline": {
+            "baseUrl": console.pipeline_base_url.strip(),
+            "container": console.pipeline_container.strip(),
+        },
     }

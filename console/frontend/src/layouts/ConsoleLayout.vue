@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { navItemsFor, type NavItem } from '@/router/nav'
+import { navGroupFor, navItemsFor, type NavItem } from '@/router/nav'
 import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore } from '@/stores/console'
 import { DRAWER_BREAKPOINT, useShellStore } from '@/stores/shell'
@@ -20,10 +20,16 @@ const face = computed<'console' | 'voice'>(() => (route.meta.face === 'voice' ? 
 const items = computed(() =>
   navItemsFor(face.value).filter((item) => !item.name || router.hasRoute(item.name))
 )
-const selected = computed(() => [String(route.name ?? '')])
+/** 分组标题与菜单同源，折叠态由 CSS 隐藏。 */
+const groupLabel = computed(() => navGroupFor(face.value)?.label ?? '')
 
 function keyOf(item: NavItem): string {
   return item.name ?? `overlay:${item.action}`
+}
+
+/** 只有路由项能「当前」：浮层项是动作，打开即关闭，没有停留的位置。 */
+function isCurrent(item: NavItem): boolean {
+  return Boolean(item.name) && route.name === item.name
 }
 
 const narrow = ref(false)
@@ -67,9 +73,7 @@ onBeforeUnmount(() => {
   consoleStore.stopPolling()
 })
 
-function onMenuClick(info: { key: string | number }): void {
-  const item = items.value.find((candidate) => keyOf(candidate) === String(info.key))
-  if (!item) return
+function onNavClick(item: NavItem): void {
   if (item.name) void router.push({ name: item.name })
   else if (item.action) shell.openOverlay(item.action)
   shell.closeDrawer()
@@ -106,29 +110,57 @@ function signOut(): void {
           @change="(value: unknown) => consoleStore.selectProfile(String(value))"
         />
         <a-badge :status="pipelineBadge" :text="pipelineText" />
-        <span class="shell__spacer" />
-        <button class="shell__collapse" type="button" aria-label="Toggle sidebar" @click="shell.toggleSider()">
-          {{ shell.siderCollapsed ? '»' : '«' }}
-        </button>
-        <span class="shell__user">{{ auth.user?.username }} · {{ auth.user?.role }}</span>
-        <a-button type="link" size="small" @click="signOut">退出</a-button>
       </template>
 
-      <template v-else>
-        <span class="shell__spacer" />
-        <!-- 对话页把账号 chip 与工具 / 历史 / 设置三枚按钮 Teleport 到这里（§3.2.4），
-             所以它没有自己的顶栏，也无法盖住外壳。 -->
-        <div id="shell-actions" class="shell__actions" />
+      <span class="shell__spacer" />
+
+      <!-- 对话页把账号 chip 与工具 / 历史 / 设置三枚按钮 Teleport 到这里（§3.2.4），
+           所以它没有自己的顶栏，也无法盖住外壳。运维面这里是空的。 -->
+      <div v-if="face === 'voice'" id="shell-actions" class="shell__actions" />
+
+      <!-- 两个面共用同一枚折叠纽：`aria-pressed` 给出状态，<980px 由 CSS 隐藏
+           （那时侧栏是抽屉，用左侧的汉堡纽）。 -->
+      <button
+        class="shell__collapse"
+        type="button"
+        aria-label="Toggle sidebar"
+        :aria-pressed="shell.siderCollapsed ? 'true' : 'false'"
+        :title="shell.siderCollapsed ? '展开侧栏' : '折叠侧栏'"
+        @click="shell.toggleSider()"
+      >
+        {{ shell.siderCollapsed ? '»' : '«' }}
+      </button>
+
+      <template v-if="face === 'console'">
+        <span class="shell__user">{{ auth.user?.username }} · {{ auth.user?.role }}</span>
+        <a-button type="link" size="small" @click="signOut">退出</a-button>
       </template>
     </header>
 
     <div class="shell__body">
       <nav id="shell-nav" class="shell__nav" :class="{ 'is-open': shell.drawerOpen }" aria-label="主导航">
-        <a-menu mode="inline" theme="dark" :selected-keys="selected" @click="onMenuClick">
-          <a-menu-item v-for="item in items" :key="keyOf(item)">{{ item.label }}</a-menu-item>
-        </a-menu>
+        <div class="shell__nav-label">{{ groupLabel }}</div>
 
-        <router-link v-if="face === 'voice'" class="shell__link" :to="{ name: 'console' }">运维控制台 ↗</router-link>
+        <!-- 原生纽而非 `a-menu`：折叠后 `.nav` 只剩图标，geometry 与
+             console-preview.html 的侧栏一致（图标 + 文字 / 居中图标）。 -->
+        <button
+          v-for="item in items"
+          :key="keyOf(item)"
+          class="nav"
+          type="button"
+          :aria-current="isCurrent(item) ? 'true' : undefined"
+          :title="item.label"
+          @click="onNavClick(item)"
+        >
+          <svg class="nav__icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+            <use :href="`#i-${item.icon}`" />
+          </svg>
+          <span>{{ item.label }}</span>
+        </button>
+
+        <router-link v-if="face === 'voice'" class="shell__link" :to="{ name: 'console' }" title="运维控制台">
+          运维控制台 ↗
+        </router-link>
       </nav>
 
       <div v-if="shell.drawerOpen" class="shell__scrim" @click="shell.closeDrawer()" />
@@ -210,8 +242,16 @@ function signOut(): void {
     border: 0;
     color: #8b93a7;
     cursor: pointer;
+    flex: none;
     font-size: 14px;
-    padding: 2px 6px;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 6px;
+
+    &:hover {
+      background: #1d2742;
+      color: #e6e8f0;
+    }
   }
 
   &__user {
@@ -240,7 +280,18 @@ function signOut(): void {
     color: #8b93a7;
     display: block;
     font-size: 12px;
-    padding: 12px 16px;
+    margin: 10px 8px 12px;
+    padding: 8px 10px;
+  }
+
+  // 分组标题：11px 全大写小标，折叠后没有宽度可容，直接隐藏。
+  &__nav-label {
+    color: #6b7285;
+    font-size: 11px;
+    letter-spacing: 0.6px;
+    padding: 10px 18px 6px;
+    text-transform: uppercase;
+    white-space: nowrap;
   }
 
   &__content {
@@ -260,6 +311,58 @@ function signOut(): void {
   width: 56px;
 }
 
+/* 折叠态：分组标题与文字都让位给图标（console-preview.html:161-164）。 */
+.shell.is-collapsed .shell__nav-label,
+.shell.is-collapsed .shell__link,
+.shell.is-collapsed .shell__nav .nav span {
+  display: none;
+}
+
+.shell.is-collapsed .shell__nav .nav {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+/* 侧栏项：图标 + 文字，`aria-current` 是当前页。 */
+.shell__nav .nav {
+  align-items: center;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  color: #8b93a7;
+  cursor: pointer;
+  display: flex;
+  gap: 9px;
+  margin: 0 8px 2px;
+  padding: 8px 10px;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+  width: calc(100% - 16px);
+
+  &:hover {
+    background: #1b2338;
+    color: #e6e8f0;
+  }
+
+  &[aria-current='true'] {
+    background: #1d2a4a;
+    color: #e6e8f0;
+    font-weight: 500;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.shell__nav .nav__icon {
+  flex: none;
+  opacity: 0.85;
+}
+
 /* 两个面的内容区边距不同：运维台要内边距，对话页要一整块舞台。 */
 .shell[data-face='console'] .shell__content {
   padding: 20px;
@@ -276,6 +379,11 @@ function signOut(): void {
   /* 小屏：侧栏变抽屉，舞台宽度不被挤压（§3.2.4）。 */
   .shell__burger {
     display: inline-flex;
+  }
+
+  /* 抽屉态没有「折叠」这个概念：56px 的图标条在触屏上点不中。 */
+  .shell__collapse {
+    display: none;
   }
 
   .shell__nav {

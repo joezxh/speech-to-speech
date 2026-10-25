@@ -17,6 +17,7 @@ from app.db.database import SessionLocal
 from app.middleware.request_id import RequestIdMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 from app.services import (
+    bootstrap_service,
     identity_service,
     metering_service,
     publish_flow_service,
@@ -38,15 +39,25 @@ async def _usage_sweeper() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # The previous container may have been cut between publish steps 6 and 9;
-    # settle those rows before accepting requests.
     session = SessionLocal()
     try:
-        outcomes = publish_flow_service.recover_pending(session)
-        for outcome in outcomes:
-            logger.warning("recovered an interrupted publish: {}", outcome)
-    except Exception as exc:  # noqa: BLE001 - a bad DB must not stop the API from booting
-        logger.error("startup recovery skipped: {}", exc)
+        # A fresh volume has no account and no registration page, so the image
+        # would boot into a console nobody can sign in to. DEFAULT_ADMIN_*
+        # seeds one; an empty password leaves the behaviour unchanged.
+        try:
+            bootstrap_service.ensure_default_admin(session)
+        except Exception as exc:  # noqa: BLE001 - a bad DB must not stop the API from booting
+            session.rollback()
+            logger.error("default admin bootstrap skipped: {}", exc)
+
+        # The previous container may have been cut between publish steps 6 and 9;
+        # settle those rows before accepting requests.
+        try:
+            outcomes = publish_flow_service.recover_pending(session)
+            for outcome in outcomes:
+                logger.warning("recovered an interrupted publish: {}", outcome)
+        except Exception as exc:  # noqa: BLE001 - a bad DB must not stop the API from booting
+            logger.error("startup recovery skipped: {}", exc)
     finally:
         session.close()
 
