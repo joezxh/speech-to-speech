@@ -147,3 +147,16 @@ def test_instances_aggregates_registry_rows(client, db_session, monkeypatch):
     assert data["pool"] is None  # 本机不在注册表视图里 → 降级语义不变
     assert "pool_unreachable:pipe-b:not_observed" in data["alerts"]
     instance_monitor.reset_for_tests()
+
+
+def test_status_exposes_allocator_state(client, monkeypatch):
+    from app.config import allocator as allocator_settings
+
+    monkeypatch.setattr(allocator_settings, "mode", "local")
+    data = client.get("/api/v1/status", headers=_auth(client)).json()["data"]
+    assert data["allocatorMode"] == "local"
+    assert data["instancesRegistered"] == 0
+    assert data["seedConfigured"] is False
+    assert isinstance(data["consoleId"], str) and data["consoleId"]
+    # 本机可见性：四个密钥是否全部配置；测试环境不保证，只要求类型正确（spec §12）
+    assert data["secretsConsistent"] in (True, False)

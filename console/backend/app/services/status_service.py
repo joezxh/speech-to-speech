@@ -7,7 +7,8 @@ from typing import Any
 
 from sqlalchemy import text
 
-from app.config import console
+from app.config import allocator, auth, console
+from app.repositories.instance_repository import InstanceRepository
 from app.repositories.version_repository import VersionRepository
 from app.services import catalog_service, pool, process_probe, validator_service
 
@@ -37,6 +38,16 @@ def snapshot(db, profile: str) -> dict[str, Any]:
     latest = VersionRepository(db).latest_live(profile) if db_ok else None
     info = process_probe.get_probe().state(console.supervisor_program)
     reachable = pool.read_pool().reachable
+    # P1.3 (spec §12): allocator/seed state, guarded so a dead DB still yields a 200.
+    instances_registered = len(InstanceRepository(db).list_all()) if db_ok else 0
+    secrets_consistent = all(
+        (
+            auth.jwt_secret_key,
+            os.environ.get("USAGE_HASH_SECRET", ""),
+            os.environ.get("S2S_ADMIN_TOKEN", ""),
+            os.environ.get("S2S_INTERNAL_TOKEN", ""),
+        )
+    )
     return {
         "profile": profile,
         "version": int(latest.version) if latest else None,
@@ -46,4 +57,9 @@ def snapshot(db, profile: str) -> dict[str, Any]:
         "db": "ok" if db_ok else "unavailable",
         "pipeline": "ok" if _pipeline_ok(info, reachable) else "unreachable",
         "internalTokenConfigured": bool(os.environ.get("S2S_INTERNAL_TOKEN", "").strip()),
+        "allocatorMode": allocator.mode,
+        "instancesRegistered": instances_registered,
+        "seedConfigured": bool(allocator.seed_path.strip()),
+        "consoleId": allocator.resolved_console_id,
+        "secretsConsistent": bool(secrets_consistent),
     }
