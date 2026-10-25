@@ -220,6 +220,27 @@ $env:VITE_DEV_BACKEND="http://127.0.0.1:8001"; npm run dev
 > `../../../`，从 `console/backend` 出发会落到仓库外；现已改为 `../../`。
 > 如果你沿用旧值，症状是参数树为空或目录读取失败。
 
+### 5.3 实例注册与本地分配
+
+实例注册、巡检、本地分配（多实例负载均衡）的全部开关。字段名是代码内短名，
+env 名一律走 `validation_alias`（前缀不统一，不能用 `env_prefix`）。默认组合
+（`ALLOCATOR_MODE=off` + 空 seed）= 引入本期之前的行为完全不变。
+
+| 变量 | 默认值 | 作什么用 |
+|---|---|---|
+| `ALLOCATOR_MODE` | `off` | `off` = 单实例直连现状；`local` = 启用注册表选台 + 本地签发 grant。回退手段就是把它设回 `off` |
+| `CONSOLE_ID` | 空 | 指标 `observed_by`，多 console 无共享多活时区分采样来源；空则回退到 `socket.gethostname()` |
+| `INSTANCES_SEED_PATH` | 空 | 实例 seed 文件路径；空则跳过 seed，DB 为唯一来源 |
+| `INSTANCE_PROBE_INTERVAL_S` | `5` | 巡检轮询 `/v1/pool` 的间隔秒 |
+| `INSTANCE_PROBE_TIMEOUT_S` | `2` | 单次 `/v1/pool` 探测超时秒 |
+| `INSTANCE_FAIL_THRESHOLD` | `3` | 连续失败几次判定 `offline`（摘除，只停新分配） |
+| `INSTANCE_RECOVER_THRESHOLD` | `2` | `offline` 后连续成功几次恢复 `online`（抖动抑制） |
+| `INSTANCE_GRANT_TTL_S` | `60` | 本地签发 grant 的存活秒（单调时钟回收） |
+| `INSTANCE_USAGE_INTERVAL_S` | `30` | `/v1/usage` 读取间隔秒；失败只产生 `usage_unavailable` 告警，不影响健康判定 |
+| `INSTANCE_METRIC_RETENTION_DAYS` | `7` | 指标采样行保留天数，巡检循环顺带清理更早的 |
+| `INSTANCE_QUEUE_ENABLED` | `false` | 本地满员队列。本期关闭：满则直接 503 `at_capacity` |
+| `INSTANCE_WEBRTC_HANGUP_ENABLED` | `false` | console 侧跨机挂断代理路由 `POST /instances/{id}/hangup` 的开关；关则该路径根本没注册 |
+
 ---
 
 ## 6. 启动顺序与依赖
@@ -273,6 +294,12 @@ pipeline :8765
 | POST | `/api/v1/auth/refresh` | refresh token | 换一对新令牌 |
 | GET | `/api/v1/auth/me` | access token | 用户名、角色、上次登录 |
 | GET | `/api/v1/instances` | access token | 实例与 pool 状态、告警 |
+| GET | `/api/v1/instances/{id}` | access token | 单实例详情：状态、units、探测历史、p50/p95、usage |
+| GET | `/api/v1/instances/{id}/metrics?window=1h` | operator | 趋势采样（`window` 取 1h/6h/24h/7d） |
+| POST | `/api/v1/instances/{id}/drain` | operator | 申请摘除：不再入选新分配，写 DB + 同步内存态 + 审计 |
+| POST | `/api/v1/instances/{id}/undrain` | operator | 取消摘除（同上） |
+| POST | `/api/v1/instances/{id}/probe` | operator | 绕过 2s 缓存立即探测一轮 |
+| POST | `/api/v1/instances/{id}/hangup` | admin | 跨机代理实例侧 WebRTC 挂断；**默认不注册**，需 `INSTANCE_WEBRTC_HANGUP_ENABLED=true` |
 | GET | `/api/config` | 无 | demo 面配置（8 个键，不含密钥） |
 | WS | `/v1/realtime` | 无 | 反代到 pipeline；上游连不上时 close `1013` |
 | POST | `/v1/realtime/calls` | 无 | 转发 SDP |
@@ -296,6 +323,10 @@ pipeline :8765
 | Vite 起在 3001 | 3000 被占用（本机常见），代理仍然正常，用打印出的端口即可 |
 | 前端能开、接口全 404/502 | Vite 代理目标不是 8000；设 `VITE_DEV_BACKEND` |
 | 改了 `.env` 没反应 | pydantic-settings 只在**启动时**读文件；热更新要重启进程 |
+| 实例行一直停在 `unknown` | 首轮巡检未跑（`ALLOCATOR_MODE=off` 时不起巡检任务），或 seed 落了库但 `enabled=false` |
+| `drain` 后仍拿到 grant | 看到的是已签发未领取的 pending（`INSTANCE_GRANT_TTL_S` 内不会消失），或 console 重启后忘了 `refresh_specs()` |
+| `POST …/hangup` 返回 404/405 | `INSTANCE_WEBRTC_HANGUP_ENABLED` 没开，路由根本没注册（默认关，spec §9.2；SPA catch-all 只注册 GET，故未挂载的 POST 返 405） |
+| `POST …/hangup` 返回 503 `admin_disabled` | 这台 console 的 `S2S_ADMIN_TOKEN` 为空；多 console 必须与实例侧同值（spec §12） |
 
 ---
 
@@ -311,3 +342,117 @@ pipeline :8765
 | `console/backend/app/core/spa.py` | SPA 托管与 `STATIC_DIR` 校验 |
 | `console/deploy/supervisord.conf` | 容器里两个进程的命令与日志路径 |
 | `docker-compose.yml` | 只 publish 8000；`env_file: ./config/prod.env` |
+| `console/backend/app/services/instance_registry.py` | 实例级状态机（unknown/online/degraded/offline/draining）与 effective_free 建模 |
+| `console/backend/app/services/instance_monitor.py` | 常驻巡检循环 + 探测缓存 + 指标采样与清理 |
+| `console/backend/app/services/allocator.py` / `allocator_store.py` | 本地分配选台/grant/503 换台；`AllocatorStore` 为 Phase 2 替换点 |
+| `console/backend/app/services/instance_seed.py` | seed 幂等 upsert 与 `instance_seed_conflict`/`instance_removed_from_seed` 告警 |
+| `console/backend/alembic/versions/0005_instances.py` | 两张新表（`param_instance` / `param_instance_metric`）的迁移 |
+
+---
+
+## 10. 实例注册、巡检与多 console
+
+本节把多实例（一台 console 管多台 pipeline 机）从配置到运维的心智模型串起来。
+开关清单见 §5.3，接口见 §7，故障见 §8。
+
+### 10.1 双模式判定与回退
+
+分支唯一落在 `routers/demo/session.py`（spec §8.1）：
+
+| 条件 | 行为 |
+|---|---|
+| `demo.lb_url` 非空 | 现有 `lb_service.start/poll/leave` 转发，**逐字不变** |
+| `lb_url` 空 且 `ALLOCATOR_MODE=local` 且注册表存在可分配实例 | 本地 `allocator.allocate()` 选台签发 grant |
+| 其余 | 保持现状（`SPEECH_TO_SPEECH_URL` 直连 / 404 防探测） |
+
+回退手段：把 `ALLOCATOR_MODE` 设回 `off` 即退回本期之前的单实例行为（spec §8.4）。
+`lb_service.py` 不修改；演示面保持匿名、无 envelope 的既有形态。
+
+### 10.2 seed 文件格式与幂等规则
+
+`INSTANCES_SEED_PATH` 指向 `instances.yaml`（空则跳过 seed，DB 为唯一来源）。启动时在
+lifespan 内做一次幂等 upsert（键 `instance_id`）：写入/更新 `base_url`、`weight`、
+`max_sessions_hint`、`labels_json`；**不覆盖** `enabled`、`drain_requested`（运维开关
+优先于 seed）。形状（照抄 spec §7）：
+
+```yaml
+instances:
+  - id: pipe-a
+    base_url: http://192.168.40.31:8765
+    weight: 2
+    max_sessions_hint: 4
+    labels: {rack: A, gpu: "4090"}
+  - id: pipe-b
+    base_url: http://192.168.40.32:8765
+    weight: 1
+```
+
+四类告警名（前三个来自 seed/巡检，`usage_unavailable` 来自 usage 采样）：
+
+| 告警 | 触发条件 |
+|---|---|
+| `instance_capacity_mismatch:{id}` | `max_sessions_hint` 非空且 `/v1/pool.size != max_sessions_hint` |
+| `instance_removed_from_seed:{id}` | DB 里有、seed 里消失（不删行，只告警） |
+| `instance_seed_conflict:{id}` | seed 与 DB 的 `base_url` 不一致（以 DB 为准） |
+| `usage_unavailable` | `/v1/usage` 读取失败；不参与健康判定，仅告警 |
+
+### 10.3 实例级状态机
+
+两层状态绝不混用：unit 级（idle/active/draining/stuck）原样来自 `/v1/pool`；机器级
+由 console 巡检推导。摘除只停新分配，绝不触碰活跃会话。下图照抄 spec §6.2：
+
+```mermaid
+stateDiagram-v2
+  unknown --> online: 首次探测成功
+  online --> offline: 连续失败 >= INSTANCE_FAIL_THRESHOLD
+  offline --> online: 连续成功 >= INSTANCE_RECOVER_THRESHOLD
+  online --> degraded: 探测成功但存在 stuck unit
+  degraded --> online: stuck 清零
+  online --> draining: 管理员 drain
+  degraded --> draining: 管理员 drain
+  draining --> online: 管理员 undrain 且探测健康
+  online --> unknown: console 重启
+```
+
+### 10.4 远程实例运维流程
+
+- 本机实例（`base_url == console.pipeline_base_url`）继续走现有 `publish_flow_service`
+  + supervisor + `pool.wait_healthy`，本设计不改其语义。
+- 远程实例 console 无权重启，手工流程为：`drain` → 该机自行发布/重启 → 巡检自动
+  回到 `online` → `undrain`（spec §9.1）。发布成功后可调 `instance_monitor.invalidate()`
+  让面板立即反映新状态。
+
+### 10.5 多 console 一致性前提
+
+多台 console 指向同一批实例时，以下变量**必须**各机一致（spec §12）：
+`JWT_SECRET_KEY`、`USAGE_HASH_SECRET`、`S2S_ADMIN_TOKEN`、`S2S_INTERNAL_TOKEN`、
+`INSTANCES_SEED_PATH` 指向的 seed 内容。`GET /api/v1/status` 暴露以下新字段供核对
+（Task 11）：`allocatorMode` / `instancesRegistered` / `seedConfigured` / `consoleId` /
+`secretsConsistent`（后者对上面这串密钥做一致性校验，任一为空或不匹配即 false）。
+
+多 console 无共享存储时，本机的乐观修正（`pending_local`）只防同机重复派发，看不见
+对端的 pending；实例是槽位的最终仲裁者，短期超发的唯一下场就是一次 503 换台，换台
+无可换则 `allocate` 返回 `None` → 调用方回 `503 at_capacity`（spec §8.4/§15 P1.6）。
+
+### 10.6 部署前提（鉴权边界）
+
+- `/v1/pool`、`/v1/usage` **无应用层鉴权**，靠网络 ACL 限制来源（spec §16）。
+- `DELETE /v1/realtime/calls/{call_id}` 从 P1.6 起要求 `S2S_ADMIN_TOKEN` Bearer
+  （spec §9.2）：**升级前先确认各机都配了 token**，否则现有的 WebRTC 挂断调用会吃
+  `503 admin_disabled`（未配置）或 `401 unauthorized`（token 不匹配）。
+- console 侧跨机挂断代理 `POST /instances/{id}/hangup` 默认不注册，需
+  `INSTANCE_WEBRTC_HANGUP_ENABLED=true` 且操作者为 admin。
+
+### 10.7 指标口径
+
+- 会话时长为**估算**：`grant_ts → 该 unit 不再 active` 的差；`/v1/pool` 不返回开始
+  时间，UI 须明确标注"估算"。
+- 跳变计数（`evict_count` / `recover_count`）**不累加**，按 console 分组展示，避免
+  多 console ×N（spec §10）。跨 console 聚合规则：同一秒桶内按 `instance_id` 取最新
+  一行，重复采样互不累加。
+
+### 10.8 console 单 worker 约束
+
+console 以 `--workers 1` 运行（§1）：内存 `AllocatorStore` 与 `publish_flow_service` 的
+进程内锁同前提——多 worker 会让 grant 与发布状态在进程间不一致（spec §13/§16）。
+Phase 2 换 `PostgresAllocatorStore` 后此约束才放开。
