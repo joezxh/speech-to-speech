@@ -52,6 +52,18 @@ Two console routes are dead in that mode: `/v1/realtime` and `/v1/realtime/calls
 the standalone proxies to a remote pipeline, and the pipeline's own `/v1/*` routes
 answer first.
 
+That mode keeps the repository root as its working directory, so the relative paths
+in `console/backend/.env` (`DATABASE_URL`, `USAGE_DB_PATH`, `PARAM_CONFIG_DIR`,
+`PARAM_CATALOG_PATH`) resolve from the repository root rather than from
+`console/backend`. Export the ones you need before starting, or write them relative
+to the repository root; real environment variables win over the preloaded file:
+
+```bash
+export PARAM_CONFIG_DIR=config
+export PARAM_CATALOG_PATH=docs/parameter-catalog.yaml
+export DATABASE_URL=sqlite:///./dev.db
+```
+
 ## Environment
 
 Read by `app/config/*` through pydantic-settings (`env_file=".env"`, case
