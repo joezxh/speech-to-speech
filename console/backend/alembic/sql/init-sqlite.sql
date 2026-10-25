@@ -129,3 +129,47 @@ CREATE INDEX ix_turn_latency_logged_at ON turn_latency (logged_at);
 
 UPDATE alembic_version SET version_num='0004_turn_latency' WHERE alembic_version.version_num = '0003_voices';
 
+-- Running upgrade 0004_turn_latency -> 0005_instances
+
+CREATE TABLE param_instance (
+    id INTEGER NOT NULL,
+    instance_id VARCHAR(64) NOT NULL,
+    base_url VARCHAR(255) NOT NULL,
+    weight INTEGER DEFAULT '1' NOT NULL,
+    max_sessions_hint INTEGER,
+    labels_json JSON NOT NULL,
+    enabled BOOLEAN DEFAULT '1' NOT NULL,
+    drain_requested BOOLEAN DEFAULT '0' NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_instance_instance_id UNIQUE (instance_id)
+);
+
+CREATE TABLE param_instance_metric (
+    id INTEGER NOT NULL,
+    instance_id VARCHAR(64) NOT NULL,
+    observed_at DATETIME NOT NULL,
+    observed_by VARCHAR(64) NOT NULL,
+    kind VARCHAR(16) DEFAULT 'sample' NOT NULL,
+    size INTEGER,
+    in_use INTEGER,
+    free INTEGER,
+    stuck INTEGER,
+    status VARCHAR(16) NOT NULL,
+    probe_ms INTEGER,
+    alloc_ok INTEGER DEFAULT '0' NOT NULL,
+    alloc_fail_no_instance INTEGER DEFAULT '0' NOT NULL,
+    alloc_fail_instance_503 INTEGER DEFAULT '0' NOT NULL,
+    evict_count INTEGER DEFAULT '0' NOT NULL,
+    recover_count INTEGER DEFAULT '0' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_instance_metric_instance_id ON param_instance_metric (instance_id);
+
+CREATE INDEX ix_param_instance_metric_observed_at ON param_instance_metric (observed_at);
+
+UPDATE alembic_version SET version_num='0005_instances' WHERE alembic_version.version_num = '0004_turn_latency';
+
