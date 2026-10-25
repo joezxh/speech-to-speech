@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Request
 
 from app.core.errors import ApiError
-from app.core.security import CurrentUser, require_operator, require_user
+from app.core.security import CurrentUser, require_admin, require_operator, require_user
 from app.deps import DbSession
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.instance_metric_repository import InstanceMetricRepository
 from app.repositories.instance_repository import InstanceRepository
 from app.repositories.version_repository import VersionRepository
 from app.schemas.common import ok
-from app.schemas.instance import WINDOWS, metric_point
-from app.services import instance_monitor, instances_service
+from app.schemas.instance import WINDOWS, HangupRequest, metric_point
+from app.services import instance_monitor, instance_probe, instances_service
 
 router = APIRouter(prefix="/api/v1", tags=["instances"])
+hangup_router = APIRouter(prefix="/api/v1", tags=["instances"])
 
 
 @router.get("/instances")
@@ -146,3 +148,33 @@ def metrics(
             "points": [metric_point(row) for row in rows],
         }
     )
+
+
+@hangup_router.post("/instances/{instance_id}/hangup")
+def hangup(
+    instance_id: str,
+    payload: HangupRequest,
+    request: Request,
+    db: DbSession,
+    user: CurrentUser = Depends(require_admin),
+):
+    """spec §9.2：跨机代理实例侧的 WebRTC 挂断。默认不注册，开了才有这条路由。
+
+    只对 WebRTC 传输有效；WS 会话没有服务端断开能力（spec §3）。"""
+    row = _registry_row(db, instance_id)
+    token = os.environ.get("S2S_ADMIN_TOKEN", "").strip()
+    if not token:
+        # 与 Task 17 的实例侧行为对齐：没配 token 是功能不可用（503），不是没权限。
+        raise ApiError("admin_disabled", "S2S_ADMIN_TOKEN is not configured on this console", 503)
+    upstream = instance_probe.hangup_call(row.base_url, payload.session_id, token)
+    # 审计先于错误映射：一次挂断尝试无论成败都留痕（spec §5.3）。
+    _audit(db, user, "instance.hangup", instance_id, ["session_id"], _request_id(request))
+    if upstream == 0:
+        raise ApiError("upstream_unreachable", f"instance {instance_id} did not answer the hangup", 502)
+    if upstream == 401:
+        raise ApiError("upstream_unauthorized", "the instance rejected S2S_ADMIN_TOKEN", 502)
+    if upstream == 404:
+        raise ApiError("upstream_not_found", f"no call {payload.session_id} on {instance_id}", 404)
+    if upstream != 200:
+        raise ApiError("upstream_error", f"instance {instance_id} answered {upstream}", 502)
+    return ok({"instance_id": instance_id, "session_id": payload.session_id, "upstream_status": upstream})

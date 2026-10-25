@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from pydantic import BaseModel
+
 from app.schemas.common import iso_utc
 
 WINDOWS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
+
+
+class HangupRequest(BaseModel):
+    # 就是实例侧的 call_id：WebRTC 会话在 /v1/realtime/calls 里以它寻址。
+    session_id: str
 
 
 def metric_point(row) -> dict:

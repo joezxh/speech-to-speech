@@ -30,6 +30,13 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(catalog.router)
     app.include_router(profiles.router)
     app.include_router(instances.router)
+
+    from app.config import allocator as allocator_settings  # noqa: PLC0415 - 与本函数内既有延迟 import 同层
+
+    # spec §9.2: the hangup proxy is opt-in. Unregistered means the path never
+    # reaches a handler — the SPA catch-all is GET-only, so a POST turns into a 405.
+    if allocator_settings.webrtc_hangup_enabled:
+        app.include_router(instances.hangup_router)
     app.include_router(runtime.router)
     app.include_router(voices.router)
     app.include_router(sessions.router)

@@ -9,6 +9,8 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
 from app.services import pool
 
 
@@ -32,3 +34,19 @@ def probe_pool(base_url: str, timeout: float = 2.0) -> PoolProbe:
 def probe_usage(base_url: str, timeout: float = 5.0) -> dict[str, Any] | None:
     # usage 失败不参与健康判定，只产生 usage_unavailable 告警（spec §9）。
     return pool.read_usage(timeout=timeout, base_url=base_url)
+
+
+def hangup_call(base_url: str, call_id: str, token: str, timeout: float = 5.0) -> int:
+    """`DELETE {base_url}/v1/realtime/calls/{call_id}` + Bearer（Task 17 的鉴权端点）。
+
+    只回状态码：`0` 代表网络层没拿到响应，由路由翻成 502。替换点仍然在这一层，
+    与 `probe_pool` 一致（spec §17），路由测试不需要碰 httpx。"""
+    try:
+        response = httpx.delete(
+            f"{base_url.rstrip('/')}/v1/realtime/calls/{call_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=timeout,
+        )
+    except httpx.HTTPError:
+        return 0
+    return response.status_code

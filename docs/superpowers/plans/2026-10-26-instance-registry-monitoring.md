@@ -3130,11 +3130,12 @@ def _auth(client, user="ad"):
 
 
 def test_hangup_route_absent_by_default(client):
-    # 默认关：路由未注册 → Starlette 直接 404。SPA catch-all 只注册了 GET
-    # （core/spa.py:64），所以 POST 不会被兜成 `200 text/html`。
+    # 默认关：路由未注册。SPA catch-all 只注册了 GET（core/spa.py:64），所以
+    # 这条未挂载的 POST 路径会命中 catch-all 的 path 但方法不匹→ 405（而非 404，
+    # 也不是 200 text/html）——同样证明 hangup 路由没挂上去。
     response = client.post("/api/v1/instances/pipe-a/hangup",
                            json={"session_id": "c-1"}, headers=_auth(client))
-    assert response.status_code == 404
+    assert response.status_code == 405
 
 
 def test_hangup_proxies_with_admin_token(db_session, monkeypatch, tmp_path):
@@ -3189,7 +3190,9 @@ def test_hangup_unknown_call_passes_the_upstream_404_through(db_session, monkeyp
 - [ ] **Step 2: 运行确认失败**
 
 Run: `.\.venv\Scripts\python.exe -m pytest tests/integration/test_instances_hangup_api.py -v`
-Expected：`test_hangup_route_absent_by_default` 已 PASS（路由本就不存在），其余四个 FAIL/ERROR（`instances.hangup_router` 与 `instance_probe.hangup_call` 还不存在）
+Expected：`test_hangup_route_absent_by_default` 已 PASS（路由本就不存在，POST 命中 GET-only 的 SPA catch-all 返 405），其余四个 FAIL/ERROR（`instances.hangup_router` 与 `instance_probe.hangup_call` 还不存在）
+
+（修正：初稿把默认关的断言写成 404，实际 `core/spa.py` 的 SPA catch-all 是 `GET /{full_path:path}`，未注册的 POST 路径命中其 path 但方法不匹 → Starlette 返 405 而非 404。断言与注释均改为 405。）
 
 - [ ] **Step 3: 实现 `hangup_call`（追加到 `instance_probe.py`，顶部补 `import httpx`）**
 
@@ -3258,8 +3261,8 @@ def hangup(instance_id: str, payload: HangupRequest, request: Request, db: DbSes
 # console/backend/app/core/router_registry.py：紧跟 app.include_router(instances.router)
     from app.config import allocator as allocator_settings  # noqa: PLC0415 - 与本函数内既有延迟 import 同层
 
-    # spec §9.2: the hangup proxy is opt-in. Unregistered means the path 404s —
-    # the SPA catch-all is GET-only, so a POST never turns into a 200 HTML.
+    # spec §9.2: the hangup proxy is opt-in. Unregistered means the path never
+    # reaches a handler — the SPA catch-all is GET-only, so a POST turns into a 405.
     if allocator_settings.webrtc_hangup_enabled:
         app.include_router(instances.hangup_router)
 ```
