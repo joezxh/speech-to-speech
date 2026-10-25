@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import sys
 from collections import defaultdict
+from collections.abc import Mapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -10,6 +12,34 @@ from typing import Literal
 
 TurnLatencyStatus = Literal["completed", "cancelled", "failed", "incomplete"]
 TURN_LATENCY_METADATA_KEY = "speech_to_speech.turn_latency"
+
+# The machine-readable twin of `format_log_line()` (§3.9.4): one prefix, one
+# single-line JSON object, the same measurements. A second timer here would
+# produce two numbers for the same turn; the indexer only ever parses this line.
+TURN_LATENCY_MACHINE_PREFIX = "TURN_LATENCY "
+MACHINE_KEYS = (
+    "version",
+    "source",
+    "turn_id",
+    "turn_revision",
+    "response_key",
+    "status",
+    "stt_s",
+    "llm_s",
+    "tts_ttfa_s",
+    "e2e_s",
+    "vad_decision_s",
+    "smart_status",
+    "hold_s",
+)
+
+
+def encode_machine_line(payload: Mapping[str, object]) -> str:
+    """One record per line: `None` stays `null` so the indexer can tell
+    "not measured" from 0 (§3.9.4, third boundary).
+    """
+    ordered = {key: payload.get(key) for key in MACHINE_KEYS}
+    return TURN_LATENCY_MACHINE_PREFIX + json.dumps(ordered, separators=(",", ":"), ensure_ascii=False)
 
 _active_tracker: ContextVar[TurnLatencyTracker | None] = ContextVar(
     "active_turn_latency_tracker",

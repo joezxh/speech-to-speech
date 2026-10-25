@@ -63,7 +63,10 @@ from speech_to_speech.pipeline.messages import (
 )
 from speech_to_speech.pipeline.speculative_turns import TurnGateAction, TurnOutputHeld, TurnPhase
 from speech_to_speech.pipeline.transcript_logging import log_exception
-from speech_to_speech.pipeline.turn_latency import TURN_LATENCY_METADATA_KEY
+from speech_to_speech.pipeline.turn_latency import (
+    TURN_LATENCY_METADATA_KEY,
+    encode_machine_line,
+)
 from speech_to_speech.utils.utils import _generate_id, is_out_of_band, response_wants_audio
 
 if TYPE_CHECKING:
@@ -109,6 +112,14 @@ class ResponseHandler(RealtimeBaseHandler):
         line = tracker.format_log_line()
         if line:
             logger.info("%s response_key=%s", line, response_key)
+        # The machine-readable twin of the same measurements: prefix + single-line
+        # JSON into the same `pipeline-stdout.log`; A.17's indexer filters on the
+        # prefix (§3.9.4). No new request, no new port, no second timer.
+        if response_key:
+            logger.info(
+                "%s",
+                encode_machine_line(tracker.metadata_payload(response_key=response_key, status=status)),
+            )
 
     def _end_response(self, conn_id: str, status: _ResponseStatus = "completed") -> None:
         st = self._state(conn_id)

@@ -4,14 +4,19 @@ import { onBeforeUnmount, ref, watch } from 'vue'
 import { AppError } from '@/api/client'
 import { getInstances } from '@/api/instances'
 import InstanceCard from '@/components/InstanceCard.vue'
+import LogAnalysisCard from '@/components/LogAnalysisCard.vue'
+import LogPanel from '@/components/LogPanel.vue'
 import RuntimeGrid from '@/components/RuntimeGrid.vue'
+import TurnLatencyPanel from '@/components/TurnLatencyPanel.vue'
 import { usePolling } from '@/composables/usePolling'
 import { useConsoleStore } from '@/stores/console'
+import { useLogsStore } from '@/stores/logs'
 import { useRuntimeStore } from '@/stores/runtime'
 import type { InstanceSnapshot } from '@/types/api'
 
 const consoleStore = useConsoleStore()
 const runtime = useRuntimeStore()
+const logs = useLogsStore()
 
 const snapshot = ref<InstanceSnapshot | null>(null)
 const error = ref('')
@@ -74,6 +79,24 @@ onBeforeUnmount(() => {
     <RuntimeGrid :snapshot="runtime.snapshot" :loading="runtime.loading" :error="runtime.error" />
 
     <InstanceCard :snapshot="snapshot" :error="error" />
+
+    <!--
+      同一列、固定顺序：轮次面板先说「整体多慢」，日志面板给细文，归纳卡给结论。
+      归纳结果必须挨着它基于的那个日志窗口；两块的时间窗各自独立、不联动。
+    -->
+    <TurnLatencyPanel />
+    <LogPanel
+      :live="logs.live"
+      @follow="logs.setLive($event)"
+      @refresh="logs.reload()"
+      @analyze="logs.analyze()"
+    />
+    <LogAnalysisCard
+      :analysis="logs.analysis"
+      :pending="logs.pending"
+      :error="logs.analysisError"
+      @retry="logs.analyze()"
+    />
   </div>
 </template>
 

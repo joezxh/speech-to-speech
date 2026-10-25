@@ -14,11 +14,13 @@ def register_api_routers(app: FastAPI) -> None:
         catalog,
         health,
         instances,
+        logs,
         profiles,
         realtime,
         runtime,
         sessions,
         status,
+        turn_latency,
         voices,
     )
     from app.routers.demo import ROUTERS as DEMO_ROUTERS  # noqa: PLC0415
@@ -32,6 +34,9 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(voices.router)
     app.include_router(sessions.router)
     app.include_router(status.router)
+    # A.15/A.16: read-only side channels; no prefix overlap with anything above.
+    app.include_router(logs.router)
+    app.include_router(turn_latency.router)
 
     # The demo face is anonymous and unenveloped (A.13), so it goes last among the
     # API groups but still before the SPA catch-all.

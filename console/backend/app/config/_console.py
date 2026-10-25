@@ -22,6 +22,12 @@ class ConsoleSettings(BaseSettings):
     # container, one filesystem, no mount to configure.
     model_metrics_log: str = "/app/model_metrics.log"
 
+    # A.15/A.16 read the four supervisor files read-only; A.17's indexer keeps
+    # its cursor on the writable volume. Both live in this container, so neither
+    # needs a mount — and the console still never touches the docker socket.
+    log_dir: str = "/var/log/supervisor"
+    data_dir: str = "/app/data"
+
     # Voice library (A.18). The audio never leaves this volume, and nothing here
     # is on the publish path: a voice is picked, then written as a draft value.
     voice_data_dir: str = "/app/data/voices"

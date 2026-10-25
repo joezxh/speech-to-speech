@@ -16,7 +16,12 @@ from app.core.spa import mount_spa
 from app.db.database import SessionLocal
 from app.middleware.request_id import RequestIdMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.services import identity_service, metering_service, publish_flow_service
+from app.services import (
+    identity_service,
+    metering_service,
+    publish_flow_service,
+    turn_latency_indexer,
+)
 
 configure_logging(app_settings.log_level)
 
@@ -52,9 +57,16 @@ async def lifespan(app: FastAPI):
         metering_service.init()
         sweeper = asyncio.create_task(_usage_sweeper())
 
+    # A.17's indexer: one background task in this process (console is a single
+    # worker), reading the pipeline's own log file. It never blocks a request.
+    indexer = asyncio.create_task(turn_latency_indexer.run_forever())
+
     try:
         yield
     finally:
+        indexer.cancel()
+        with suppress(asyncio.CancelledError):
+            await indexer
         if sweeper is not None:
             sweeper.cancel()
             with suppress(asyncio.CancelledError):
