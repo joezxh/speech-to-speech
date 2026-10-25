@@ -340,6 +340,25 @@ docker compose up
 
 The compose file starts a llama.cpp server with Gemma 4 and the Realtime server, exposing ports `8080` and `8765`.
 
+### Run the console in the same process
+
+`--with-console` (or `CONSOLE_AUTOSTART=true`) merges the console backend into the
+pipeline process and serves the console frontend from the same port. One listener
+then answers three faces: `/` and `/console/*` for the console UI, `/api/*` for the
+console API, and `/v1/*` for the Realtime API.
+
+```bash
+cd console/frontend && npm run build && cd ../..
+speech-to-speech serve -f config/prod.yaml --name prod --with-console
+# console: integrated=true | http://127.0.0.1:8765  ui=/  console=/console  api=/api  realtime=/v1/realtime
+```
+
+`CONSOLE_HOME` (default `console/backend`) and `CONSOLE_STATIC_DIR` (default
+`console/frontend/dist`) point at the pieces to merge. The console needs its own
+dependencies and a `JWT_SECRET_KEY` in `<CONSOLE_HOME>/.env`; when either is missing
+the command exits with code 2 *before* loading any model. Without the switch nothing
+changes: no console import, no `.env` read, no static mount.
+
 ## Realtime API
 
 The server logs per-response STT, LLM, first TTS audio, and speech-to-audio

@@ -39,6 +39,19 @@ deploy/             supervisord.conf and the image entrypoint
 design/             console-preview.html — the visual reference the views follow
 ```
 
+## Running inside the pipeline process
+
+`speech-to-speech serve --with-console` hosts this backend and the built frontend on
+the pipeline's own port (default `:8765`), so `/`, `/console/*`, `/api/*` and `/v1/*`
+share one origin and one process. That mode reads `console/backend/.env` for its
+settings and overrides two of them: `PIPELINE_BASE_URL` points at the process itself,
+`STATIC_DIR` at the built `dist`. The uvicorn on `:8000` described below is the
+standalone deployment and stays unchanged; you do not need it when the switch is on.
+
+Two console routes are dead in that mode: `/v1/realtime` and `/v1/realtime/calls` are
+the standalone proxies to a remote pipeline, and the pipeline's own `/v1/*` routes
+answer first.
+
 ## Environment
 
 Read by `app/config/*` through pydantic-settings (`env_file=".env"`, case
