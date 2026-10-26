@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { AppError } from '@/api/client'
-import { getInstanceMetrics, getInstances, postInstanceAction } from '@/api/instances'
+import { getInstances, postInstanceAction } from '@/api/instances'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import InstanceCard from '@/components/InstanceCard.vue'
-import InstanceTrendChart from '@/components/InstanceTrendChart.vue'
 import LogAnalysisCard from '@/components/LogAnalysisCard.vue'
 import LogPanel from '@/components/LogPanel.vue'
 import RuntimeGrid from '@/components/RuntimeGrid.vue'
@@ -17,13 +17,14 @@ import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore } from '@/stores/console'
 import { useLogsStore } from '@/stores/logs'
 import { useRuntimeStore } from '@/stores/runtime'
-import type { InstanceMetricPoint, InstanceRow, InstanceSnapshot } from '@/types/api'
+import type { InstanceRow, InstanceSnapshot } from '@/types/api'
 import { capacityPercent, statusColor } from '@/utils/instances-view'
 
 const consoleStore = useConsoleStore()
 const runtime = useRuntimeStore()
 const logs = useLogsStore()
 const auth = useAuthStore()
+const router = useRouter()
 const {
   open: confirmOpen,
   title: confirmTitle,
@@ -126,40 +127,9 @@ async function runAction(row: InstanceRow, action: 'drain' | 'undrain' | 'probe'
   }
 }
 
-// —— 单实例趋势 ——
-type Window = '1h' | '6h' | '24h' | '7d'
-const WINDOWS: { key: Window; label: string }[] = [
-  { key: '1h', label: '1h' },
-  { key: '6h', label: '6h' },
-  { key: '24h', label: '24h' },
-  { key: '7d', label: '7d' }
-]
-const trendId = ref('')
-const trendWindow = ref<Window>('1h')
-const trendPoints = ref<InstanceMetricPoint[]>([])
-const trendLoading = ref(false)
-
-async function loadTrend(): Promise<void> {
-  if (!trendId.value) {
-    trendPoints.value = []
-    return
-  }
-  trendLoading.value = true
-  actionError.value = null
-  try {
-    const data = await getInstanceMetrics(trendId.value, trendWindow.value)
-    trendPoints.value = data.points
-  } catch (caught) {
-    trendPoints.value = []
-    actionError.value = caught instanceof AppError ? caught : new AppError('unknown', '趋势不可读')
-  } finally {
-    trendLoading.value = false
-  }
-}
-
-function selectTrend(row: InstanceRow): void {
-  trendId.value = row.instance_id
-  void loadTrend()
+// 「趋势」独立成页：只跳转到负载均衡菜单下的趋势页并带上这台实例。
+function goTrends(row: InstanceRow): void {
+  void router.push({ name: 'instance-trends', query: { id: row.instance_id } })
 }
 </script>
 
@@ -226,7 +196,7 @@ function selectTrend(row: InstanceRow): void {
     >
       <template #bodyCell="{ column, record }">
         <template v-if="column.key === 'instance_id'">
-          <a @click="selectTrend(record)">{{ record.instance_id }}</a>
+          <a @click="goTrends(record)">{{ record.instance_id }}</a>
           <div class="instances__url">{{ record.base_url }}</div>
         </template>
         <template v-else-if="column.key === 'status'">
@@ -256,7 +226,7 @@ function selectTrend(row: InstanceRow): void {
         </template>
         <template v-else-if="column.key === 'actions'">
           <a-space>
-            <a-button size="small" @click="selectTrend(record)">趋势</a-button>
+            <a-button size="small" @click="goTrends(record)">趋势</a-button>
             <template v-if="canOperate">
               <a-button
                 v-if="!record.drain_requested"
@@ -272,26 +242,6 @@ function selectTrend(row: InstanceRow): void {
         </template>
       </template>
     </a-table>
-
-    <section v-if="trendId" class="instances__trend">
-      <div class="instances__trend-head">
-        <span class="instances__title">{{ trendId }} · 趋势</span>
-        <a-button-group size="small">
-          <a-button
-            v-for="item in WINDOWS"
-            :key="item.key"
-            size="small"
-            :type="trendWindow === item.key ? 'primary' : 'default'"
-            @click="((trendWindow = item.key), loadTrend())"
-          >
-            {{ item.label }}
-          </a-button>
-        </a-button-group>
-      </div>
-      <a-spin :spinning="trendLoading">
-        <InstanceTrendChart :points="trendPoints" />
-      </a-spin>
-    </section>
 
     <InstanceCard :snapshot="snapshot" :error="error" />
 
@@ -386,23 +336,6 @@ function selectTrend(row: InstanceRow): void {
     color: #8b93a7;
     font-size: 12px;
     margin-left: 6px;
-  }
-
-  &__trend {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  &__trend-head {
-    align-items: center;
-    display: flex;
-    gap: 12px;
-  }
-
-  &__title {
-    font-size: 14px;
-    font-weight: 600;
   }
 }
 </style>

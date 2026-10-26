@@ -2,34 +2,47 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { navGroupFor, navItemsFor, type NavItem } from '@/router/nav'
+import { navGroups, type NavGroup, type NavItem } from '@/router/nav'
 import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore } from '@/stores/console'
 import { DRAWER_BREAKPOINT, useShellStore } from '@/stores/shell'
+import { useVoiceStore } from '@/stores/voice'
+import AccountWidget from '@/features/voice/components/AccountWidget.vue'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const consoleStore = useConsoleStore()
 const shell = useShellStore()
+const voice = useVoiceStore()
 
-/** 一个外壳两个面：面由子路由声明，外壳不猜。 */
+/** 面仅用于样式与对话页顶栏动作；菜单与顶栏已统一，不再按面切换。 */
 const face = computed<'console' | 'voice'>(() => (route.meta.face === 'voice' ? 'voice' : 'console'))
 
-// `hasRoute` 让菜单在 Task 12/13 逐个建视图的过程中保持诚实。
-const items = computed(() =>
-  navItemsFor(face.value).filter((item) => !item.name || router.hasRoute(item.name))
+// 对话页顶栏动作（账号 chip + 工具 / 历史 / 设置）由本布局直接渲染，
+// 不再由 VoiceView 用 Teleport 注入——那个跨组件 Teleport 会被 block 树打坏锚点。
+const showActions = computed(() => face.value === 'voice')
+const showAccount = computed(() => voice.me.enabled)
+// 布尔化的未读：抽屉关闭期间来了新内容才亮，点开后由 `voice.openHistory()` 清掉
+// （demo 的 `_markUnread` / `_openPanel`）。直接用 `voice.unread` 而不是「有没有条目」：
+// 后者在纯手动的抽屉上没有任何信息量，且会让顶栏随每条转写重渲染。
+
+// 侧栏各分组同时显示（对齐 console-preview.html）：路由项受 `hasRoute` 约束，
+// 浮层项不受。折叠时分组标题由 CSS 隐藏。
+const groups = computed<NavGroup[]>(() =>
+  navGroups().map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.name || router.hasRoute(item.name))
+  }))
 )
-/** 分组标题与菜单同源，折叠态由 CSS 隐藏。 */
-const groupLabel = computed(() => navGroupFor(face.value)?.label ?? '')
 
 function keyOf(item: NavItem): string {
   return item.name ?? `overlay:${item.action}`
 }
 
-/** 只有路由项能「当前」：浮层项是动作，打开即关闭，没有停留的位置。 */
+/** 当前路由项高亮：对话页时 `voice`，其余页面对应路由；浮层项不参与。 */
 function isCurrent(item: NavItem): boolean {
-  return Boolean(item.name) && route.name === item.name
+  return route.name === item.name
 }
 
 const narrow = ref(false)
@@ -54,10 +67,10 @@ const pipelineBadge = computed(() => {
   return consoleStore.status.pipeline === 'ok' ? 'success' : 'error'
 })
 
-// 状态轮询只属于运维面：对话页匿名可用，不该去打 JWT 接口（否则顶栏挂一条 401）。
+// 两个面都已纳入登录态，顶栏统一展示 pipeline 状态 → 全程轮询。
 watch(
   face,
-  (value) => (value === 'console' ? consoleStore.startPolling() : consoleStore.stopPolling()),
+  () => consoleStore.startPolling(),
   { immediate: true }
 )
 
@@ -74,14 +87,30 @@ onBeforeUnmount(() => {
 })
 
 function onNavClick(item: NavItem): void {
-  if (item.name) void router.push({ name: item.name })
-  else if (item.action) shell.openOverlay(item.action)
+  if (item.name) {
+    void router.push({ name: item.name })
+  } else if (item.action) {
+    // 先写待处理的浮层，再导航到对话页；VoiceView 的 `immediate` watch 会接手开启。
+    // 已在对话页时，openOverlay 触发 watch 变更 → 直接开浮层。
+    shell.openOverlay(item.action)
+    if (route.name !== 'voice') void router.push({ name: 'voice' })
+  }
   shell.closeDrawer()
 }
 
 function signOut(): void {
   auth.logout()
   void router.replace({ name: 'login' })
+}
+
+/**
+ * 顶栏的会话按钮是开合切换（demo chat.js:83），不是只会打开。抽屉的开合存在
+ * `voice.historyOpen`（而不是页面本地），因为徽标与开关分属外壳与 `VoiceView`。
+ * 这枚按钮只在对话面渲染（`showActions`），所以 `historyOpen` 就是抽屉的真实状态。
+ */
+function onHistoryClick(): void {
+  if (voice.historyOpen) voice.closeHistory()
+  else shell.openOverlay('history')
 }
 </script>
 
@@ -99,24 +128,40 @@ function signOut(): void {
         <span /><span /><span />
       </button>
 
-      <span class="shell__brand">{{ face === 'console' ? 'S2S 控制台' : 'S2S' }}</span>
+      <span class="shell__brand">S2S 控制台</span>
 
-      <template v-if="face === 'console'">
-        <a-select
-          :value="consoleStore.profile"
-          :options="profileOptions"
-          size="small"
-          class="shell__profile"
-          @change="(value: unknown) => consoleStore.selectProfile(String(value))"
-        />
-        <a-badge :status="pipelineBadge" :text="pipelineText" />
-      </template>
+      <a-select
+        :value="consoleStore.profile"
+        :options="profileOptions"
+        size="small"
+        class="shell__profile"
+        @change="(value: unknown) => consoleStore.selectProfile(String(value))"
+      />
+      <a-badge :status="pipelineBadge" :text="pipelineText" />
 
       <span class="shell__spacer" />
 
-      <!-- 对话页把账号 chip 与工具 / 历史 / 设置三枚按钮 Teleport 到这里（§3.2.4），
-           所以它没有自己的顶栏，也无法盖住外壳。运维面这里是空的。 -->
-      <div v-if="face === 'voice'" id="shell-actions" class="shell__actions" />
+      <!-- 对话页的账号 chip 与工具 / 历史 / 设置三枚按钮由本布局直接渲染（不再 Teleport）；
+           其余页面这里是空的。 -->
+      <div v-if="showActions" id="shell-actions" class="shell__actions">
+        <AccountWidget v-if="showAccount" :me="voice.me" @limit="shell.openLimit()" />
+        <button class="v-icon" title="Tools" aria-label="Tools" @click="shell.openOverlay('tools')">
+          <svg class="v-i" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-wrench" /></svg>
+        </button>
+        <button
+          class="v-icon"
+          title="Conversation history"
+          aria-label="Conversation history"
+          :aria-expanded="voice.historyOpen"
+          @click="onHistoryClick()"
+        >
+          <svg class="v-i" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat" /></svg>
+          <span v-if="voice.unread" class="v-badge" aria-hidden="true" />
+        </button>
+        <button class="v-icon" title="Settings" aria-label="Settings" @click="shell.openOverlay('settings')">
+          <svg class="v-i" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-gear" /></svg>
+        </button>
+      </div>
 
       <!-- 两个面共用同一枚折叠纽：`aria-pressed` 给出状态，<980px 由 CSS 隐藏
            （那时侧栏是抽屉，用左侧的汉堡纽）。 -->
@@ -131,36 +176,32 @@ function signOut(): void {
         {{ shell.siderCollapsed ? '»' : '«' }}
       </button>
 
-      <template v-if="face === 'console'">
-        <span class="shell__user">{{ auth.user?.username }} · {{ auth.user?.role }}</span>
-        <a-button type="link" size="small" @click="signOut">退出</a-button>
-      </template>
+      <span class="shell__user">{{ auth.user?.username }} · {{ auth.user?.role }}</span>
+      <a-button type="link" size="small" @click="signOut">退出</a-button>
     </header>
 
     <div class="shell__body">
       <nav id="shell-nav" class="shell__nav" :class="{ 'is-open': shell.drawerOpen }" aria-label="主导航">
-        <div class="shell__nav-label">{{ groupLabel }}</div>
+        <template v-for="(group, gi) in groups" :key="group.key">
+          <div class="shell__nav-label" :class="{ 'is-first': gi === 0 }">{{ group.label }}</div>
 
-        <!-- 原生纽而非 `a-menu`：折叠后 `.nav` 只剩图标，geometry 与
-             console-preview.html 的侧栏一致（图标 + 文字 / 居中图标）。 -->
-        <button
-          v-for="item in items"
-          :key="keyOf(item)"
-          class="nav"
-          type="button"
-          :aria-current="isCurrent(item) ? 'true' : undefined"
-          :title="item.label"
-          @click="onNavClick(item)"
-        >
-          <svg class="nav__icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-            <use :href="`#i-${item.icon}`" />
-          </svg>
-          <span>{{ item.label }}</span>
-        </button>
-
-        <router-link v-if="face === 'voice'" class="shell__link" :to="{ name: 'console' }" title="运维控制台">
-          运维控制台 ↗
-        </router-link>
+          <!-- 原生纽而非 `a-menu`：折叠后 `.nav` 只剩图标，geometry 与
+               console-preview.html 的侧栏一致（图标 + 文字 / 居中图标）。 -->
+          <button
+            v-for="item in group.items"
+            :key="keyOf(item)"
+            class="nav"
+            type="button"
+            :aria-current="isCurrent(item) ? 'true' : undefined"
+            :title="item.label"
+            @click="onNavClick(item)"
+          >
+            <svg class="nav__icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+              <use :href="`#i-${item.icon}`" />
+            </svg>
+            <span>{{ item.label }}</span>
+          </button>
+        </template>
       </nav>
 
       <div v-if="shell.drawerOpen" class="shell__scrim" @click="shell.closeDrawer()" />
@@ -292,6 +333,13 @@ function signOut(): void {
     padding: 10px 18px 6px;
     text-transform: uppercase;
     white-space: nowrap;
+
+    // 第二组起：顶部细线 + 间距把两个菜单组分开（对齐 preview 的组间留白）。
+    &:not(.is-first) {
+      border-top: 1px solid #1f2740;
+      margin-top: 10px;
+      padding-top: 14px;
+    }
   }
 
   &__content {

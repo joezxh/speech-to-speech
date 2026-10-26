@@ -12,8 +12,8 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/views/LoginView.vue')
   },
   {
-    // 一个外壳两个面（§3.2.4）：`/` 与 `/console/*` 是同一个 `ConsoleLayout` 的
-    // 子路由。只有 console 面要求登录；对话页匿名可开，与旧页一致。
+    // 一个外壳统一导航：`/`（对话）与 `/console/*` 同属 `ConsoleLayout`，
+    // 共用一套侧栏菜单与顶栏控件。对话页也纳入登录门禁，行为与 console 面一致。
     path: '/',
     component: () => import('@/layouts/ConsoleLayout.vue'),
     children: [
@@ -21,7 +21,7 @@ export const routes: RouteRecordRaw[] = [
         path: '',
         name: 'voice',
         component: () => import('@/views/VoiceView.vue'),
-        meta: { face: 'voice' }
+        meta: { face: 'voice', requiresAuth: true }
       },
       {
         // 无组件记录只是命名空间：`hasRoute` 与 `addRoute` 需要一个挂点，
@@ -36,6 +36,11 @@ export const routes: RouteRecordRaw[] = [
           { path: 'versions', name: 'versions', component: () => import('@/views/VersionsView.vue') },
           { path: 'audit', name: 'audit', component: () => import('@/views/AuditView.vue') },
           { path: 'instances', name: 'instances', component: () => import('@/views/InstancesView.vue') },
+          {
+            path: 'instances/trends',
+            name: 'instance-trends',
+            component: () => import('@/views/InstanceTrendsView.vue')
+          },
           { path: 'sessions', name: 'sessions', component: () => import('@/views/SessionsView.vue') }
         ]
       }
@@ -48,7 +53,7 @@ const router = createRouter({ history: createWebHistory(), routes })
 
 router.beforeEach((to) => {
   const auth = useAuthStore(pinia)
-  // 只看合并后的 `requiresAuth`：外壳自己不上锁，否则对话页也被拦在登录页外。
+  // 只看合并后的 `requiresAuth`：对话面与运维面都已上锁，未登录统一拦到登录页。
   if (to.meta.requiresAuth && !auth.signedIn) {
     return { name: 'login', query: { next: to.fullPath } }
   }
