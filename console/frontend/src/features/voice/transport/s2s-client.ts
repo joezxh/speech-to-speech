@@ -1,3 +1,4 @@
+import { SentAudioRecorder } from '../audio/sent-audio'
 import type { QueueTicket, SessionGrant, ToolCall, ToolDef, ToolResult } from '../types'
 import { readTurnLatency } from './turn-latency'
 
@@ -158,6 +159,13 @@ export class S2sClient extends EventTarget {
 
   private queueId = ''
 
+  /**
+   * 「后端实际听到的我那一段」。记的是重采样、噪声门与静音之后的上行 chunk，
+   * 与 `sendAudio` 同一条路径（demo/s2s-realtime-client.js:549-553），所以抽屉里
+   * 回放的就是模型听到的，而不是第二路原始麦克风。
+   */
+  private readonly userAudioRecorder = new SentAudioRecorder()
+
   // `setTimeout` 的返回值随宿主类型变化（DOM 是 number，node 是 Timeout），交给推断。
   private joinWaiter: { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null
 
@@ -289,7 +297,7 @@ export class S2sClient extends EventTarget {
   }
 
   private async openSession(url: string): Promise<void> {
-    const { OpenAIRealtimeWebRTC, OpenAIRealtimeWebSocket, RealtimeAgent, RealtimeSession, tool } = sdk()
+    const { OpenAIRealtimeWebRTC, OpenAIRealtimeWebSocket, RealtimeAgent, RealtimeSession } = sdk()
     if (this.options.transport === 'websocket') {
       // The SDK clock starts at receipt; our worklet queue owns the real playout
       // position, so the interrupt is re-implemented against that queue.
@@ -317,40 +325,7 @@ export class S2sClient extends EventTarget {
       })
     }
 
-    const tools = this.options.tools.map((definition) =>
-      tool({
-        name: definition.name,
-        description: definition.description,
-        parameters: definition.parameters,
-        strict: false,
-        execute: async (args: unknown, _context: unknown, details: any) => {
-          const call: ToolCall = {
-            name: definition.name,
-            arguments: JSON.stringify(args ?? {}),
-            callId: details?.toolCall?.callId ?? ''
-          }
-          // 会话列表的 tool 条目由执行器驱动，而不是等服务端回显：
-          // 无论 pipeline 是否转发 `conversation.item.created`，这里都一定发生。
-          this.emit('tool-call', call)
-          try {
-            const result = await this.options.executeTool?.(call)
-            if (!result) throw new Error(`No executor for ${definition.name}`)
-            this.emit('tool-result', { ...call, output: result.output, image: result.image ?? '' })
-            if (result.image) this.session?.addImage(result.image, { triggerResponse: false })
-            return result.output
-          } catch (error: any) {
-            // 失败也要留痕：条目里写清原因，再把错误抛回 SDK，让模型知道工具没成。
-            this.emit('tool-result', {
-              ...call,
-              output: `Tool failed: ${error?.message ?? String(error)}`,
-              image: '',
-              failed: true
-            })
-            throw error
-          }
-        }
-      })
-    )
+    const tools = this.buildSdkTools(this.options.tools)
     this.agent = new RealtimeAgent({
       name: 'speech-to-speech-console',
       instructions: this.options.instructions,
@@ -398,12 +373,26 @@ export class S2sClient extends EventTarget {
       case 'speech_to_speech.output_audio.visemes':
         this.emit('visemes', event)
         return
-      case 'input_audio_buffer.speech_started':
+      case 'input_audio_buffer.speech_started': {
+        const itemId = typeof event.item_id === 'string' ? event.item_id : ''
+        // 只有 websocket 才由我们自己发 chunk；webrtc 的上行在浏览器内部，拿不到同一份 PCM。
+        if (this.options.transport === 'websocket') {
+          this.userAudioRecorder.speechStarted({ itemId, audioStartMs: Number(event.audio_start_ms) })
+        }
+        this.emit('user-turn-started', { itemId })
         this.setStatus('user-speaking')
         break
-      case 'input_audio_buffer.speech_stopped':
+      }
+      case 'input_audio_buffer.speech_stopped': {
+        const itemId = typeof event.item_id === 'string' ? event.item_id : ''
+        if (this.options.transport === 'websocket') {
+          const recording = this.userAudioRecorder.speechStopped({ itemId, audioEndMs: Number(event.audio_end_ms) })
+          if (recording) this.emit('user-audio', recording)
+        }
+        this.emit('user-turn-stopped', { itemId })
         if (this.status === 'user-speaking') this.setStatus('processing')
         break
+      }
       case 'response.created':
         this.resetPlaybackBuffer(event.response?.id ?? '')
         if (this.status === 'connected' || this.status === 'user-speaking') this.setStatus('processing')
@@ -505,12 +494,13 @@ export class S2sClient extends EventTarget {
     this.analysers.mic = analyser
 
     await ctx.audioWorklet.addModule(`/worklets/mic-capture.js?v=${AUDIO_WORKLET_VERSION}`)
-    this.captureNode = new AudioWorkletNode(ctx, 'mic-capture', { processorOptions: { chunkMs: MIC_CHUNK_MS } })
-    this.captureNode.port.onmessage = (message) => {
-      const data = message.data
-      if (data?.kind === 'level') this.emit('level', { db: data.db })
-      if (data?.kind === 'chunk' && !this.muted) this.session?.sendAudio(data.buffer)
-    }
+    // `targetRate` 与 session.update 声明的上行速率必须写在一起：worklet 自己的
+    // 默认值恰好也是 24k，但依赖默认值意味着改一处会静默错另一处（demo 还额外
+    // 用 capture-config 握手校验，这里至少把意图显式化）。
+    this.captureNode = new AudioWorkletNode(ctx, 'mic-capture', {
+      processorOptions: { chunkMs: MIC_CHUNK_MS, targetRate: AUDIO_SAMPLE_RATE, version: AUDIO_WORKLET_VERSION }
+    })
+    this.captureNode.port.onmessage = (message) => this.handleCaptureMessage(message)
     this.micSource.connect(this.captureNode)
     this.setNoiseGate(this.options.noiseGate)
 
@@ -521,6 +511,31 @@ export class S2sClient extends EventTarget {
       this.playbackNode.port.onmessage = (message) => {
         if (message.data?.kind === 'cleared') this.onPlaybackCleared(message.data)
       }
+    }
+  }
+
+  /**
+   * mic-capture worklet 的两种消息：音频 chunk 是裸 ArrayBuffer（worklet 直接
+   * `postMessage(out.buffer, [out.buffer])`，从来没有 `{kind:'chunk'}` 这种包裹），
+   * 电平是 `{kind:'level', rms}` 的线性 RMS。旧代码等 `chunk`/`db` 两个不存在的
+   * 字段，麦克风音频全部被丢弃 → 服务端只听到开场问候的文本，后续语音无声。
+   */
+  private handleCaptureMessage(message: { data: unknown }): void {
+    const data = message.data
+    if (data instanceof ArrayBuffer) {
+      // 录制与发送共用一个条件：静音期的音频既没出去，也不该出现在回放里。
+      // `Math.floor` 是刻意的：长度为奇的尾巴凑不出一个样本，`new Int16Array(buffer)`
+      // 会直接抛 RangeError（录音器内部同样跳掉它，demo 的 `append` 也是）。
+      if (!this.muted) {
+        this.session?.sendAudio(data)
+        this.userAudioRecorder.append(new Int16Array(data, 0, Math.floor(data.byteLength / 2)))
+      }
+      return
+    }
+    if ((data as any)?.kind === 'level') {
+      const rms = Number((data as any).rms)
+      const db = Number.isFinite(rms) && rms > 0 ? 20 * Math.log10(rms) : -100
+      this.emit('level', { db })
     }
   }
 
@@ -557,9 +572,62 @@ export class S2sClient extends EventTarget {
     this.transport?.sendEvent?.({ type: 'session.update', session })
   }
 
+  /**
+   * 把 `ToolDef[]` 转成 SDK 的 tool 实例。`openSession` 与 `setTools` 共用：
+   * 两处必须产出同一个执行器绑定，否则换过工具后的会话行为会悄悄分叉。
+   */
+  private buildSdkTools(definitions: ToolDef[]): any[] {
+    const { tool } = sdk()
+    return definitions.map((definition) =>
+      tool({
+        name: definition.name,
+        description: definition.description,
+        parameters: definition.parameters,
+        strict: false,
+        execute: async (args: unknown, _context: unknown, details: any) => {
+          const call: ToolCall = {
+            name: definition.name,
+            arguments: JSON.stringify(args ?? {}),
+            callId: details?.toolCall?.callId ?? ''
+          }
+          // 会话列表的 tool 条目由执行器驱动，而不是等服务端回显：
+          // 无论 pipeline 是否转发 `conversation.item.created`，这里都一定发生。
+          this.emit('tool-call', call)
+          try {
+            const result = await this.options.executeTool?.(call)
+            if (!result) throw new Error(`No executor for ${definition.name}`)
+            this.emit('tool-result', { ...call, output: result.output, image: result.image ?? '' })
+            if (result.image) this.session?.addImage(result.image, { triggerResponse: false })
+            return result.output
+          } catch (error: any) {
+            // 失败也要留痕：条目里写清原因，再把错误抛回 SDK，让模型知道工具没成。
+            this.emit('tool-result', {
+              ...call,
+              output: `Tool failed: ${error?.message ?? String(error)}`,
+              image: '',
+              failed: true
+            })
+            throw error
+          }
+        }
+      })
+    )
+  }
+
   setTools(tools: ToolDef[]): void {
     this.options.tools = tools
-    this.session?.updateAgent?.({ ...this.agent, tools })
+    if (!this.session || !this.agent) return
+    // `updateAgent` 要的是真正的 RealtimeAgent 实例：`{ ...agent }` 只展开实例自身
+    // 属性，会丢掉原型上的 `getEnabledHandoffs` 等方法，SDK 运行到半路才报
+    // TypeError。用最新配置重建实例传入（instructions/voice 也顺带热更）。
+    const { RealtimeAgent } = sdk()
+    this.agent = new RealtimeAgent({
+      name: 'speech-to-speech-console',
+      instructions: this.options.instructions,
+      voice: this.options.voice,
+      tools: this.buildSdkTools(tools)
+    })
+    this.session.updateAgent(this.agent)
   }
 
   setMuted(muted: boolean): void {
@@ -592,6 +660,8 @@ export class S2sClient extends EventTarget {
     this.closed = true
     this.closing = true
     this.clearPlayback()
+    // 缓冲是按「本次通话的绝对样本轴」索引的，留到下一通会把边界算歪。
+    this.userAudioRecorder.reset()
     if (this.joinWaiter) {
       clearTimeout(this.joinWaiter.timer)
       this.joinWaiter.reject(codedError('join aborted', 'aborted'))

@@ -48,7 +48,7 @@ def _collect_legacy(profile: str, version: int | None) -> dict[str, Any]:
         alerts.append("pool_unreachable")
     if state.stuck:
         alerts.append("pool_stuck")
-    if not info.running:
+    if info.confirmed_stopped():
         alerts.append("pipeline_stopped")
     if state.reachable and usage is None:
         alerts.append("usage_unavailable")
@@ -127,7 +127,7 @@ def _collect_registry(
                 and state.pool.size != row.max_sessions_hint,
             }
         )
-    if not info.running:
+    if info.confirmed_stopped():
         alerts.append("pipeline_stopped")
     summary = {
         "instances_total": len(instances),

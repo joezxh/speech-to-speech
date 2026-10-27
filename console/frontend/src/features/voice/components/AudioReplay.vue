@@ -27,6 +27,11 @@ watch(
       controls
       preload="metadata"
       aria-label="Replay your audio"
+      :title="
+        props.truncated
+          ? 'Replay your audio (the beginning was no longer buffered)'
+          : 'Replay the audio sent to the model'
+      "
       @play="emit('play')"
       @pause="emit('stop')"
       @ended="emit('stop')"

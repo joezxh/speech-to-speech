@@ -17,5 +17,5 @@ export default defineConfig({
       '/v1': { target, changeOrigin: true, ws: true }
     }
   },
-  build: { outDir: 'dist', assetsDir: 'assets', sourcemap: false }
+  build: { outDir: 'dist', assetsDir: 'assets', sourcemap: true }
 })

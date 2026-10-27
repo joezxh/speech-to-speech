@@ -1,7 +1,20 @@
 import axios from 'axios'
 
-import type { MeResponse } from '@/features/voice/types'
+import type { MeResponse, SessionRecordConfig } from '@/features/voice/types'
 import type { DemoConfig } from '@/types/demo'
+
+/**
+ * `/api/config` 是裸对象，字段由后端逐版添加。老后端根本不带 `sessionRecord`，
+ * 直接交给语音页会让它在渲染归档文案时读到 `undefined`。缺省一律当成「这个部署
+ * 不录」：与 store 的 `EMPTY_CONFIG` 同一套保守默认，宁可少录，不可空头许诺。
+ */
+const DEFAULT_SESSION_RECORD: SessionRecordConfig = {
+  enabled: false,
+  retentionDays: 0,
+  retentionMaxDays: 0,
+  maxAudioBytes: 0,
+  maxAudioSeconds: 0
+}
 
 /** The demo face has its own contract (A.13): bare objects, no JWT.
  *
@@ -9,8 +22,10 @@ import type { DemoConfig } from '@/types/demo'
  * to `/console/login` on 401, and retries through a refresh token — none of which
  * apply to an anonymous `/api/*` call.
  */
-export const getDemoConfig = async (): Promise<DemoConfig> =>
-  (await axios.get<DemoConfig>('/api/config', { timeout: 10_000 })).data
+export const getDemoConfig = async (): Promise<DemoConfig> => {
+  const { data } = await axios.get<DemoConfig>('/api/config', { timeout: 10_000 })
+  return { ...data, sessionRecord: { ...DEFAULT_SESSION_RECORD, ...(data?.sessionRecord ?? {}) } }
+}
 
 /** A 404 means “metering is off for this deploy”, not a failure to report. */
 export async function getMe(): Promise<MeResponse> {

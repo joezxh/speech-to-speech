@@ -185,12 +185,14 @@ def _stage(
 def _loaded(stage: str, latest: dict[str, Any] | None, running: bool) -> tuple[bool, str]:
     if not running:
         return False, "pipeline_stopped"
-    if stage == "vad":
-        # Silero lives inside the pipeline process: if it is up, the VAD is
-        # loaded, and no model call is ever traced for it to prove otherwise.
-        return True, ""
-    if latest is None:
-        return False, "no_metrics_window"
+    # The pipeline loads its models at startup and keeps them resident, so a
+    # running process is the honest evidence that the stage is available — VAD,
+    # STT, LLM and TTS alike. Requiring a recent per-category call would brand
+    # STT and the remote LLM "not loaded" forever: the deployed qwen3-asr and
+    # chat-completions handlers emit no MODEL_CALL_METRICS at all (see
+    # docs/upstream-diff-and-deployment-config.md §2.7). Metrics only *enrich*
+    # the name / VRAM / latency cells; their absence is reported there, never
+    # as a red card over a pipeline that is serving fine.
     return True, ""
 
 
@@ -380,12 +382,9 @@ def _pool() -> pool.PoolState:
 
 def _pipeline_running() -> bool:
     info = process_probe.get_probe().state(console.supervisor_program)
-    if info.running:
-        return True
-    # `unknown` means supervisor could not be asked at all (no socket — a local
-    # run). "Could not ask" is not "stopped", and claiming stopped would paint
-    # four red cards over a pipeline that is serving fine.
-    return info.state in ("", "unknown")
+    # "Could not ask" (no socket — a local run) is not "stopped": claiming
+    # stopped would paint four red cards over a pipeline that is serving fine.
+    return not info.confirmed_stopped()
 
 
 # -- parsing helpers ----------------------------------------------------------

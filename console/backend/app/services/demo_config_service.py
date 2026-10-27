@@ -39,6 +39,20 @@ def config() -> dict[str, Any]:
         "iceServers": ice_servers(demo.rtc_ice_servers),
         "startupGreeting": demo.startup_greeting.strip(),
         "auth": demo.auth_enabled,
+        # Session archive facts (spec 2026-10-26 session-archive). The voice page
+        # may not promise more than this deployment keeps: `enabled` is the
+        # server-side hard gate the browser checkbox has to respect, and
+        # `retentionDays` is what the sweep will actually honour — neither belongs
+        # in a constant baked into the bundle. The two ceilings are the per-turn
+        # audio limits the API enforces with a 413; the browser drops an oversized
+        # WAV and keeps the transcript instead of losing the whole turn.
+        "sessionRecord": {
+            "enabled": bool(console.session_record_enabled),
+            "retentionDays": int(console.session_retention_days),
+            "retentionMaxDays": int(console.session_retention_max_days),
+            "maxAudioBytes": int(console.session_audio_max_bytes),
+            "maxAudioSeconds": float(console.session_audio_max_seconds),
+        },
         # Which pipeline this console is wired to. Read from settings, so the
         # voice page shows the same host the status probe and the WS proxy use.
         "pipeline": {

@@ -78,6 +78,16 @@ def test_stopped_pipeline_marks_loaded_false_with_reason(healthy, monkeypatch):
         assert stage["reasons"]["loaded"] == "pipeline_stopped"
 
 
+def test_running_pipeline_is_loaded_even_without_metrics(healthy):
+    # `healthy` leaves `_metrics_tail` empty. The deployed STT (qwen3-asr) and
+    # LLM (chat-completions) emit no MODEL_CALL_METRICS at all, so "no metrics"
+    # must not become a red "not loaded": a running pipeline is the evidence.
+    data = runtime_service.collect("prod")
+    for stage in data["stages"]:
+        assert stage["loaded"] is True
+        assert "loaded" not in stage["reasons"]
+
+
 def test_queue_depth_is_null_and_not_zero(healthy):
     data = runtime_service.collect("prod")
     for stage in data["stages"]:

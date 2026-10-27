@@ -15,11 +15,13 @@ const password = ref('')
 const pending = ref(false)
 const failure = ref<AppError | null>(null)
 
-// Only same-site console paths are acceptable as a landing target: an open
-// redirect on a login form is a phishing primitive.
+// Only same-site root-relative paths are acceptable as a landing target: an
+// open redirect on a login form is a phishing primitive. Allow `/`（对话面）and
+// `/console*`, but reject protocol-relative `//host` and absolute URLs.
 const next = computed(() => {
   const value = route.query.next
-  return typeof value === 'string' && value.startsWith('/console') ? value : '/console'
+  const safe = typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
+  return safe ? value : '/console'
 })
 
 async function submit(): Promise<void> {

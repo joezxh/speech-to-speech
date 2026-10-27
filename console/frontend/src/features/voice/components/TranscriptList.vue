@@ -47,11 +47,17 @@ function onAudioStop(): void {
       v-for="entry in props.entries"
       :key="entry.key"
       class="transcript__item"
-      :class="[`transcript__item--${entry.role}`, { 'is-partial': entry.partial }]"
+      :class="[
+        `transcript__item--${entry.role}`,
+        { 'is-partial': entry.partial, 'is-interrupted': entry.interrupted }
+      ]"
     >
       <span class="transcript__role">{{ ROLE_LABEL[entry.role] }}</span>
-      <!-- tool 条目把名字放在 <summary> 里（设计基线 2759-2770），不再多一行文本。 -->
-      <span v-if="!entry.tool" class="transcript__text">{{ entry.text }}</span>
+      <!--
+        tool 条目把名字放在 <summary> 里（设计基线 2759-2770），不再多一行文本。
+        空文本也不画：只有原音没有转写的那一行，demo 用 `body.hidden = !text` 把文本盒子藏掉。
+      -->
+      <span v-if="!entry.tool && entry.text" class="transcript__text">{{ entry.text }}</span>
 
       <!-- 用户条目：只有带音频的条目才有播放器（demo 也只在 websocket 分支产生原音）。 -->
       <AudioReplay
@@ -83,6 +89,12 @@ function onAudioStop(): void {
         同一条目后来收到更完整的 payload 时由 `TurnTimings` 内部整体替换（`chat.js:674` 的 remove-then-append）。
       -->
       <TurnTimings v-if="entry.latency" :latency="entry.latency" />
+
+      <!--
+        被用户插话打断的助手回复（demo `_markHistInterrupted`）：字留多少算多少，
+        但这一轮被断过必须看得见。标记在行尾，不折到计时里。
+      -->
+      <span v-if="entry.interrupted" class="transcript__note">Interrupted</span>
     </li>
   </ol>
 </template>

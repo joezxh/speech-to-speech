@@ -17,6 +17,8 @@ KEYS = {
     "iceServers",
     "startupGreeting",
     "auth",
+    # Session archive gate + retention the deployment actually keeps (spec D).
+    "sessionRecord",
     # Which pipeline the console is bound to (status probe, hot updates, WS proxy).
     "pipeline",
 }
@@ -47,6 +49,25 @@ def test_config_points_the_voice_page_at_the_same_pipeline_as_the_probes(client,
     body = client.get("/api/config").json()
 
     assert body["pipeline"] == {"baseUrl": "http://127.0.0.1:8765", "container": "pipeline-1"}
+
+
+def test_config_reports_the_session_archive_gate_and_retention(client, monkeypatch):
+    monkeypatch.setattr("app.config.console.session_record_enabled", True)
+    monkeypatch.setattr("app.config.console.session_retention_days", 45)
+    monkeypatch.setattr("app.config.console.session_audio_max_bytes", 1234)
+    monkeypatch.setattr("app.config.console.session_audio_max_seconds", 99.5)
+
+    body = client.get("/api/config").json()
+
+    # The voice page reads its retention copy and its checkbox from here, so the
+    # numbers have to come from the deployment, not from the bundle.
+    assert body["sessionRecord"] == {
+        "enabled": True,
+        "retentionDays": 45,
+        "retentionMaxDays": 180,
+        "maxAudioBytes": 1234,
+        "maxAudioSeconds": 99.5,
+    }
 
 
 def test_config_never_returns_the_load_balancer_address(client, monkeypatch):

@@ -16,6 +16,9 @@ export async function startLocalVad(options: LocalVadOptions): Promise<{ destroy
   const vad = await MicVAD.new({
     baseAssetPath: ASSET_BASE,
     onnxWASMBasePath: ASSET_BASE,
+    // vad-web 0.0.31 的默认模型是 `legacy`（会去拉 silero_vad_legacy.onnx），
+    // 而 copy-vendors 只发布 silero_vad_v6.onnx：不显式指定就是 404 + ORT 报错。
+    model: 'v6',
     startOnLoad: false,
     processorType: 'AudioWorklet',
     audioContext: undefined,

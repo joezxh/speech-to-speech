@@ -52,7 +52,9 @@ function refreshOnce(): Promise<string | null> {
 }
 
 function redirectToLogin(): void {
-  if (!window.location.pathname.startsWith('/console')) return
+  // 对话面 `/` 与运维面 `/console/*` 现在都受登录门禁：刷新失败的 401 无论发生在
+  // 哪一面都得回登录页，否则 `/` 上的轮询会无限 401 却永不跳转。
+  if (window.location.pathname.startsWith('/console/login')) return
   const next = encodeURIComponent(window.location.pathname + window.location.search)
   window.location.assign(`/console/login?next=${next}`)
 }

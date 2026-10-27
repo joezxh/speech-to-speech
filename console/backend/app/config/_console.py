@@ -41,3 +41,19 @@ class ConsoleSettings(BaseSettings):
     voice_retention_max_days: int = 180
     voice_precompute_concurrency: int = 1
     voice_precompute_timeout_s: float = 300.0
+
+    # Session archive (spec 2026-10-26 session-archive). `session_record_enabled`
+    # is the server-side gate: false means every write answers 403
+    # `recording_disabled` no matter what the browser checkbox says. Off by
+    # default, so an unconfigured deployment records nothing.
+    session_record_enabled: bool = False
+    # Same class as `data_dir`: the /app default resolves to <cwd drive>:\app on
+    # Windows, so a local checkout has to set an absolute path.
+    session_data_dir: str = "/app/data/sessions"
+    # The page's retention copy and the sweep both read these, so neither number
+    # is a constant baked into the bundle. The max is the ceiling an operator
+    # cannot exceed; the two audio limits are what the API enforces with a 413.
+    session_retention_days: int = 30
+    session_retention_max_days: int = 180
+    session_audio_max_bytes: int = 10 * 1024 * 1024
+    session_audio_max_seconds: float = 120.0

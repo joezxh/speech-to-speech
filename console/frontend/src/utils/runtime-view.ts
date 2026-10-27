@@ -26,9 +26,10 @@ export function loadLabel(loaded: boolean): 'loaded' | 'not loaded' {
   return loaded ? 'loaded' : 'not loaded'
 }
 
-/** 模型名取不到时退回加载理由，而不是留空。 */
+/** 模型名取不到时：运行中却无调用样本（部署主链路 STT/LLM 未埋点）说中性话，不谎称不可用；停机才退回加载理由。 */
 export function modelText(stage: RuntimeStage): string {
-  return stage.modelName ?? unavailable(stage.reasons.loaded)
+  if (stage.modelName) return stage.modelName
+  return stage.loaded ? '已加载 · 窗口内无调用样本' : unavailable(stage.reasons.loaded)
 }
 
 export function percentText(percent: number | null): string {

@@ -4,6 +4,9 @@
 OpenAI Realtime 兼容协议对外提供服务。本文档包含：组件说明、各环节延迟与优化、两种部署方案
 （LLM 走 GPUStack / LLM 一并自部署）。
 
+> 部署好之后要按机器和使用环境调参：见 [`deployment-tuning-playbook.md`](./deployment-tuning-playbook.md)
+> ——它按“现象 / 环境档位 → 一整组参数 + 验证项 + 代价”组织，本文只讲部署形态。
+
 ---
 
 ## 1. 流水线组件说明

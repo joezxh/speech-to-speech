@@ -16,6 +16,13 @@ class _RunningProbe:
         return process_probe.ProcessInfo(name=name, running=True, pid=42, state="RUNNING")
 
 
+class _StoppedProbe:
+    """Supervisor is reachable and positively reports a stopped program."""
+
+    def state(self, name):
+        return process_probe.ProcessInfo(name=name, running=False, state="stopped")
+
+
 @pytest.fixture
 def client(db_session, monkeypatch, tmp_path):
     dist = tmp_path / "dist"
@@ -49,7 +56,10 @@ def test_instances_keeps_200_when_the_pool_is_down(client, monkeypatch):
     # A.10: a degraded read is the whole point of this page.
     assert data["pool"] is None
     assert "pool_unreachable" in data["alerts"]
-    assert "pipeline_stopped" in data["alerts"]
+    # A NullProbe answers `unknown` (no supervisor on a dev box): that is the
+    # absence of evidence, not proof the process stopped, so the panel must not
+    # claim `pipeline_stopped` on top of an already-reported pool outage.
+    assert "pipeline_stopped" not in data["alerts"]
     assert data["container"]["name"] == console_settings.supervisor_program
 
 
@@ -76,7 +86,22 @@ def test_instances_exposes_units_and_usage(client, monkeypatch):
         ],
     }
     assert data["usage"] == {"turns": 3}
-    assert data["alerts"] == ["pipeline_stopped"]
+    # Pool is reachable and the probe is unknown, so nothing is known to be
+    # stopped: the false `pipeline_stopped` the dev box used to see is gone.
+    assert data["alerts"] == []
+
+
+def test_instances_reports_pipeline_stopped_when_supervisor_confirms_it(client, monkeypatch):
+    # The alert must still fire when supervisor is reachable and says stopped:
+    # the fix is about not lying on a dev box, not about hiding real stops.
+    monkeypatch.setattr(
+        pool, "read_pool", lambda timeout=5.0: pool.PoolState(reachable=True, size=1, in_use=0)
+    )
+    process_probe.set_probe(_StoppedProbe())
+
+    data = client.get("/api/v1/instances", headers=_auth(client)).json()["data"]
+    assert "pipeline_stopped" in data["alerts"]
+    assert data["container"]["status"] == "stopped"
 
 
 def test_status_reports_the_environment_it_is_running_in(client, monkeypatch):

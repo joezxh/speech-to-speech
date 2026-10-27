@@ -14,6 +14,13 @@
   --voice-error: #ff6a75;
   --voice-ready: #34d399;
   --voice-queued: #94a3b8;
+  // 角色色：demo 用三个独立 token 标出气泡与列表行的归属（`style.css:28-30`），
+  // 这里的值与本页已有的状态色逐个相同，只是把语义名字也立起来。
+  --voice-user: var(--voice-listening);
+  --voice-assistant: var(--voice-accent);
+  --voice-tool: var(--voice-processing);
+  // demo 的 `--radius-md`：气泡与列表行共用同一个圆角。
+  --voice-radius: 14px;
 }
 
 // ── 对话页嵌在外壳里的高度契约（§3.2.4）────────────────────────────────
@@ -34,8 +41,7 @@
 }
 
 // 头部只剩 IdentityBlock 与两行鸣谢。账号 chip 与工具 / 历史 / 设置三枚按钮
-// 被 `VoiceView` `Teleport` 到外壳顶栏的 `#shell-actions`，不在这一层；About 是
-// `IdentityBlock` 里的圆钮，随头部留在舞台。
+// 被 `VoiceView` `Teleport` 到外壳顶栏的 `#shell-actions`，不在这一层。
 .v-head {
   padding: 20px 24px 0;
 }
@@ -45,7 +51,6 @@
 
   &__head { display: flex; align-items: center; gap: 8px; }
   &__title { color: var(--voice-text); font-size: 15px; font-weight: 600; }
-  &__title:hover { color: var(--voice-accent); }
   &__blurb { margin: 4px 0 8px; color: var(--voice-dim); font-size: 13px; line-height: 1.5; }
 }
 
@@ -345,52 +350,96 @@
 }
 
 // ── 历史抽屉里的转写条目（demo `#chat-history` 的三种形态）──────────────
+// demo 的行本身不描边，边框与底色在正文盒上（`.hist-body`），音频块与工具块各自成盒；
+// 归属靠贴边与那行等宽角色字区分，与气泡栈是同一套读法。
 .transcript {
   list-style: none;
   margin: 0;
   padding: 8px 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
   font-size: 13px;
   line-height: 1.5;
+  scroll-behavior: smooth;
 }
 
 .transcript__item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px 10px;
-  border: 1px solid var(--voice-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--voice-surface) 92%, transparent);
+  gap: 3px;
+  max-width: 88%;
 
-  // 临时条目（partial）半透明：与旧页的 `.hist-item.transient` 同义。
-  &.is-partial { opacity: 0.6; }
-  &--tool { border-color: color-mix(in srgb, var(--voice-processing) 40%, transparent); }
-  &--assistant { border-color: color-mix(in srgb, var(--voice-accent) 32%, transparent); }
+  &--user { align-self: flex-start; }
+  &--assistant { align-self: flex-end; }
+  &--tool { align-self: flex-start; max-width: 100%; }
 }
 
 .transcript__role {
+  font-family: 'JetBrains Mono', monospace;
   font-size: 10px;
-  letter-spacing: 0.08em;
+  font-weight: 500;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--voice-faint);
+  padding: 0 2px;
 }
 
-.transcript__item--tool .transcript__role { color: var(--voice-processing); }
-.transcript__item--assistant .transcript__role { color: var(--voice-accent); }
+.transcript__item--user .transcript__role { color: color-mix(in srgb, var(--voice-user) 75%, var(--voice-faint)); }
+.transcript__item--assistant .transcript__role { color: color-mix(in srgb, var(--voice-assistant) 75%, var(--voice-faint)); }
+.transcript__item--tool .transcript__role { color: color-mix(in srgb, var(--voice-tool) 75%, var(--voice-faint)); }
 
-.transcript__text { white-space: pre-wrap; word-break: break-word; }
+.transcript__text {
+  padding: 9px 12px;
+  border: 1px solid var(--voice-border);
+  border-radius: var(--voice-radius);
+  background: var(--voice-surface-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 
-// 用户条目原音：标签 + 原生 <audio controls>，与 demo 的 `.hist-audio` 同名同形。
+// 增量还在跳的行半透明（demo 只对用户行做这件事：`style.css:1934`）。
+.transcript__item--user.is-partial .transcript__text { opacity: 0.65; }
+
+// 被插话的助手回复（demo `.hist-note` + `.hist-msg.interrupted .hist-body`，`style.css:2410-2425`）：
+// 字只留已经收到的那部分，行尾给一枚等宽标记，正文淡一档表示「没说完」。
+.transcript__note {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--voice-faint);
+  padding: 0 2px;
+}
+
+.transcript__item--assistant .transcript__note { align-self: flex-end; }
+.transcript__item--assistant.is-interrupted .transcript__text { opacity: 0.7; }
+
+// 用户条目原音：标签 + 原生 <audio controls>，与 demo 的 `.hist-audio` 同形（`style.css:1936-1956`）。
 .hist-audio {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--voice-user) 22%, var(--voice-border));
+  border-radius: var(--voice-radius);
+  background: color-mix(in srgb, var(--voice-user) 6%, var(--voice-surface-2));
 
-  &__label { font-size: 10.5px; color: var(--voice-faint); }
-  audio { width: 100%; height: 32px; }
+  &__label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--voice-user) 68%, var(--voice-faint));
+  }
+
+  audio {
+    display: block;
+    width: min(260px, 100%);
+    height: 34px;
+    color-scheme: light dark;
+  }
 }
 
 // tool 条目：Input / Output / Snapshot 三段，包在 <details> 里默认折叠。
@@ -451,35 +500,112 @@
   p:last-child { margin: 8px 0 0; line-height: 1.45; }
 }
 
+// ── 临时气泡栈（demo 的 `.bubble-stack`，`style.css:1678-1802`）──────────────
+// 面板靠边一列，宽度封顶 300px；每条自己决定贴左还是贴右，
+// 底色保持无彩——demo 的注释说得直白：颜色是 orb 的活，不归界面。
 .v-bubbles {
   position: absolute;
   top: 8px;
   right: 24px;
+  width: min(300px, calc(100% - 48px));
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  gap: 8px;
   pointer-events: none;
 }
 
 .v-bubble {
-  max-width: 34ch;
-  padding: 6px 10px;
+  --bubble-dx: 10px;
+  pointer-events: auto;
+  max-width: 100%;
+  padding: 10px 14px;
   border: 1px solid var(--voice-border);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--voice-surface) 92%, transparent);
-  font-size: 12px;
-  line-height: 1.4;
+  border-radius: var(--voice-radius);
+  background: var(--voice-surface);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.32);
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
 
-  &__role { display: block; font-size: 10px; letter-spacing: 0.08em; color: var(--voice-faint); text-transform: uppercase; }
-  &--tool &__role { color: var(--voice-processing); }
-  &--assistant &__role { color: var(--voice-accent); }
+  // 归属靠「贴哪一边 + 等宽角色行」区分，不靠底色。
+  &--user { --bubble-dx: -10px; align-self: flex-start; }
+  &--assistant { --bubble-dx: 10px; align-self: flex-end; }
+  &--tool {
+    --bubble-dx: -10px;
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--voice-dim);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
+  &__role {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    opacity: 0.7;
+  }
+  &--user &__role { color: var(--voice-user); }
+  &--assistant &__role { color: var(--voice-assistant); }
+
+  &__tool-icon { width: 13px; height: 13px; flex: none; color: var(--voice-tool); }
+
+  // 语音占位：波形 + 状态词横排在同一行（demo 的 `.bubble.user.voice .bubble-body`）。
+  &.is-voice &__body {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-width: 126px;
+    color: var(--voice-dim);
+  }
+  &__wave {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    height: 16px;
+    color: var(--voice-user);
+
+    i {
+      display: block;
+      width: 2px;
+      height: 12px;
+      border-radius: 999px;
+      background: currentColor;
+      transform-origin: center;
+      animation: v-turn-wave 0.85s ease-in-out infinite;
+    }
+    // 五根条子各自错开相位，看起来才不像一整块在呼吸。
+    i:nth-child(2),
+    i:nth-child(4) { animation-delay: -0.22s; }
+    i:nth-child(3) { animation-delay: -0.44s; }
+    i:nth-child(5) { animation-delay: -0.11s; }
+  }
+  // 「正在发送语音」时波形放慢：从「在听」的快节奏切换到「等回包」。
+  &.is-sending &__wave i { animation-duration: 1.15s; }
+  &__state {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+  }
 }
 
+@keyframes v-turn-wave {
+  0%,
+  100% { transform: scaleY(0.28); opacity: 0.5; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+
+// demo 用 `.in` / `.out` 两类手写过渡，这里交给 TransitionGroup：
+// 进入从偏移位置滑到位，离开退回偏移位置。
 .v-bubble-enter-active,
-.v-bubble-leave-active { transition: opacity 160ms ease, transform 160ms ease; }
+.v-bubble-leave-active { transition: opacity 0.22s ease, transform 0.22s ease; }
 .v-bubble-enter-from,
-.v-bubble-leave-to { opacity: 0; transform: translateY(-4px); }
+.v-bubble-leave-to { opacity: 0; transform: translateX(var(--bubble-dx)); }
 
 .v-pip {
   // 旧页整页铺满时 `fixed` 与 `absolute` 等价；嵌进外壳后必须改 `absolute`，
@@ -522,7 +648,7 @@
   &__more ul { margin: 4px 0 0; padding-left: 16px; }
 }
 
-// 弹层里的共用块（Tools / Settings / About 都用）。
+// 弹层里的共用块（Tools / Settings 都用）。
 .v-hint {
   display: block;
   margin: 6px 0 0;
@@ -591,23 +717,6 @@
 .v-wide { width: 100%; }
 .v-empty { margin: 12px; color: var(--voice-faint); font-size: 12.5px; }
 
-.v-pipe {
-  list-style: none;
-  margin: 8px 0 0;
-  padding: 0;
-  display: grid;
-  gap: 6px;
-
-  &__title { margin: 16px 0 0; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--voice-faint); }
-  &__end { font-size: 12px; color: var(--voice-dim); }
-  &__stage { display: grid; grid-template-columns: 44px 1fr; gap: 2px 10px; padding-left: 4px; border-left: 1px solid var(--voice-border); }
-  &__tag { font-size: 10.5px; letter-spacing: 0.08em; color: var(--voice-accent); }
-  &__job { font-size: 12px; color: var(--voice-dim); }
-  &__stage a { grid-column: 2; font-size: 11.5px; }
-}
-
-.v-about__version { margin: 16px 0 0; font-size: 11.5px; color: var(--voice-faint); }
-
 .v-limit {
   display: grid;
   justify-items: center;
@@ -627,4 +736,11 @@
   .v-ident__blurb { display: none; }
   .v-bubbles { right: 12px; }
   .v-pip { width: 104px; left: 12px; bottom: 12px; }
+}
+
+// 手机宽度下气泡流会与 orb 重叠，demo 的处理是干脆收起它，
+// 把会话面板当作唯一的阅读面（`style.css:2046-2049`）。抽屉现在是手动开的，
+// 所以这里必须同时给它一个入口：顶栏的历史按钮就是那一个。
+@media (max-width: 600px) {
+  .v-bubbles { display: none; }
 }

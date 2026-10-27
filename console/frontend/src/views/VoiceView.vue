@@ -5,8 +5,6 @@ import { endSessionBeacon, getDemoConfig, getMe, heartbeat, leaveQueueBeacon, se
 import { acquireMic, releaseMic } from '@/features/voice/audio/capture'
 import { GATE_OFF_DB, SpeakingDetector } from '@/features/voice/audio/meter'
 import { startLocalVad } from '@/features/voice/audio/vad'
-import AboutDialog from '@/features/voice/components/AboutDialog.vue'
-import AccountWidget from '@/features/voice/components/AccountWidget.vue'
 import BubbleStack from '@/features/voice/components/BubbleStack.vue'
 import CameraPip from '@/features/voice/components/CameraPip.vue'
 import HistoryDrawer from '@/features/voice/components/HistoryDrawer.vue'
@@ -18,30 +16,51 @@ import QueueOverlay from '@/features/voice/components/QueueOverlay.vue'
 import SettingsDialog from '@/features/voice/components/SettingsDialog.vue'
 import ToolsDialog from '@/features/voice/components/ToolsDialog.vue'
 import { openCamera, snapshot } from '@/features/voice/tools/camera'
+import { useBubbles } from '@/features/voice/useBubbles'
 import { buildDirectWsUrl, S2sClient } from '@/features/voice/transport/s2s-client'
 import type { ToolCallRecord, ToolResultRecord } from '@/features/voice/transport/events'
-import type { Bubble, ToolCall, ToolDef, VoiceSettings } from '@/features/voice/types'
+import type { SentAudio } from '@/features/voice/audio/sent-audio'
+import type { ToolCall, ToolDef, TurnLatency, VoiceSettings } from '@/features/voice/types'
 import { useShellStore } from '@/stores/shell'
 import { useVoiceStore } from '@/stores/voice'
+import type { VoiceStatus } from '@/stores/voice'
 
 const store = useVoiceStore()
 const shell = useShellStore()
 
 /**
- * 侧栏的 History / Tools / Settings / About 是「打开浮层」的动作，不是路由（§3.2.4）：
+ * 侧栏的 History / Tools / Settings 是「打开浮层」的动作，不是路由（§3.2.4）：
  * 外壳只把选择写进 `shell.voiceOverlay`，页面负责打开对应的抽屉/对话窗并立刻清空选择。
  */
 watch(
   () => shell.voiceOverlay,
   (overlay) => {
-    if (overlay === 'history') historyOpen.value = true
+    if (overlay === 'history') store.openHistory()
     if (overlay === 'tools') toolsOpen.value = true
     if (overlay === 'settings') {
       settingsOpen.value = true
       void refreshDevices()
     }
-    if (overlay === 'about') aboutOpen.value = true
     if (overlay) shell.closeOverlay()
+  },
+  // `immediate`：从侧栏语音组跨页点浮层时，`ConsoleLayout` 会先写 `voiceOverlay` 再
+  // 导航到本页；挂载时需立即消费这个已置位的请求。
+  { immediate: true }
+)
+
+// 参考 demo：舞台右侧只有一叠转瞬即逝的气泡（`#bubble-stack`）。
+// 会话文字列表（历史抽屉）是纯手动入口——顶栏的 History 按钮，不再随接通自动弹出。
+
+/**
+ * 顶栏的账号 chip 现在由 `ConsoleLayout` 直接渲染（不再 Teleport 注入），额度按钮通过
+ * `shell.limitOpen` 把请求递进来。
+ */
+watch(
+  () => shell.limitOpen,
+  (open) => {
+    if (!open) return
+    limitOpen.value = true
+    shell.closeLimit()
   }
 )
 
@@ -55,8 +74,6 @@ const VOICES = ['Aiden', 'Ryan', 'Dylan', 'Eric', 'Ono_Anna', 'Serena', 'Sohee',
 
 const settingsOpen = ref(false)
 const toolsOpen = ref(false)
-const aboutOpen = ref(false)
-const historyOpen = ref(false)
 const limitOpen = ref(false)
 const micError = ref('')
 const levelDb = ref(-100)
@@ -64,15 +81,11 @@ const notice = ref('')
 const expiresSec = ref(60)
 const muted = ref(false)
 const queueFull = ref(false)
-const bubbles = ref<Bubble[]>([])
 const inputs = ref<Array<{ id: string; label: string }>>([])
 const outputs = ref<Array<{ id: string; label: string }>>([])
 /** 用户自带的 Serper key：**只在内存里**，不进 localStorage，也不进 URL（B5）。 */
 const searchKey = ref('')
-/** `/api/config.version` 不在 Task 17 的必填字段里；缺了就显示 unknown，不报错。 */
-const version = ref('')
 
-let bubbleId = 0
 let client: S2sClient | null = null
 let mic: MediaStream | null = null
 let vad: { destroy: () => Promise<void> } | null = null
@@ -176,13 +189,21 @@ const limitCopy = computed(() => {
       }
 })
 
-/** demo 的 #bubble-stack：同时最多四条，4.2s 后自己消失。 */
-function say(role: Bubble['role'], text: string): void {
-  if (!text) return
-  const id = ++bubbleId
-  bubbles.value = [...bubbles.value, { id, role, text }].slice(-4)
-  window.setTimeout(() => (bubbles.value = bubbles.value.filter((item) => item.id !== id)), 4200)
-}
+/**
+ * demo 的 `#bubble-stack`：语音占位 → 增量改写 → 各自到期淡出，栈深 3。
+ * 行为全部在 `useBubbles` 里（带单测），页面只把客户端事件接上去。
+ */
+const {
+  items: bubbleItems,
+  userTurnStarted,
+  userTurnStopped,
+  userTranscript,
+  assistantTranscript,
+  toolCall: showToolBubble,
+  assistantActivity,
+  responseFinished,
+  reset: resetBubbles
+} = useBubbles()
 
 async function runTool(call: ToolCall) {
   if (call.name === 'web_search') {
@@ -216,6 +237,7 @@ function describeTool(call: ToolCallRecord): string {
 async function connect(): Promise<void> {
   if (client) return
   store.resetTranscript()
+  resetBubbles()
   micError.value = ''
   notice.value = ''
   queueFull.value = false
@@ -246,24 +268,36 @@ async function connect(): Promise<void> {
     acquireMic: () => Promise.resolve(mic as MediaStream),
     executeTool: runTool
   })
-  client.addEventListener('status', (event: Event) => store.setState((event as CustomEvent).detail.status))
+  client.addEventListener('status', (event: Event) => {
+    const status = (event as CustomEvent).detail.status as VoiceStatus
+    store.setState(status)
+    // demo/main.js:1484：直接音频模型可能只有输出、没有转写，所以「开始说话」也算助手动静。
+    if (status === 'ai-speaking') assistantActivity()
+  })
+  // 气泡与原音都听这四个事件（demo 客户端同名事件，main.js:1490-1501）。
+  client.addEventListener('user-turn-started', (event: Event) =>
+    userTurnStarted((event as CustomEvent<{ itemId?: string }>).detail.itemId)
+  )
+  client.addEventListener('user-turn-stopped', (event: Event) =>
+    userTurnStopped((event as CustomEvent<{ itemId?: string }>).detail.itemId)
+  )
+  client.addEventListener('user-audio', (event: Event) => store.applyUserAudio((event as CustomEvent).detail as SentAudio))
   client.addEventListener('queue', (event: Event) => {
     // 排队位置与退队票据只能从这条事件里来（`acquireGrant` 的轮询回调）。
     // `pollIntervalS` 是 client 内部自己用的节奏，页面不读，填 0 只为满足票据形状。
     const detail = (event as CustomEvent).detail as { queueId: string; position: number }
     store.queue = { queueId: detail.queueId, position: detail.position, pollIntervalS: 0 }
   })
-  client.addEventListener('server-event', (event: Event) => {
-    const detail = (event as CustomEvent).detail
-    store.applyEvent(detail)
-    // 气泡只搬「刚刚发生的一件事」，完整转写归历史抽屉。
-    if (detail?.type === 'conversation.item.input_audio_transcription.completed') say('user', detail.transcript)
-    if (detail?.type === 'response.audio_transcript.done') say('assistant', detail.transcript)
+  client.addEventListener('server-event', (event: Event) => store.applyEvent((event as CustomEvent).detail))
+  // 抽屉与气泡共用同一个累加器：store 把增量算成整句后广播，页面不再解析原始事件。
+  store.subscribeTranscript((detail) => {
+    if (detail.role === 'user') userTranscript({ itemId: detail.itemId, text: detail.text, partial: detail.partial })
+    else assistantTranscript({ responseId: detail.responseId, text: detail.text })
   })
   client.addEventListener('tool-call', (event: Event) => {
     const call = (event as CustomEvent).detail as ToolCallRecord
     store.applyToolCall(call)
-    say('tool', describeTool(call))
+    showToolBubble(describeTool(call))
   })
   client.addEventListener('tool-result', (event: Event) => {
     store.applyToolResult((event as CustomEvent).detail as ToolResultRecord)
@@ -288,10 +322,21 @@ async function connect(): Promise<void> {
     expiresSec.value = (event as CustomEvent).detail.expiresSec ?? 60
   })
   client.addEventListener('response-finished', (event: Event) => {
+    const detail = (event as CustomEvent).detail as {
+      responseId?: string
+      status?: string
+      transcript?: string
+      latency?: TurnLatency | null
+    }
+    // 被打断的回复先补回历史行，再挂计时：补建的那一行才是本轮的归属（demo chat.js:619-624）。
+    if (detail.status === 'cancelled') store.markInterrupted(detail.responseId ?? '', detail.transcript ?? '')
     // §3.9.4：计时交给 store 挂到那条助手条目上（demo 的 `_appendTimings` 也挂在 hist 条目里）。
     // 页面自己不再持有 `turnIndex` / `store.latency` ——历史抽屉里每条助手条目各有一份数字，
     // 只存「最新一条」会让同一条对话在抽屉里除了最后一句之外全部没有计时。
-    store.attachLatency((event as CustomEvent).detail.latency ?? null)
+    store.attachLatency(detail.latency ?? null)
+    // 气泡不跟着 `response.done` 立即消失：demo 只在这里释放 `response_id` 映射，
+    // 气泡按自己的计时淡出（chat.js:629-633）。
+    responseFinished(detail)
   })
   try {
     await client.connect()
@@ -346,6 +391,9 @@ async function teardown(): Promise<void> {
   vad = null
   await client?.close()
   client = null
+  // 气泡不跨越一次通话：挂断后屏幕上不该残留上一轮的占位与文字。
+  store.subscribeTranscript(null)
+  resetBubbles()
   releaseMic(mic)
   mic = null
   stopCamera()
@@ -454,7 +502,6 @@ async function refreshMe(): Promise<void> {
 
 onMounted(async () => {
   store.config = await getDemoConfig()
-  version.value = (store.config as { version?: string }).version ?? ''
   store.loadSettings()
   void refreshMe()
   void refreshDevices()
@@ -471,30 +518,16 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="v-page">
-    <!-- 对话页没有自己的顶栏：账号 chip 与工具 / 历史 / 设置三枚按钮挂到外壳顶栏的
-         `#shell-actions` 上（§3.2.4）；About 是 `IdentityBlock` 里的圆钮，留在舞台。
-         离开对话页时 Teleport 自动摘下。 -->
-    <Teleport to="#shell-actions">
-      <AccountWidget :me="store.me" @limit="limitOpen = true" />
-      <button class="v-icon" title="Tools" aria-label="Tools" @click="toolsOpen = true">
-        <svg class="v-i" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-wrench" /></svg>
-      </button>
-      <button class="v-icon" title="Conversation history" aria-label="Conversation history" @click="historyOpen = true">
-        <svg class="v-i" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-chat" /></svg>
-        <span v-if="store.entries.length" class="v-badge" aria-hidden="true" />
-      </button>
-      <button class="v-icon" title="Settings" aria-label="Settings" @click="settingsOpen = true; refreshDevices()">
-        <svg class="v-i" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-gear" /></svg>
-      </button>
-    </Teleport>
+    <!-- 顶栏的账号 chip 与工具 / 历史 / 设置三枚按钮由外壳（`ConsoleLayout`）直接渲染；
+         侧栏/顶栏动作经 `shell.voiceOverlay` / `shell.limitOpen` 通知本页开浮层。 -->
 
     <!-- 标题与 blurb 退回舞台头部：外壳顶栏已经被品牌与账号占据（§3.2.4）。 -->
     <header class="v-head">
-      <IdentityBlock @about="aboutOpen = true" />
+      <IdentityBlock />
     </header>
 
     <section class="v-stage">
-      <BubbleStack :items="bubbles" />
+      <BubbleStack :items="bubbleItems" />
 
       <OrbStage
         :state="store.state"
@@ -530,16 +563,20 @@ onBeforeUnmount(() => {
       -->
     </section>
 
-    <footer class="v-foot">
-      Powered by
-      <a href="https://github.com/huggingface/speech-to-speech" target="_blank" rel="noopener">huggingface/speech-to-speech</a>
-    </footer>
+
 
     <CameraPip ref="camPip" :active="store.settings.tools.camera && Boolean(camStream)" />
 
-    <HistoryDrawer v-model:open="historyOpen" :entries="store.entries" @replay="onReplay" />
+    <HistoryDrawer
+      v-if="store.historyOpen"
+      :open="store.historyOpen"
+      :entries="store.entries"
+      @replay="onReplay"
+      @update:open="(value: boolean) => (value ? store.openHistory() : store.closeHistory())"
+    />
 
     <SettingsDialog
+      v-if="settingsOpen"
       v-model:open="settingsOpen"
       :server-url="serverUrl"
       :mode="store.config.allowDirect ? 'direct' : 'load-balancer'"
@@ -556,6 +593,7 @@ onBeforeUnmount(() => {
     />
 
     <ToolsDialog
+      v-if="toolsOpen"
       v-model:open="toolsOpen"
       :search-available="searchAvailable"
       :server-key="serverKey"
@@ -567,8 +605,6 @@ onBeforeUnmount(() => {
       @update:search-key="(value: string) => { searchKey = value; onToolsChange() }"
     />
 
-    <AboutDialog v-model:open="aboutOpen" :version="version" />
-
-    <LimitDialog v-model:open="limitOpen" v-bind="limitCopy" />
+    <LimitDialog v-if="limitOpen" v-model:open="limitOpen" v-bind="limitCopy" />
   </main>
 </template>

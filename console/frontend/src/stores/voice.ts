@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { TranscriptReducer } from '@/features/voice/transport/events'
-import type { ToolCallRecord, ToolResultRecord } from '@/features/voice/transport/events'
+import type { ToolCallRecord, ToolResultRecord, TranscriptDetail } from '@/features/voice/transport/events'
 import { LIVE_STATES } from '@/features/voice/types'
 import type {
   MeResponse,
@@ -14,6 +14,7 @@ import type {
   VoiceSettings,
   VoiceState
 } from '@/features/voice/types'
+import type { SentAudio } from '@/features/voice/audio/sent-audio'
 
 /**
  * 唯一持久化的东西：设置。demo/main.js 也把同一组值写进 localStorage
@@ -86,9 +87,23 @@ export const useVoiceStore = defineStore('voice', () => {
   const config = ref<VoiceConfig>({ ...EMPTY_CONFIG })
   const latency = ref<TurnLatency | null>(null)
   const settings = ref<VoiceSettings>(mergeSettings(null))
+  /**
+   * 会话抽屉的开合 + 未读徽标。这两个必须住在 store 而不是页面本地：徽标画在
+   * `ConsoleLayout` 的顶栏，抽屉开在 `VoiceView`，而 demo 的规则是「开着就不亮、
+   * 点开即清」（`chat.js:116-122` `_markUnread` / `chat.js:93-98` `_openPanel`），
+   * 两边读到同一份 `_panelOpen` 才可能咬合。
+   */
+  const historyOpen = ref(false)
+  const unread = ref(false)
 
   const reducer = new TranscriptReducer()
   const live = computed(() => LIVE_STATES.has(state.value))
+
+  /**
+   * `item_id` → object URL。条目本身会被替换而不是就地修改，所以 URL 的生杀必须记在这
+   * 一层，否则一个通话里切过的每一段 WAV 都会漏在内存里（demo 的 `_audioUrls`）。
+   */
+  const audioUrls = new Map<string, string>()
 
   function setState(next: VoiceStatus): void {
     // `closed` 不是一种画面：关闭后停在当前状态，由页面决定是否回到 `idle`。
@@ -105,17 +120,54 @@ export const useVoiceStore = defineStore('voice', () => {
   function applyEvent(event: any): void {
     if (!reducer.apply(event)) return
     entries.value = [...reducer.entries]
+    markUnread()
   }
 
   /** 工具调用的两段式：先占位，再接结果（`TranscriptReducer.toolCall/toolResult`）。 */
   function applyToolCall(call: ToolCallRecord): void {
     if (!reducer.toolCall(call)) return
     entries.value = [...reducer.entries]
+    markUnread()
   }
 
   function applyToolResult(result: ToolResultRecord): void {
     if (!reducer.toolResult(result)) return
     entries.value = [...reducer.entries]
+    markUnread()
+  }
+
+  /**
+   * 把刚发出去的那段原音挂到它自己的用户条目上（demo 的 `chat.onUserAudio`）。
+   * 同一个 `item_id` 的投机续接会交出拼接后的整段 WAV：播放器只有一个，只是逐次变长，
+   * 所以旧 URL 先 revoke 再换新的。
+   */
+  function applyUserAudio(recording: SentAudio): void {
+    if (!recording.itemId) return
+    const url = URL.createObjectURL(recording.blob)
+    const previous = audioUrls.get(recording.itemId)
+    if (previous) URL.revokeObjectURL(previous)
+    audioUrls.set(recording.itemId, url)
+    if (!reducer.userAudio({ itemId: recording.itemId, url, durationMs: recording.durationMs, truncated: recording.truncated })) return
+    entries.value = [...reducer.entries]
+    markUnread()
+  }
+
+  /**
+   * 气泡层订阅每一次转写更新（demo 客户端的 `transcript` 事件）。传 `null` 退订：
+   * 页面卸载后 reducer 不该再握着一个已经销毁的组件回调。
+   */
+  function subscribeTranscript(handler: ((detail: TranscriptDetail) => void) | null): void {
+    reducer.onTranscript = handler
+  }
+
+  /**
+   * 被用户插话打断的那一句（demo `chat.js:615-627`：`response.done` 的 `cancelled`）。
+   * 必须在 `attachLatency` 之前调：补建的那一行才是本轮计时的归属，否则数字会挂到上一句。
+   */
+  function markInterrupted(responseId: string, transcript: string): void {
+    if (!reducer.interrupt(responseId, transcript)) return
+    entries.value = [...reducer.entries]
+    markUnread()
   }
 
   /**
@@ -135,12 +187,41 @@ export const useVoiceStore = defineStore('voice', () => {
     }
     if (index < 0) return
     entries.value = entries.value.map((entry, i) => (i === index ? { ...entry, latency: turn } : entry))
+    markUnread()
+  }
+
+  /**
+   * 抽屉关着时，任何新落地的内容都把徽标点亮；开着时只算「已经看见了」，
+   * 交给列表自己滚到底（demo 的 `_markUnread` 在 `_panelOpen` 时直接返回）。
+   */
+  function markUnread(): void {
+    if (historyOpen.value) return
+    unread.value = true
+  }
+
+  function openHistory(): void {
+    historyOpen.value = true
+    unread.value = false
+  }
+
+  function closeHistory(): void {
+    historyOpen.value = false
+  }
+
+  /** 顶栏的会话按钮是开合切换（demo chat.js:83），不是只会打开。 */
+  function toggleHistory(): void {
+    if (historyOpen.value) closeHistory()
+    else openHistory()
   }
 
   function resetTranscript(): void {
+    for (const url of audioUrls.values()) URL.revokeObjectURL(url)
+    audioUrls.clear()
     reducer.reset()
     entries.value = []
     latency.value = null
+    // 新一通电话从「没有未读」开始（demo 的 `clear()` 一并摘掉徽标）。
+    unread.value = false
   }
 
   function loadSettings(): void {
@@ -172,11 +253,19 @@ export const useVoiceStore = defineStore('voice', () => {
     latency,
     settings,
     live,
+    historyOpen,
+    unread,
     setState,
     applyEvent,
     applyToolCall,
     applyToolResult,
+    applyUserAudio,
+    subscribeTranscript,
+    markInterrupted,
     attachLatency,
+    openHistory,
+    closeHistory,
+    toggleHistory,
     resetTranscript,
     loadSettings,
     saveSettings

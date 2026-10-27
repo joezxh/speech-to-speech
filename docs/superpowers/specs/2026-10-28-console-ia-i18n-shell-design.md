@@ -67,7 +67,9 @@ S1 的验收口径由用户明确为**外壳级**：外壳结构 + 两个新页�
 **文案与颜色的实测规模。**
 
 - 用户可见中文串约 **539 处**（views 161 / components 174 / utils 140 / features 31 / router 14 / stores 11 / layouts 8），已排除注释。
-- 裸 hex 字面量 **163 处、58 个不同值、分布 25 个文件**；其中与 demo token 逐字相同的只有 12 个（`#0b1020 #141a2e #232b45 #1a2138 #e6e8f0 #8b93a7 #5b6478 #5b8cff #35c48a #e8b339 #f0655c #22d3ee`）。存在大量互相打架的近似值：`#5b6478/#5b647c`、`#6b7280/#6b7285/#6d7688/#6f7891`、`#94a3b8/#9aa3b8/#9ca3af`、`#1e2740/#1e2742/#1d2742/#1d2a4a`、`#4d7cff/#5b8cff`、`#0d1326/#0f1424/#101728/#12151f/#171b26/#1c2130`。
+- 裸 hex 字面量全文件扫描 **163 处 / 58 个不同值 / 25 个文件**。按本段采用的「只管样式面」边界（§9.5）复扫：**152 处 / 52 个不同值 / 24 个文件**。被排除的 11 处全部位于模板内联 SVG 插画内（`LimitDialog.vue` 5 处、`InstanceTrendChart.vue` 6 处），它们不是主题色而是嵌死的画素。
+- 24 个文件里 `styles/**` 占 3 个（`theme.ts` 15、`voice.less` 18、`variables.less` 5），其余 21 个是页面与组件。
+- 52 个 distinct 值中 **20 个与 demo 的 shell/voice 两套 token 逐字相同**；demo 有、本仓尚无对应值的 4 个：`#212a45`(surface-3)、`#2e3856`(border-strong)、`#a78bfa`(purple)、`#f0a05c`(orange)。剩下的存在大量互相打架的近似值：`#5b6478/#5b647c`、`#6b7280/#6b7285/#6d7688/#6f7891`、`#94a3b8/#9aa3b8/#9ca3af`、`#1e2740/#1e2742/#1d2742/#1d2a4a`、`#4d7cff/#5b8cff`、`#0d1326/#0f1424/#101728/#12151f/#171b26/#1c2130`。
 - token 现状是**四处**不同步：`variables.less` 6 个、`theme.ts` 16 个 ant token（注释自称「唯一主题事实来源」）、`voice.less:1-24` 的 `:root` 18 个 `--voice-*`（另一套暗色调色板，bg `#0a0b10`、accent `#8b7dff`）、`ConsoleLayout.vue` 19 处裸 hex。
 - 全部 less 文件中**没有任何 less 颜色函数调用**（`darken/lighten/fade/mix/saturate` 均无）；`voice.less` 用的是 `color-mix(in srgb, …)`。因此「less 变量转发到 CSS 变量」不会遇到编译期求值失败。
 - `ant-design-vue/es/locale/{zh_CN,en_US}.js` 与 `dayjs/locale/zh-cn.js` 均存在（已核实）。
@@ -321,7 +323,11 @@ export const TOKEN_ENFORCED_GLOBS: readonly string[] = [
 
 ### 9.4 强制范围的 ratchet
 
-`TOKEN_ENFORCED_GLOBS` **只增不减**。S1 实际处理 **5 个既有文件、60 处**：`styles/**` 38 处（`variables.less` 5 + `voice.less` 18 + `theme.ts` 15）+ `ConsoleLayout.vue` 19 处 + `LoginView.vue` 3 处。其余 **20 个文件、103 处**按附录 B 归属各子项目，在其重做该页时收进 `tokens.ts` 并把文件加入白名单。58 个近似值中未与 demo 重合的部分在各自页面重做时自然归并，S1 不提前裁决。
+`TOKEN_ENFORCED_GLOBS` **只增不减**。S1 实际处理 **5 个文件、60 处**：`styles/**` 38 处（`theme.ts` 15 + `voice.less` 18 + `variables.less` 5）+ `ConsoleLayout.vue` 19 处 + `LoginView.vue` 3 处。其余 **19 个文件、92 处**按附录 B 归属各子项目，在其重做该页时收进 `tokens.ts` 并把文件加入白名单。52 个近似值中未与 demo 重合的部分在各自页面重做时自然归并，S1 不提前裁决。
+
+### 9.5 禁令边界：只管样式面
+
+hex 禁令的作用面是**样式面**：`.less` / `.css` / `.ts` 的全文，加上 `.vue` 的 `<style>` 块。**模板内的内联 SVG `fill="#…"` 不在禁令内**——那是插画像素而非主题色，强行收进 `tokens.ts` 会把一次性图案的填充色伪装成设计 token。实测受影响的两处：`LimitDialog.vue`（5 处全在表情插画内，因此从附录 B 中整项消失）与 `InstanceTrendChart.vue`（9 处中 6 处在模板 SVG内，仅 3 处计入样式面）。
 
 ## 10. 两个新页的数据契约
 
@@ -400,7 +406,7 @@ GET /api/v1/traffic/settings        require_user；无写路径；不写 DB；�
 | i18n 对等 | 递归展平 `zh-CN` 与 `en-US`，键集合完全相等，每个值是非空字符串 |
 | navKey 可解析 | 遍历 `router.getRoutes()` 与 `frontOverlays` 的全部 `navKey`，在两语言树中均可解析 |
 | token 注入 | `applyTokens()` 后 `documentElement` 上每个 `--s2s-*` / `--voice-*` 均存在；`theme.ts` 引用的每个值都来自 `tokens.ts` |
-| hex 禁令 | 扫描 `TOKEN_ENFORCED_GLOBS` 命中文件，无裸 hex；白名单只有 `tokens.ts` 自身与 `color-mix()` 的 `#fff`/`#000` 端点。glob 解析由测试自己完成（`import.meta.glob` 或等价的路径匹配），**不引入新依赖** |
+| hex 禁令 | 扫描范围严格等于 §9.5 的样式面（`.less`/`.css`/`.ts` 全文 + `.vue` 的 `<style>` 块），且仅对 `TOKEN_ENFORCED_GLOBS` 命中的文件断言无裸 hex；白名单只有 `tokens.ts` 自身与 `color-mix()` 的 `#fff`/`#000` 端点。模板内联 SVG 不在扫描范围内。glob 解析由测试自己完成（`import.meta.glob` 或等价路径匹配），**不引入新依赖** |
 | 白名单单调收紧 | `TOKEN_ENFORCED_GLOBS` 只增不减（新增条目须同时提供该文件已无 hex 的证据） |
 | locale store | localStorage 命中 / `navigator.language` 回退 / 兜底 `zh-CN` 三条路径；写入后 localStorage 有值 |
 | router | 新 name 与 path；5 条 redirect 命中并规范化；`/console` 落 `overview`；`/` 仍是 `voice`；meta 的 `face`/`requiresAuth` 继承（更新既有 `router.spec.ts`） |

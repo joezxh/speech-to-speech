@@ -336,7 +336,7 @@ def parse_console_arguments(argv: Sequence[str]) -> tuple[ConsoleOptions, list[s
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `pytest tests/test_console_integration.py -q --basetemp=.pytest-tmp-plan`
-Expected: PASS（14 passed）
+Expected: PASS（22 passed：13 个用例函数，其中 2 个带 parametrize 共展开 9 个）
 
 - [ ] **Step 5: 提交**
 
@@ -648,7 +648,7 @@ def attachment_for_runtime(
 - [ ] **Step 4: 跑测试确认通过**
 
 Run: `pytest tests/test_console_integration.py -q --basetemp=.pytest-tmp-plan`
-Expected: PASS（25 passed）
+Expected: PASS（32 passed：Task 1 的 22 + 本任务 10）
 
 - [ ] **Step 5: 提交**
 
@@ -916,20 +916,36 @@ git commit -m "feat: mount the console app at the root of the realtime server"
 """A failed bind must not look like a clean shutdown (spec §5.3)."""
 from __future__ import annotations
 
-import uvicorn
+from contextlib import asynccontextmanager
+from threading import Event
+from types import SimpleNamespace
 
-from speech_to_speech.api.openai_realtime.pipeline_unit import PipelineUnit
+import uvicorn
+from fastapi import FastAPI
+
 from speech_to_speech.api.openai_realtime.server import RealtimeServer
 
 
-def _unit() -> PipelineUnit:
-    return PipelineUnit(index=0)
+def _unit() -> SimpleNamespace:
+    # A real PipelineUnit needs service/cancel_scope/four queues/five events;
+    # run() only reads .index through create_app, so a stub is enough here.
+    return SimpleNamespace(index=0, handlers=[], session=None)
+
+
+def _attachment() -> SimpleNamespace:
+    # create_app() mounts attachment.app at "/", so .app must be a real ASGI
+    # callable; the lifespan is never entered because no request is served.
+    @asynccontextmanager
+    async def lifespan(_app):
+        yield
+
+    return SimpleNamespace(app=FastAPI(), lifespan=lifespan)
 
 
 def _server(attachment):
-    from threading import Event
-
-    return RealtimeServer(stop_event=Event(), pool=[_unit()], host="127.0.0.1", port=8765, console_attachment=attachment)
+    return RealtimeServer(
+        stop_event=Event(), pool=[_unit()], host="127.0.0.1", port=8765, console_attachment=attachment
+    )
 
 
 def test_bind_failure_is_flagged_when_the_console_is_integrated(monkeypatch):
@@ -938,7 +954,7 @@ def test_bind_failure_is_flagged_when_the_console_is_integrated(monkeypatch):
             return None
 
     monkeypatch.setattr(uvicorn, "Server", FailedRun)
-    server = _server(attachment=object())
+    server = _server(attachment=_attachment())
 
     server.run()
 
@@ -952,7 +968,7 @@ def test_a_clean_bind_is_not_flagged(monkeypatch):
             self.started = True
 
     monkeypatch.setattr(uvicorn, "Server", CleanRun)
-    server = _server(attachment=object())
+    server = _server(attachment=_attachment())
 
     server.run()
 
@@ -973,7 +989,7 @@ def test_switch_off_keeps_the_old_exit_code_semantics(monkeypatch):
     assert server.stop_event.is_set()
 ```
 
-同时确认 `PipelineUnit` 的构造签名；若它不接受只带 `index` 的关键字，改成测试内的 `SimpleNamespace(index=0)` 并让 `_server` 的类型注解为 `list` —— 运行 `pytest` 后按报错调整，但**不得**为了测试去改 `PipelineUnit`。
+`PipelineUnit` 是 pydantic 模型，`index` 之外还有 `service` / `cancel_scope` / `should_listen` / `response_playing` / 四个队列 / `handlers` 七个必填字段，因此这里一律用 `SimpleNamespace` 桩，**不得**为了测试去改 `PipelineUnit`。
 
 - [ ] **Step 2: 跑测试确认失败**
 
@@ -1248,8 +1264,10 @@ def test_configured_runtime_forwards_the_attachment(monkeypatch):
         )
     )
     attachment = SimpleNamespace()
+    # build_configured_server itself checks len(config.pipelines) != 1.
+    config = SimpleNamespace(pipelines={"primary": object()})
 
-    runtime_module.build_configured_server(None, None, console_attachment=attachment)
+    runtime_module.build_configured_server(config, None, console_attachment=attachment)
 
     assert captured["console_attachment"] is attachment
 ```

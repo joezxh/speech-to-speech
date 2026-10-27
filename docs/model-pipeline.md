@@ -158,6 +158,10 @@ Session Prompt:
 
 ## 6. 常见调整场景与 compose 参数
 
+> 本节是**单旋钮**改法（一个场景改一个标志）。要按机器档位与现场现象一次套一组参数，
+> 去 [`deployment-tuning-playbook.md`](./deployment-tuning-playbook.md)；参数属性（默认值/范围/暴露级别/风险）
+> 去 [`parameter-catalog.md`](./parameter-catalog.md)。
+
 下面每个场景给出**在 `pipeline` 服务 `command:` 列表中追加 / 修改的片段**。compose 中
 布尔开关默认 True 时以 `--no_<flag>` 关闭（同现有 `--no_smart_turn` /
 `--no_enable_live_transcription`）；数值 / 字符串参数用「`- 标志` / `- 值`」两行。

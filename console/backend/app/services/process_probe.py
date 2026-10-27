@@ -21,6 +21,17 @@ class ProcessInfo:
     state: str = "unknown"
     detail: str = ""
 
+    def confirmed_stopped(self) -> bool:
+        """Supervisor positively reports the program is not running.
+
+        `unknown` (no socket — a dev box, or a console not co-located with the
+        pipeline's supervisord) is *absence of evidence*, not evidence of a
+        stopped process, so it must never be reported as stopped. This is the
+        same rule `status_service._pipeline_ok` and `runtime_service`
+        already apply, so `/instances` no longer contradicts the top bar.
+        """
+        return not self.running and self.state not in ("", "unknown")
+
 
 class ProcessProbe(Protocol):
     def state(self, name: str) -> ProcessInfo: ...

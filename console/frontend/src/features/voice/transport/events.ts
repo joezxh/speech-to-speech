@@ -1,4 +1,4 @@
-import type { TranscriptEntry, TranscriptTool } from '../types'
+import type { TranscriptAudio, TranscriptEntry, TranscriptTool } from '../types'
 
 interface Cell {
   /** Finalised text from `.done` events (assistant) — never overwritten downward. */
@@ -22,6 +22,29 @@ export interface ToolResultRecord extends ToolCallRecord {
   failed?: boolean
 }
 
+/**
+ * 一次转写更新。气泡层要的就是这个，不是最终列表：demo 客户端为此专门发
+ * `transcript` 事件（`s2s-realtime-client.js:619-635`）。reducer 是唯一的累加器，
+ * 所以下游信号由它广播，调用方不必再算一遍增量。
+ */
+export interface TranscriptDetail {
+  role: 'user' | 'assistant'
+  text: string
+  partial: boolean
+  /** 用户轮次的身份；助手更新里是空串。 */
+  itemId: string
+  /** 助手回复的身份；用户更新里是空串。 */
+  responseId: string
+}
+
+/** `SentAudioRecorder` 切出来的那一段，已经包成 WAV Blob 并由 store 换成了 object URL。 */
+export interface UserAudioRecord {
+  itemId: string
+  url: string
+  durationMs: number
+  truncated: boolean
+}
+
 function text(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
@@ -32,6 +55,12 @@ function text(value: unknown): string {
  */
 export class TranscriptReducer {
   readonly entries: TranscriptEntry[] = []
+
+  /**
+   * 每次转写变化都通知一次（`write` 是唯一入口，所以不会漏也不会重）。
+   * `null` = 没人在听：转写照常记账，抽屉不受影响。
+   */
+  onTranscript: ((detail: TranscriptDetail) => void) | null = null
 
   private readonly cells = new Map<string, Cell>()
 
@@ -58,13 +87,79 @@ export class TranscriptReducer {
 
   private write(key: string, role: 'user' | 'assistant', value: string, partial: boolean): void {
     const at = this.index.get(key)
-    const entry: TranscriptEntry = { key, role, text: value, partial }
+    const previous = at === undefined ? undefined : this.entries[at]
+    // 已经挂上的原音与计时属于「这一行」，不属于「文本的某一次更新」：demo 的
+    // `_updateHistMsg` 只改 `.hist-body`，播放器与 timings 节点都留在原地（chat.js:325-333）。
+    const entry: TranscriptEntry = {
+      key,
+      role,
+      text: value,
+      partial,
+      ...(previous?.audio ? { audio: previous.audio } : {}),
+      ...(previous?.latency ? { latency: previous.latency } : {}),
+      ...(previous?.interrupted ? { interrupted: previous.interrupted } : {})
+    }
     if (at === undefined) {
       this.index.set(key, this.entries.length)
       this.entries.push(entry)
     } else {
       this.entries[at] = entry
     }
+    // key 的前缀就是 `u:` / `a:`，去掉两个字即服务端给的 item_id / response_id。
+    this.onTranscript?.({
+      role,
+      text: value,
+      partial,
+      itemId: role === 'user' ? key.slice(2) : '',
+      responseId: role === 'assistant' ? key.slice(2) : ''
+    })
+  }
+
+  /**
+   * 原音挂到 `u:<itemId>` 那一行；行还不存在就先建一行空文本的用户条目
+   * （demo 的 `_ensureUserHist`：关掉 STT 时，音频是这一轮存在过的唯一痕迹）。
+   * 同一个 item 的投机续接会交出拼接后的整段 WAV，所以是替换而不是新增。
+   */
+  userAudio(recording: UserAudioRecord): boolean {
+    const key = `u:${recording.itemId}`
+    const audio: TranscriptAudio = {
+      url: recording.url,
+      durationMs: recording.durationMs,
+      truncated: recording.truncated
+    }
+    const at = this.index.get(key)
+    if (at === undefined) {
+      this.index.set(key, this.entries.length)
+      this.entries.push({ key, role: 'user', text: '', partial: false, audio })
+      return true
+    }
+    this.entries[at] = { ...this.entries[at], audio }
+    return true
+  }
+
+  /**
+   * 被用户插话的回复（demo `chat.js:615-627`）：`response.done` 报 `cancelled`。
+   * 已收到多少字就留多少，只补一枚 `Interrupted` 标记；转写事件完全没赶到时，
+   * 用 `response.done` 自带的 `transcript` 补建一行（否则打断在历史里完全看不出来）。
+   *
+   * 这里不发 `onTranscript`：demo 只改历史行（`_markHistInterrupted`），舞台上那只气泡
+   * 早就按自己的计时淡出，不能因为一个迟到的标记被重新点亮（不会调 `_bumpDismiss`）。
+   */
+  interrupt(responseId: string, transcript: string): boolean {
+    if (!responseId) return false
+    const key = `a:${responseId}`
+    const at = this.index.get(key)
+    if (at === undefined) {
+      if (!transcript) return false
+      this.cell(key).full = transcript
+      this.index.set(key, this.entries.length)
+      this.entries.push({ key, role: 'assistant', text: transcript, partial: false, interrupted: true })
+      return true
+    }
+    const previous = this.entries[at]
+    if (transcript) this.cell(key).full = transcript
+    this.entries[at] = { ...previous, text: transcript || previous.text, partial: false, interrupted: true }
+    return true
   }
 
   /** tool 条目的 key 与渲染都由调用 ID 决定，重复通知只替换不新增。 */
@@ -117,6 +212,15 @@ export class TranscriptReducer {
   private remove(key: string): void {
     const at = this.index.get(key)
     if (at === undefined) return
+    // 挂着原音的行不能整行消失：转写失败或被剪空只是「没字」，不是「没说话」。
+    // demo 的历史只增不减，空文本 + 播放器就是这一轮的记录（`_updateHistMsg` 的 `body.hidden`）。
+    const previous = this.entries[at]
+    const audio = previous.audio
+    if (audio) {
+      this.entries[at] = { key, role: previous.role, text: '', partial: false, audio }
+      this.cells.delete(key)
+      return
+    }
     this.entries.splice(at, 1)
     this.index.clear()
     this.entries.forEach((entry, i) => this.index.set(entry.key, i))

@@ -42,6 +42,18 @@ describe('runtime card text', () => {
     expect(modelText(stage)).toBe('不可用 · pipeline_stopped')
   })
 
+  it('keeps a loaded stage honest when no call was traced to name it', () => {
+    // Deployed STT/LLM are not instrumented, so a running stage has no name yet
+    // is still loaded — say so plainly rather than an 'unavailable' code.
+    const stage = stageFixture({
+      loaded: true,
+      modelName: null,
+      reasons: { queueDepth: 'queue_depth_not_exposed' }
+    })
+    expect(loadLabel(stage.loaded)).toBe('loaded')
+    expect(modelText(stage)).toBe('已加载 · 窗口内无调用样本')
+  })
+
   it('renders p50 / p95 when they exist and a reason when they do not', () => {
     expect(latencyText(stageFixture())).toBe('420 / 980 ms')
     expect(firstByteText(stageFixture())).toBe('110 ms')

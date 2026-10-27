@@ -35,7 +35,9 @@ describe('shell routing', () => {
     expect(resolved.meta.requiresAuth).toBe(true)
   })
 
-  it('leaves the voice face anonymous', () => {
-    expect(makeRouter().resolve('/').meta.requiresAuth).toBeFalsy()
+  it('gates the voice face behind auth like the console face', () => {
+    const resolved = makeRouter().resolve('/')
+    expect(resolved.meta.face).toBe('voice')
+    expect(resolved.meta.requiresAuth).toBe(true)
   })
 })

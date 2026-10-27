@@ -49,13 +49,23 @@ export interface TranscriptEntry {
    * 取不到时是 `undefined`——条目只显示文本，不显示一排 0。
    */
   latency?: TurnLatency
+  /**
+   * 被用户插话打断的助手回复（demo `.hist-msg.interrupted` + `.hist-note`）。
+   * 文本只留已经收到的那部分，行不消失。
+   */
+  interrupted?: boolean
 }
 
 /** 舞台上右上角一闪而过的气泡（demo 的 `#bubble-stack`）。 */
 export interface Bubble {
   id: number
   role: 'user' | 'tool' | 'assistant'
+  /** 占位状态是空串：demo 的 `.bubble-body[hidden]` 靠它决定要不要显示文本。 */
   text: string
+  /** 语音占位气泡：还没有转写时先放波形与状态词（demo 的 `.bubble.voice`）。 */
+  voice: boolean
+  /** 只在 `voice` 为真时有值，决定状态词写「聆听中」还是「正在发送语音」。 */
+  voiceState: 'listening' | 'sending' | null
 }
 
 /** The metering fields the server bolts onto every grant (demo/server.py:653-660). */

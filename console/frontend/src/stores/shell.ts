@@ -13,6 +13,8 @@ export const useShellStore = defineStore('shell', () => {
   const siderCollapsed = ref(localStorage.getItem(COLLAPSED_KEY) === '1')
   const drawerOpen = ref(false)
   const voiceOverlay = ref<VoiceOverlay | null>(null)
+  /** 额度弹窗的请求信号：顶栏的账号 chip 在对话页之外，通过它与 VoiceView 通信。 */
+  const limitOpen = ref(false)
 
   function toggleSider(): void {
     siderCollapsed.value = !siderCollapsed.value
@@ -33,5 +35,24 @@ export const useShellStore = defineStore('shell', () => {
     voiceOverlay.value = null
   }
 
-  return { siderCollapsed, drawerOpen, voiceOverlay, toggleSider, closeDrawer, openOverlay, closeOverlay }
+  function openLimit(): void {
+    limitOpen.value = true
+  }
+
+  function closeLimit(): void {
+    limitOpen.value = false
+  }
+
+  return {
+    siderCollapsed,
+    drawerOpen,
+    voiceOverlay,
+    limitOpen,
+    toggleSider,
+    closeDrawer,
+    openOverlay,
+    closeOverlay,
+    openLimit,
+    closeLimit
+  }
 })
