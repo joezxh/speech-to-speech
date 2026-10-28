@@ -4,11 +4,14 @@ import auth from './auth'
 import common from './common'
 import deploy from './deploy'
 import errors from './errors'
+import latency from './latency'
+import logs from './logs'
 import machines from './machines'
 import nav from './nav'
 import release from './release'
 import sessionUpdate from './sessionUpdate'
 import shell from './shell'
+import voice from './voice'
 import voices from './voices'
 
-export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices }
+export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices, voice, logs, latency }

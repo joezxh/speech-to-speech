@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import dayjs, { type Dayjs } from 'dayjs'
 import { computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { useLogFollow } from '@/composables/useLogFollow'
 import { useLogsStore } from '@/stores/logs'
@@ -15,6 +16,8 @@ import type { LogLine } from '@/types/logs'
  */
 const props = defineProps<{ live: boolean }>()
 const emit = defineEmits<{ follow: [value: boolean]; refresh: []; analyze: [] }>()
+
+const { t } = useI18n()
 
 const store = useLogsStore()
 useLogFollow()
@@ -61,7 +64,7 @@ onMounted(() => {
 <template>
   <section class="logs">
     <div class="logs__head">
-      <span class="logs__title">日志</span>
+      <span class="logs__title">{{ t('logs.title') }}</span>
       <a-select
         v-model:value="store.filters.process"
         mode="multiple"
@@ -76,7 +79,7 @@ onMounted(() => {
         mode="multiple"
         size="small"
         style="min-width: 160px"
-        placeholder="全部级别"
+        :placeholder="t('logs.levelsAll')"
         :options="LEVEL_OPTIONS"
         :max-tag-count="2"
         @change="store.reload()"
@@ -85,7 +88,7 @@ onMounted(() => {
         size="small"
         show-time
         :value="range"
-        :placeholder="['起始时间', '结束时间']"
+        :placeholder="[t('logs.rangeFrom'), t('logs.rangeTo')]"
         @change="onRangeChange"
       />
       <a-input-search
@@ -93,21 +96,21 @@ onMounted(() => {
         size="small"
         allow-clear
         :maxlength="200"
-        placeholder="关键字（大小写不敏感）"
+        :placeholder="t('logs.searchPlaceholder')"
         style="width: 200px"
         @search="store.reload()"
       />
       <span class="logs__live">
-        尾部跟随
+        {{ t('logs.followTail') }}
         <a-switch
           size="small"
           :checked="props.live"
           @update:checked="emit('follow', $event as boolean)"
         />
       </span>
-      <a-button size="small" :loading="store.loading" @click="emit('refresh')">刷新</a-button>
+      <a-button size="small" :loading="store.loading" @click="emit('refresh')">{{ t('logs.refresh') }}</a-button>
       <a-button size="small" type="primary" :loading="store.pending" @click="emit('analyze')">
-        分析
+        {{ t('logs.analyze') }}
       </a-button>
     </div>
 
@@ -116,7 +119,7 @@ onMounted(() => {
       v-if="store.reset"
       type="warning"
       show-icon
-      message="日志已轮转，已从头重读"
+      :message="t('logs.rotated')"
     />
 
     <pre v-if="store.lines.length" class="logs__body"><span
@@ -125,12 +128,12 @@ onMounted(() => {
       class="logs__line"
     ><span class="t">{{ formatTime(line.ts) }}</span> <span class="p">{{ line.process }}</span> <span class="lv" :class="levelClass(line.level)">{{ line.level }}</span> <span class="m">{{ line.text }}</span>
 </span></pre>
-    <a-empty v-else :description="store.loading ? '读取中…' : '该时间窗没有日志行'" />
+    <a-empty v-else :description="store.loading ? t('logs.loading') : t('logs.empty')" />
 
     <div class="logs__foot">
       <span>cursor {{ cursorShort }}</span>
-      <span>{{ store.scanned.files }} 个文件 / {{ store.scanned.bytes }} 字节</span>
-      <span v-if="store.truncated" class="logs__cut">已截断，缩小时间范围再看</span>
+      <span>{{ t('logs.scanned', { files: store.scanned.files, bytes: store.scanned.bytes }) }}</span>
+      <span v-if="store.truncated" class="logs__cut">{{ t('logs.truncated') }}</span>
     </div>
   </section>
 </template>

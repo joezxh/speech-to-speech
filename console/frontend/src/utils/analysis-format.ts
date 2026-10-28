@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import type { LogAnalysis } from '@/types/logs'
 import { groupThousands } from '@/utils/format'
 
@@ -6,16 +7,17 @@ import { groupThousands } from '@/utils/format'
  * 这一行不是修饰——截断与否决定了这份结论能看到多少证据。
  */
 export function sentSummary(sent: LogAnalysis['sent']): string {
-  const tokens = `约 ${(sent.estimatedTokens / 1000).toFixed(1)}k tokens（估算）`
-  const dropped = sent.truncated ? ` · 已截断 ${groupThousands(sent.droppedLines)} 行` : ''
-  // 0 条不写：`附带 0 条轮次` 只会让人怀疑哪里出了错。
-  const turns = sent.turnRows > 0 ? ` · 附带 ${groupThousands(sent.turnRows)} 条轮次` : ''
-  return `已送入 ${groupThousands(sent.lines)} 行 / ${tokens}${dropped}${turns}`
+  const sep = ' · '
+  const base = `${i18n.global.t('logs.sent.lines', { n: groupThousands(sent.lines) })} / ${i18n.global.t('logs.sent.approxTokens', { n: (sent.estimatedTokens / 1000).toFixed(1) })}`
+  const dropped = sent.truncated ? `${sep}${i18n.global.t('logs.sent.dropped', { n: groupThousands(sent.droppedLines) })}` : ''
+  // 0 条不写：附带 0 条轮次只会让人怀疑哪里出了错。
+  const turns = sent.turnRows > 0 ? `${sep}${i18n.global.t('logs.sent.turns', { n: groupThousands(sent.turnRows) })}` : ''
+  return `${base}${dropped}${turns}`
 }
 
 /** 置信度是一个 0–1 的数，界面只说高 / 中 / 低。 */
 export function confidenceText(value: number): string {
-  return value >= 0.7 ? '高' : value >= 0.4 ? '中' : '低'
+  return value >= 0.7 ? i18n.global.t('logs.confidence.high') : value >= 0.4 ? i18n.global.t('logs.confidence.medium') : i18n.global.t('logs.confidence.low')
 }
 
 export type RiskLevel = 'ok' | 'warn' | 'bad'

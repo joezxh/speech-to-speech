@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { dbToPercent, GATE_MAX_DB, GATE_OFF_DB } from '../audio/meter'
 import type { VoiceSettings } from '../types'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean
@@ -69,7 +72,7 @@ function save(): void {
         <div class="v-endpoint">
           <span class="v-endpoint__tag">{{ pipeline.container || 'pipeline' }}</span>
           <code class="v-endpoint__url">{{ pipeline.baseUrl || 'not configured' }}</code>
-          <router-link class="v-endpoint__link" :to="{ name: 'params' }">运维台 ↗</router-link>
+          <router-link class="v-endpoint__link" :to="{ name: 'params' }">{{ t('voice.settings.opsConsole') }} ↗</router-link>
         </div>
         <small class="v-hint">
           Status probes (/v1/pool), parameter updates and the voice link all go to this one pipeline.

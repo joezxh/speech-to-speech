@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import type { LogAnalysis, LogCritical } from '@/types/logs'
 import { confidenceText, riskLevel, sentSummary } from '@/utils/analysis-format'
@@ -17,13 +18,15 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ retry: [] }>()
 
-const errorColumns = [
-  { title: '签名', dataIndex: 'signature', key: 'signature' },
-  { title: '次数', dataIndex: 'count', key: 'count', width: 80 },
-  { title: '首次出现', key: 'firstSeen', width: 170 },
-  { title: '最后出现', key: 'lastSeen', width: 170 },
-  { title: '级别', dataIndex: 'level', key: 'level', width: 90 }
-]
+const { t } = useI18n()
+
+const errorColumns = computed(() => [
+  { title: t('logs.analysis.columns.signature'), dataIndex: 'signature', key: 'signature' },
+  { title: t('logs.analysis.columns.count'), dataIndex: 'count', key: 'count', width: 80 },
+  { title: t('logs.analysis.columns.firstSeen'), key: 'firstSeen', width: 170 },
+  { title: t('logs.analysis.columns.lastSeen'), key: 'lastSeen', width: 170 },
+  { title: t('logs.analysis.columns.level'), dataIndex: 'level', key: 'level', width: 90 }
+])
 
 const errorRows = computed(() =>
   (props.analysis?.result.errors ?? []).map((row, index) => ({ ...row, key: `${row.signature}:${index}` }))
@@ -51,7 +54,7 @@ const actions = computed(() => props.analysis?.result.actions ?? [])
 <template>
   <section class="an">
     <div class="an__head">
-      <span class="an__title">日志归纳</span>
+      <span class="an__title">{{ t('logs.analysis.title') }}</span>
       <span v-if="analysis" class="an__meta">
         {{ analysis.model }} · {{ groupThousands(analysis.durationMs) }} ms
       </span>
@@ -60,7 +63,7 @@ const actions = computed(() => props.analysis?.result.actions ?? [])
 
     <div v-if="error" class="an__fail">
       <a-alert type="error" show-icon :message="error" />
-      <a-button size="small" :loading="pending" @click="emit('retry')">重试</a-button>
+      <a-button size="small" :loading="pending" @click="emit('retry')">{{ t('logs.analysis.retry') }}</a-button>
     </div>
 
     <template v-else-if="analysis">
@@ -68,7 +71,7 @@ const actions = computed(() => props.analysis?.result.actions ?? [])
       <p class="an__sent">{{ sentSummary(analysis.sent) }}</p>
 
       <div class="an__block">
-        <h3 class="an__label">错误签名</h3>
+        <h3 class="an__label">{{ t('logs.analysis.errorsBlock') }}</h3>
         <a-table
           size="small"
           :columns="errorColumns"
@@ -89,8 +92,8 @@ const actions = computed(() => props.analysis?.result.actions ?? [])
       </div>
 
       <div class="an__block">
-        <h3 class="an__label">关键影响</h3>
-        <a-empty v-if="!criticalRows.length" description="模型未指出关键影响" />
+        <h3 class="an__label">{{ t('logs.analysis.criticalBlock') }}</h3>
+        <a-empty v-if="!criticalRows.length" :description="t('logs.analysis.criticalEmpty')" />
         <ul v-else class="an__list">
           <li v-for="(row, index) in criticalRows" :key="`${row.signature}:${index}`" class="an__row">
             <div class="an__row-head">
@@ -104,13 +107,13 @@ const actions = computed(() => props.analysis?.result.actions ?? [])
       </div>
 
       <div class="an__block">
-        <h3 class="an__label">根因假设</h3>
-        <a-empty v-if="!rootCauses.length" description="模型未给出根因" />
+        <h3 class="an__label">{{ t('logs.analysis.rootCausesBlock') }}</h3>
+        <a-empty v-if="!rootCauses.length" :description="t('logs.analysis.rootCausesEmpty')" />
         <ul v-else class="an__list">
           <li v-for="(row, index) in rootCauses" :key="`rc:${index}`" class="an__row">
             <div class="an__row-head">
               <span class="an__text">{{ row.hypothesis }}</span>
-              <a-tag>置信度 {{ confidenceText(row.confidence) }}</a-tag>
+              <a-tag>{{ t('logs.analysis.confidence', { value: confidenceText(row.confidence) }) }}</a-tag>
             </div>
             <p class="an__evidence">{{ row.evidence }}</p>
           </li>
@@ -118,8 +121,8 @@ const actions = computed(() => props.analysis?.result.actions ?? [])
       </div>
 
       <div class="an__block">
-        <h3 class="an__label">建议动作</h3>
-        <a-empty v-if="!actions.length" description="模型未给出动作" />
+        <h3 class="an__label">{{ t('logs.analysis.actionsBlock') }}</h3>
+        <a-empty v-if="!actions.length" :description="t('logs.analysis.actionsEmpty')" />
         <ul v-else class="an__list">
           <li v-for="(row, index) in actions" :key="`ac:${index}`" class="an__row">
             <div class="an__row-head">
@@ -129,13 +132,13 @@ const actions = computed(() => props.analysis?.result.actions ?? [])
               </a-tag>
             </div>
             <p class="an__evidence">{{ row.detail }}</p>
-            <p class="an__evidence">预期效果：{{ row.expectedEffect }}</p>
+            <p class="an__evidence">{{ t('logs.analysis.expectedEffect', { value: row.expectedEffect }) }}</p>
           </li>
         </ul>
       </div>
     </template>
 
-    <a-empty v-else :description="pending ? '归纳中…' : '尚未分析：点「分析」把当前日志窗口交给回环模型'" />
+    <a-empty v-else :description="pending ? t('logs.analysis.analyzing') : t('logs.analysis.notAnalyzed')" />
   </section>
 </template>
 

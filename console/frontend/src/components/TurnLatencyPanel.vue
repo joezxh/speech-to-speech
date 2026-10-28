@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import { fetchTurnLatency } from '@/api/turn-latency'
@@ -21,6 +22,8 @@ import { formatTime, groupThousands } from '@/utils/format'
  * 轮次窗口必须相等，而它们本来只在「排查这一次」时才该被人为对齐。
  */
 const props = withDefaults(defineProps<{ windowMinutes?: number }>(), { windowMinutes: 15 })
+
+const { t } = useI18n()
 
 type Preset = '15m' | '1h' | '24h'
 
@@ -59,18 +62,18 @@ const rows = computed(() =>
   }))
 )
 
-const columns = [
-  { title: '记录时间', key: 'loggedAt', width: 170 },
-  { title: '响应', key: 'responseKey', width: 130 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+const columns = computed(() => [
+  { title: t('latency.columns.loggedAt'), key: 'loggedAt', width: 170 },
+  { title: t('latency.columns.response'), key: 'responseKey', width: 130 },
+  { title: t('latency.columns.status'), dataIndex: 'status', key: 'status', width: 100 },
   { title: 'E2E', key: 'e2eMs', width: 110 },
-  { title: 'VAD 决策', key: 'vadDecisionMs', width: 110 },
+  { title: t('latency.columns.vadDecision'), key: 'vadDecisionMs', width: 110 },
   { title: 'smart', key: 'smartStatus', width: 90 },
   { title: 'STT', key: 'sttMs', width: 100 },
   { title: 'LLM', key: 'llmMs', width: 100 },
   { title: 'TTS TTFA', key: 'ttsTtfaMs', width: 110 },
   { title: 'hold', key: 'holdMs', width: 100 }
-]
+])
 
 async function load(): Promise<void> {
   loading.value = true
@@ -81,7 +84,7 @@ async function load(): Promise<void> {
     error.value = ''
   } catch (caught) {
     // 一次读取失败不清空上一页：正是需要看历史的时候。
-    error.value = caught instanceof AppError ? caught.message : '轮次延迟不可读'
+    error.value = caught instanceof AppError ? caught.message : t('latency.unreadable')
   } finally {
     loading.value = false
   }
@@ -98,7 +101,7 @@ onMounted(() => void load())
 <template>
   <section class="tl">
     <div class="tl__head">
-      <span class="tl__title">轮次延迟</span>
+      <span class="tl__title">{{ t('latency.title') }}</span>
       <a-button-group size="small">
         <a-button
           v-for="item in PRESETS"
@@ -117,41 +120,41 @@ onMounted(() => void load())
         mode="multiple"
         size="small"
         style="min-width: 200px"
-        placeholder="全部状态"
+        :placeholder="t('latency.statusAll')"
         :options="STATUS_OPTIONS"
         :max-tag-count="2"
         @change="load()"
       />
-      <a-button size="small" :loading="loading" @click="load()">刷新</a-button>
+      <a-button size="small" :loading="loading" @click="load()">{{ t('latency.refresh') }}</a-button>
       <span v-if="page" class="tl__meta">
-        {{ groupThousands(page.summary.count) }} 条 · {{ lagText(page.index.lagS) }}
+        {{ t('latency.turnsCount', { count: groupThousands(page.summary.count) }) }} · {{ lagText(page.index.lagS) }}
       </span>
     </div>
 
     <a-alert v-if="error" type="error" show-icon :message="error" />
 
     <div v-if="unavailable" class="tl__agg tl__agg--off">
-      <span class="tl__off">不可用 · <code>{{ reason }}</code></span>
+      <span class="tl__off">{{ t('latency.unavailable') }} · <code>{{ reason }}</code></span>
       <span v-if="reason === 'index_lag'" class="tl__note">
-        {{ lagText(page?.index.lagS ?? null) }}，聚合值不可当现状看
+        {{ t('latency.indexLagNote', { lag: lagText(page?.index.lagS ?? null) }) }}
       </span>
     </div>
-    <a-empty v-else-if="emptyWindow" description="该时间窗没有轮次记录" />
+    <a-empty v-else-if="emptyWindow" :description="t('latency.empty')" />
     <div v-else-if="summary" class="tl__agg">
       <div class="tl__grid">
         <div class="tl__cell">
-          <span class="tl__k">轮次</span>
+          <span class="tl__k">{{ t('latency.metric.turns') }}</span>
           <span class="tl__v">{{ groupThousands(summary.count) }}</span>
         </div>
         <div class="tl__cell">
-          <span class="tl__k">四态</span>
+          <span class="tl__k">{{ t('latency.metric.states') }}</span>
           <span class="tl__v">
             {{ summary.completed }} / {{ summary.failed }} / {{ summary.cancelled }} /
             {{ summary.incomplete }}
           </span>
         </div>
         <div class="tl__cell">
-          <span class="tl__k">失败率</span>
+          <span class="tl__k">{{ t('latency.metric.failureRate') }}</span>
           <span class="tl__v">{{ failureRateText(summary.failureRate) }}</span>
         </div>
         <div class="tl__cell">
@@ -174,7 +177,7 @@ onMounted(() => void load())
           <span class="tl__v">{{ stageStats(summary.stages.ttsTtfa) }}</span>
         </div>
         <div class="tl__cell">
-          <span class="tl__k">VAD 决策 p50 · p95</span>
+          <span class="tl__k">{{ t('latency.metric.vadDecision') }}</span>
           <span class="tl__v">{{ stageStats(summary.stages.vadDecision) }}</span>
         </div>
         <div class="tl__cell">
@@ -182,8 +185,8 @@ onMounted(() => void load())
           <span class="tl__v">{{ stageStats(summary.stages.hold) }}</span>
         </div>
         <div class="tl__cell">
-          <span class="tl__k">hold 不可用</span>
-          <span class="tl__v">{{ groupThousands(summary.stages.hold.unavailableCount) }} 条</span>
+          <span class="tl__k">{{ t('latency.metric.holdUnavailable') }}</span>
+          <span class="tl__v">{{ t('latency.turnsCount', { count: groupThousands(summary.stages.hold.unavailableCount) }) }}</span>
         </div>
       </div>
     </div>
@@ -203,7 +206,7 @@ onMounted(() => void load())
           <span :title="record.responseKey">{{ responseKeyShort(record.responseKey) }}</span>
         </template>
         <template v-else-if="column.key === 'smartStatus'">
-          {{ record.smartStatus ?? '不可用' }}
+          {{ record.smartStatus ?? t('latency.unavailable') }}
         </template>
         <template v-else-if="column.key === 'e2eMs'">{{ stageValue(record.e2eMs) }}</template>
         <template v-else-if="column.key === 'vadDecisionMs'">
@@ -218,7 +221,7 @@ onMounted(() => void load())
 
     <div class="tl__foot">
       <span>{{ E2E_NOTE }}</span>
-      <span v-if="page?.truncated" class="tl__cut">明细已截断，缩小时间范围再看</span>
+      <span v-if="page?.truncated" class="tl__cut">{{ t('latency.rowsTruncated') }}</span>
     </div>
   </section>
 </template>
