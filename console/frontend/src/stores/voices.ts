@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 
 import { AppError } from '@/api/client'
 import * as voicesApi from '@/api/voices'
+import i18n from '@/i18n'
 import type { CreateVoiceForm, VoiceBackend, VoiceFilter, VoiceRow } from '@/types/voice-library'
 
 export const useVoicesStore = defineStore('voices', () => {
@@ -29,7 +30,7 @@ export const useVoicesStore = defineStore('voices', () => {
       rows.value = data.list
       total.value = data.total
     } catch (caught) {
-      error.value = caught instanceof AppError ? caught : new AppError('unknown', '音色库加载失败')
+      error.value = caught instanceof AppError ? caught : new AppError('unknown', i18n.global.t('errors.load.voiceLibrary'))
       rows.value = []
       total.value = 0
     } finally {
@@ -41,7 +42,7 @@ export const useVoicesStore = defineStore('voices', () => {
     try {
       backends.value = (await voicesApi.listVoiceBackends()).list
     } catch (caught) {
-      error.value = caught instanceof AppError ? caught : new AppError('unknown', '后端清单加载失败')
+      error.value = caught instanceof AppError ? caught : new AppError('unknown', i18n.global.t('errors.load.backendManifest'))
     }
   }
 
@@ -53,7 +54,7 @@ export const useVoicesStore = defineStore('voices', () => {
       await load()
       return (await voicesApi.getVoice(created.id)) as VoiceRow
     } catch (caught) {
-      error.value = caught instanceof AppError ? caught : new AppError('unknown', '上传失败')
+      error.value = caught instanceof AppError ? caught : new AppError('unknown', i18n.global.t('errors.load.upload'))
       return null
     } finally {
       saving.value = false
@@ -68,7 +69,7 @@ export const useVoicesStore = defineStore('voices', () => {
       await load()
       return true
     } catch (caught) {
-      error.value = caught instanceof AppError ? caught : new AppError('unknown', '复制失败')
+      error.value = caught instanceof AppError ? caught : new AppError('unknown', i18n.global.t('errors.load.clone'))
       return false
     } finally {
       saving.value = false
@@ -85,7 +86,7 @@ export const useVoicesStore = defineStore('voices', () => {
     } catch (caught) {
       // 409 的 `detail` 是 [{field:"profiles",value:[…]},{field:"versions",value:N}]，
       // 不在这里翻译，交给 `describeInUse` 统一成一句固定文案。
-      error.value = caught instanceof AppError ? caught : new AppError('unknown', '删除失败')
+      error.value = caught instanceof AppError ? caught : new AppError('unknown', i18n.global.t('errors.load.delete'))
       return false
     } finally {
       saving.value = false
@@ -100,7 +101,7 @@ export const useVoicesStore = defineStore('voices', () => {
       if (index >= 0) rows.value[index] = row
       return row
     } catch (caught) {
-      error.value = caught instanceof AppError ? caught : new AppError('unknown', '音色详情读取失败')
+      error.value = caught instanceof AppError ? caught : new AppError('unknown', i18n.global.t('errors.load.voiceDetail'))
       return null
     }
   }

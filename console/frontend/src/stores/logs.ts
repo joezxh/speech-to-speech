@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 import { AppError } from '@/api/client'
 import { analyzeLogs, fetchLogs } from '@/api/logs'
+import i18n from '@/i18n'
 import type { LogAnalysis, LogLine, LogScanned, LogSource } from '@/types/logs'
 
 /**
@@ -76,7 +77,7 @@ export const useLogsStore = defineStore('logs', () => {
       error.value = ''
     } catch (caught) {
       // 一次读取失败不清空已加载的行：这正是需要看历史的时候。
-      error.value = caught instanceof AppError ? caught.message : '日志不可读'
+      error.value = caught instanceof AppError ? caught.message : i18n.global.t('errors.load.logs')
     } finally {
       loading.value = false
       inFlight = false
@@ -127,7 +128,7 @@ export const useLogsStore = defineStore('logs', () => {
       })
     } catch (caught) {
       // A.16：失败只在结果卡里说，不动左边的日志区。
-      analysisError.value = caught instanceof AppError ? caught.message : '日志归纳失败'
+      analysisError.value = caught instanceof AppError ? caught.message : i18n.global.t('errors.load.logAnalysis')
     } finally {
       pending.value = false
     }

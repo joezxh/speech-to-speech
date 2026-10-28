@@ -63,5 +63,7 @@ export default {
   free: 'free',
   gpuUnknown: 'GPU status unknown',
   gpuUnavailable: 'GPU unavailable · {reason}',
-  countLabel: '{total} entries · {unique} unique names · {multi} multi-backend fields'
+  countLabel: '{total} entries · {unique} unique names · {multi} multi-backend fields',
+  diffField: 'Field',
+  diffDraftValue: 'Draft value'
 }

@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 import { getCatalog } from '@/api/catalog'
 import { AppError } from '@/api/client'
+import i18n from '@/i18n'
 import type { CatalogEntry, Exposure } from '@/types/catalog'
 
 export const useCatalogStore = defineStore('catalog', () => {
@@ -25,7 +26,7 @@ export const useCatalogStore = defineStore('catalog', () => {
       generatedAt.value = data.generatedAt
       exposureCounts.value = data.exposureCounts
     } catch (caught) {
-      error.value = caught instanceof AppError ? caught : new AppError('unknown', '参数目录加载失败')
+      error.value = caught instanceof AppError ? caught : new AppError('unknown', i18n.global.t('errors.load.catalog'))
       entries.value = []
     } finally {
       loading.value = false

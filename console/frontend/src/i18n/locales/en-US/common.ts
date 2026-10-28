@@ -5,5 +5,7 @@ export default {
   statusDraining: 'Draining',
   statusIdle: 'Idle',
   statusActive: 'Active',
-  statusStuck: 'Stuck'
+  statusStuck: 'Stuck',
+  cancel: 'Cancel',
+  confirm: 'Confirm'
 }

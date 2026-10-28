@@ -27,5 +27,8 @@ export default {
   resultSummary: 'Updated {updated} connection(s); {failed} failed. Audit {auditId}',
   problemScopeAllNoTarget: 'scope=all does not need a target',
   problemPipelineTarget: 'target must be a unit index (integer)',
-  problemSessionTarget: 'target must be a session id'
+  problemSessionTarget: 'target must be a session id',
+  problemExtensionsNotObject: 'extensions must be a JSON object',
+  problemExtensionsInvalidJson: 'extensions is not valid JSON',
+  problemNothingToPatch: 'Fill in at least one field'
 }

@@ -4,6 +4,7 @@
  * “explicitly false/null” are different instructions. `null` here means the
  * operator never touched the control, and the field must not be sent at all.
  */
+import i18n from '@/i18n'
 
 export interface SessionForm {
   instructions: string
@@ -44,15 +45,15 @@ export function buildSessionPatch(form: SessionForm): BuiltPatch {
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         session.extensions = parsed
       } else {
-        problems.push('extensions 必须是 JSON 对象')
+        problems.push(i18n.global.t('sessionUpdate.problemExtensionsNotObject'))
       }
     } catch {
-      problems.push('extensions 不是合法 JSON')
+      problems.push(i18n.global.t('sessionUpdate.problemExtensionsInvalidJson'))
     }
   }
 
   if (Object.keys(session).length === 0 && problems.length === 0) {
-    problems.push('至少填写一个字段')
+    problems.push(i18n.global.t('sessionUpdate.problemNothingToPatch'))
   }
   return { session, problems }
 }

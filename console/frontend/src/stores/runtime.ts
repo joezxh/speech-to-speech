@@ -3,6 +3,7 @@ import { ref } from 'vue'
 
 import { AppError } from '@/api/client'
 import { fetchRuntime } from '@/api/runtime'
+import i18n from '@/i18n'
 import type { RuntimeSnapshot } from '@/types/runtime'
 
 /** A.14 的采集预算是 2s、服务端缓存 3s，5s 一拉刚好每次都是新帧。 */
@@ -26,7 +27,7 @@ export const useRuntimeStore = defineStore('runtime', () => {
     } catch (caught) {
       // 保留上一帧：一次采样失败不等于「模型消失了」（A.14）。清空会让四张卡
       // 在同一秒里从「已加载」跳到「未知」，看着像事故。
-      error.value = caught instanceof AppError ? caught.message : '模型运行时不可读'
+      error.value = caught instanceof AppError ? caught.message : i18n.global.t('errors.load.runtime')
     } finally {
       loading.value = false
       inFlight = false

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 
 import { api, AppError } from '@/api/client'
+import i18n from '@/i18n'
 import type { StatusSnapshot } from '@/types/api'
 import { readProfile, saveProfile } from '@/utils/storage'
 
@@ -19,7 +20,7 @@ export const useConsoleStore = defineStore('console', () => {
       // A dead backend is a state the top bar must show, not an exception the
       // layout should blow up on.
       status.value = null
-      statusError.value = error instanceof AppError ? error.message : '状态不可读'
+      statusError.value = error instanceof AppError ? error.message : i18n.global.t('errors.load.status')
     }
   }
 

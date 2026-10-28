@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import { getInstanceMetrics, getInstances } from '@/api/instances'
@@ -16,6 +17,7 @@ import type { InstanceMetricPoint, InstanceRow } from '@/types/api'
  */
 const consoleStore = useConsoleStore()
 const route = useRoute()
+const { t } = useI18n()
 
 const instances = ref<InstanceRow[]>([])
 const trendId = ref(String(route.query.id ?? ''))
@@ -45,7 +47,7 @@ async function loadInstances(): Promise<void> {
   } catch (caught) {
     instances.value = []
     actionError.value =
-      caught instanceof AppError ? caught : new AppError('unknown', '实例列表不可读')
+      caught instanceof AppError ? caught : new AppError('unknown', t('errors.load.instances'))
   }
 }
 
@@ -62,7 +64,7 @@ async function loadTrend(): Promise<void> {
   } catch (caught) {
     trendPoints.value = []
     actionError.value =
-      caught instanceof AppError ? caught : new AppError('unknown', '趋势不可读')
+      caught instanceof AppError ? caught : new AppError('unknown', t('errors.load.trends'))
   } finally {
     trendLoading.value = false
   }
@@ -90,7 +92,7 @@ onMounted(() => void reload())
         v-model:value="trendId"
         size="small"
         class="trends__pick"
-        placeholder="选择实例"
+        :placeholder="t('machines.trend.selectInstance')"
         :options="options"
       />
       <a-button-group size="small">
@@ -104,12 +106,12 @@ onMounted(() => void reload())
           {{ item.label }}
         </a-button>
       </a-button-group>
-      <a-button size="small" :loading="trendLoading" @click="reload">刷新</a-button>
+      <a-button size="small" :loading="trendLoading" @click="reload">{{ t('machines.trend.refresh') }}</a-button>
     </div>
 
     <ErrorBanner :error="actionError" />
 
-    <a-empty v-if="!trendId" description="没有可展示的实例" />
+    <a-empty v-if="!trendId" :description="t('machines.trend.empty')" />
     <a-spin v-else :spinning="trendLoading">
       <InstanceTrendChart :points="trendPoints" />
     </a-spin>

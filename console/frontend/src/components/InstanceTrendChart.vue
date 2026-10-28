@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import type { InstanceMetricPoint } from '@/types/api'
 import { dedupeByLatestObserver } from '@/utils/instances-view'
@@ -10,6 +11,7 @@ import { dedupeByLatestObserver } from '@/utils/instances-view'
  * 不引入图表库——沿用仓内手写 SVG 路线（spec §14）。
  */
 const props = defineProps<{ points: InstanceMetricPoint[] }>()
+const { t } = useI18n()
 
 const W = 600
 const H = 160
@@ -44,16 +46,16 @@ const single = computed(() => series.value.length < 2)
 
 <template>
   <div class="trend">
-    <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" role="img" aria-label="实例趋势">
+    <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" role="img" :aria-label="t('machines.trend.ariaLabel')">
       <polyline :points="sizeLine" fill="none" stroke="#4a90d9" stroke-width="1.5" />
       <polyline :points="freeLine" fill="none" stroke="#3fb950" stroke-width="1.5" />
       <polyline :points="probeLine" fill="none" stroke="#f59e0b" stroke-width="1.5" stroke-dasharray="4 3" />
     </svg>
-    <div v-if="single" class="trend__hint">采样点不足，趋势线稍后成形</div>
+    <div v-if="single" class="trend__hint">{{ t('machines.trend.hint') }}</div>
     <ul class="trend__legend">
-      <li><span class="trend__key" style="background: #4a90d9" />容量</li>
-      <li><span class="trend__key" style="background: #3fb950" />空闲</li>
-      <li><span class="trend__key" style="background: #f59e0b" />探测耗时</li>
+      <li><span class="trend__key" style="background: #4a90d9" />{{ t('machines.trend.legend.capacity') }}</li>
+      <li><span class="trend__key" style="background: #3fb950" />{{ t('machines.trend.legend.free') }}</li>
+      <li><span class="trend__key" style="background: #f59e0b" />{{ t('machines.trend.legend.probe') }}</li>
     </ul>
   </div>
 </template>

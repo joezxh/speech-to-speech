@@ -43,5 +43,13 @@ export default {
   size: 'Size',
   inUse: 'In use',
   poolUnreachable: 'Session pool unreachable (/v1/pool not responding)',
-  columnSession: 'Session'
+  columnSession: 'Session',
+  trend: {
+    selectInstance: 'Select instance',
+    refresh: 'Refresh',
+    empty: 'No instances to display',
+    ariaLabel: 'Instance trend',
+    hint: 'Not enough samples yet; the trend line will form shortly',
+    legend: { capacity: 'Capacity', free: 'Free', probe: 'Probe time' }
+  }
 }

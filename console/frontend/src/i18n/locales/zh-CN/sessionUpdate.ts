@@ -27,5 +27,8 @@ export default {
   resultSummary: '已更新 {updated} 条连接；失败 {failed} 条。审计号 {auditId}',
   problemScopeAllNoTarget: 'scope=all 不需要 target',
   problemPipelineTarget: 'target 必须是 unit 序号（整数）',
-  problemSessionTarget: 'target 必须是 session id'
+  problemSessionTarget: 'target 必须是 session id',
+  problemExtensionsNotObject: 'extensions 必须是 JSON 对象',
+  problemExtensionsInvalidJson: 'extensions 不是合法 JSON',
+  problemNothingToPatch: '至少填写一个字段'
 }

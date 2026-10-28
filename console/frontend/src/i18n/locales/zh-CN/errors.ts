@@ -43,5 +43,20 @@ export default {
   timeout: '请求超时',
   notFound: '接口或资源不存在',
   unknown: '未知错误',
-  fallback: '操作失败，请查看审计记录'
+  fallback: '操作失败，请查看审计记录',
+  load: {
+    catalog: '参数目录加载失败',
+    status: '状态不可读',
+    logs: '日志不可读',
+    logAnalysis: '日志归纳失败',
+    runtime: '模型运行时不可读',
+    voiceLibrary: '音色库加载失败',
+    backendManifest: '后端清单加载失败',
+    upload: '上传失败',
+    clone: '复制失败',
+    delete: '删除失败',
+    voiceDetail: '音色详情读取失败',
+    instances: '实例列表不可读',
+    trends: '趋势不可读'
+  }
 }

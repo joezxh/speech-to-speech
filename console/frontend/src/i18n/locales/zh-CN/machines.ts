@@ -43,5 +43,13 @@ export default {
   size: '大小',
   inUse: '占用',
   poolUnreachable: '会话池不可达（/v1/pool 无响应）',
-  columnSession: '会话'
+  columnSession: '会话',
+  trend: {
+    selectInstance: '选择实例',
+    refresh: '刷新',
+    empty: '没有可展示的实例',
+    ariaLabel: '实例趋势',
+    hint: '采样点不足，趋势线稍后成形',
+    legend: { capacity: '容量', free: '空闲', probe: '探测耗时' }
+  }
 }

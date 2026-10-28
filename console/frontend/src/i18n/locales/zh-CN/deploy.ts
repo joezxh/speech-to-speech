@@ -63,5 +63,7 @@ export default {
   free: '空闲',
   gpuUnknown: 'GPU 状态未知',
   gpuUnavailable: 'GPU 不可用 · {reason}',
-  countLabel: '{total} 条 · {unique} 个唯一名 · {multi} 个多后端字段'
+  countLabel: '{total} 条 · {unique} 个唯一名 · {multi} 个多后端字段',
+  diffField: '字段',
+  diffDraftValue: '草稿值'
 }

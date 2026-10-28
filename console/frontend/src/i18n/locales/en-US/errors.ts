@@ -43,5 +43,20 @@ export default {
   timeout: 'Request timed out',
   notFound: 'Endpoint or resource not found',
   unknown: 'Unknown error',
-  fallback: 'Operation failed, please check the audit log'
+  fallback: 'Operation failed, please check the audit log',
+  load: {
+    catalog: 'Failed to load the parameter catalog',
+    status: 'Status unreadable',
+    logs: 'Logs unreadable',
+    logAnalysis: 'Log analysis failed',
+    runtime: 'Model runtime unreadable',
+    voiceLibrary: 'Failed to load the voice library',
+    backendManifest: 'Failed to load the backend manifest',
+    upload: 'Upload failed',
+    clone: 'Duplicate failed',
+    delete: 'Delete failed',
+    voiceDetail: 'Failed to read voice details',
+    instances: 'Instance list unreadable',
+    trends: 'Trends unreadable'
+  }
 }
