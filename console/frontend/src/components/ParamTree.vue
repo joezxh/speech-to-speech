@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import type { CatalogEntry } from '@/types/catalog'
 import type { VoiceBackend } from '@/types/voice-library'
 import { groupByStage } from '@/utils/catalog-view'
+
+const { t } = useI18n()
 
 const props = defineProps<{
   entries: CatalogEntry[]
@@ -22,17 +25,17 @@ const extraBackends = computed(() => props.uncatalogued ?? [])
   <a-menu mode="inline" theme="dark" :selected-keys="selectedKeys" class="param-tree">
     <a-menu-item v-for="group in groups" :key="group.key" @click="emit('select', group.key)">
       <span class="param-tree__stage">{{ group.stage }}</span>
-      <span class="param-tree__backend">· {{ group.backend ?? '通用' }}</span>
-      <a-tag v-if="group.readOnly" class="param-tree__ro">只读</a-tag>
+      <span class="param-tree__backend">· {{ group.backend ?? t('deploy.commonBackend') }}</span>
+      <a-tag v-if="group.readOnly" class="param-tree__ro">{{ t('deploy.readOnlyTag') }}</a-tag>
       <a-tag class="param-tree__count">{{ group.items.length }}</a-tag>
     </a-menu-item>
   </a-menu>
   <!-- 分母来自 catalog 本身，不是当前分组的条数（§6.1 / 预览页 `catalog__count`）。 -->
-  <p class="param-tree__total">{{ groups.length }} 组 · 共 {{ entries.length }} 条</p>
+  <p class="param-tree__total">{{ t('deploy.treeTotal', { groups: groups.length, entries: entries.length }) }}</p>
 
   <!-- B4 目录化后端：字段没进机器目录，所以只说“这里是空的”，不给输入控件。 -->
   <div v-if="extraBackends.length" class="param-tree__extra">
-    <p class="param-tree__extra-title">未进目录的后端（{{ extraBackends.length }}）</p>
+    <p class="param-tree__extra-title">{{ t('deploy.uncataloguedBackends', { count: extraBackends.length }) }}</p>
     <p v-for="item in extraBackends" :key="`${item.stage}::${item.backend}`" class="param-tree__extra-row">
       <span class="param-tree__extra-name">{{ item.stage }} · {{ item.backend }}</span>
       <span class="param-tree__extra-note">{{ item.notes }}</span>

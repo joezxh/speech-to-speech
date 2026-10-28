@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ExposureTag from '@/components/ExposureTag.vue'
 import type { CatalogEntry } from '@/types/catalog'
 
 const props = defineProps<{ entry: CatalogEntry }>()
+const { t } = useI18n()
 
 /** 原因只由 `stage` 与 `type` 决定，不靠猜：合计 17 + 7 + 18 + 18 = 60。 */
 const reason = computed(() => {
-  if (props.entry.type === 'fixed') return '不可配置 · 源码常量'
-  if (props.entry.stage === 'deploy') return '平台维护 · 改它要重建镜像'
-  if (props.entry.stage === 'env') return '需重建容器'
-  if (props.entry.stage === 'client') return '属对话页客户端，不在运维面'
-  return '不可配置'
+  if (props.entry.type === 'fixed') return t('deploy.fixed.sourceConstant')
+  if (props.entry.stage === 'deploy') return t('deploy.fixed.platformMaintained')
+  if (props.entry.stage === 'env') return t('deploy.fixed.recreateContainer')
+  if (props.entry.stage === 'client') return t('deploy.fixed.clientSide')
+  return t('deploy.fixed.notConfigurable')
 })
 </script>
 
@@ -21,7 +23,7 @@ const reason = computed(() => {
     <div class="fixed-field__head">
       <span class="fixed-field__name">{{ entry.name }}</span>
       <ExposureTag :exposure="entry.exposure" />
-      <a-tag color="default">固定</a-tag>
+      <a-tag color="default">{{ t('deploy.fixedTag') }}</a-tag>
       <span class="fixed-field__reason">{{ reason }}</span>
     </div>
     <p class="fixed-field__ref">{{ entry.source_ref }}</p>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
@@ -20,6 +21,8 @@ import { countLabel, dedupe, groupByStage, isReadOnlyRow } from '@/utils/catalog
 import { baseline, buildPatch, resetValue, type Values } from '@/utils/draft-patch'
 import { formatTime } from '@/utils/format'
 import { bindings, slotKey, voiceIdIn, voiceSlot, type VoiceSlot } from '@/utils/voice-refs'
+
+const { t } = useI18n()
 
 const auth = useAuthStore()
 const consoleStore = useConsoleStore()
@@ -155,7 +158,7 @@ async function reload(): Promise<void> {
   try {
     await draftStore.load(consoleStore.profile)
   } catch (error) {
-    saveError.value = error instanceof AppError ? error : new AppError('unknown', '草稿读取失败')
+    saveError.value = error instanceof AppError ? error : new AppError('unknown', t('deploy.draftLoadFailed'))
   }
   // 音色库是旁路：读失败不影响参数页，只让选择器少几个选项。
   void voicesStore.load()
@@ -188,7 +191,7 @@ async function save(): Promise<void> {
   saveError.value = null
   notice.value = ''
   if (!dirty.value) {
-    notice.value = '没有改动'
+    notice.value = t('deploy.noticeNone')
     return
   }
   try {
@@ -197,25 +200,25 @@ async function save(): Promise<void> {
     // 「draft v0 · 谁 · 何时」与刚写进去的那一行一致，而不是停在「未编辑」。
     await draftStore.load(consoleStore.profile).catch(() => undefined)
     values.value = baseline(items.value, draftStore.draft)
-    notice.value = `草稿已保存（v${draftStore.baseVersion ?? 0}）`
+    notice.value = t('deploy.noticeSaved', { version: draftStore.baseVersion ?? 0 })
   } catch (error) {
-    saveError.value = error instanceof AppError ? error : new AppError('unknown', '保存失败')
+    saveError.value = error instanceof AppError ? error : new AppError('unknown', t('deploy.saveFailed'))
   }
 }
 
 async function discard(): Promise<void> {
   const confirmed = await askConfirm({
-    title: '丢弃草稿',
-    content: '草稿会被删除，已发布的版本不受影响。'
+    title: t('deploy.discard'),
+    content: t('deploy.discardConfirm')
   })
   if (!confirmed) return
   saveError.value = null
   try {
     await draftStore.discard(consoleStore.profile)
     values.value = baseline(items.value, draftStore.draft)
-    notice.value = '草稿已丢弃'
+    notice.value = t('deploy.noticeDiscarded')
   } catch (error) {
-    saveError.value = error instanceof AppError ? error : new AppError('unknown', '丢弃失败')
+    saveError.value = error instanceof AppError ? error : new AppError('unknown', t('deploy.discardFailed'))
   }
 }
 
@@ -223,7 +226,7 @@ async function discard(): Promise<void> {
 async function onPublished(): Promise<void> {
   await reload()
   await consoleStore.refreshStatus()
-  notice.value = '发布完成'
+  notice.value = t('deploy.noticePublished')
 }
 </script>
 
@@ -233,10 +236,10 @@ async function onPublished(): Promise<void> {
       <a-select
         :value="exposure"
         :options="[
-          { value: 'basic', label: 'basic · 直出' },
-          { value: 'advanced', label: 'advanced · 带建议值' },
-          { value: 'expert', label: 'expert · 折叠 + 警告' },
-          { value: 'ops', label: 'ops · 仅运维可见' }
+          { value: 'basic', label: t('deploy.exposure.basic') },
+          { value: 'advanced', label: t('deploy.exposure.advanced') },
+          { value: 'expert', label: t('deploy.exposure.expert') },
+          { value: 'ops', label: t('deploy.exposure.ops') }
         ]"
         class="params__exposure"
         @change="(value: unknown) => (exposure = value as Exposure)"
@@ -245,15 +248,15 @@ async function onPublished(): Promise<void> {
       <span class="params__count">{{ countText }}</span>
 
       <span class="params__meta">
-        draft v{{ draftStore.baseVersion ?? 0 }} · {{ draftStore.updatedBy || '未编辑' }}
+        draft v{{ draftStore.baseVersion ?? 0 }} · {{ draftStore.updatedBy || t('deploy.notEdited') }}
         <template v-if="draftStore.updatedAt"> · {{ formatTime(draftStore.updatedAt) }}</template>
       </span>
 
       <span class="params__spacer" />
 
-      <a-badge :status="dirty ? 'warning' : 'default'" :text="dirty ? '有未保存改动' : '无改动'" />
+      <a-badge :status="dirty ? 'warning' : 'default'" :text="dirty ? t('deploy.dirty') : t('deploy.clean')" />
       <a-button :disabled="(!dirty && !draftExists) || draftStore.saving" @click="discard">
-        丢弃草稿
+        {{ t('deploy.discard') }}
       </a-button>
       <a-button
         type="primary"
@@ -261,7 +264,7 @@ async function onPublished(): Promise<void> {
         :loading="draftStore.saving"
         @click="save"
       >
-        保存草稿
+        {{ t('deploy.saveDraft') }}
       </a-button>
       <!-- 本地有未保存改动时不能发：发出去的是库里的草稿，不是屏幕上看到的值。 -->
       <a-button
@@ -270,7 +273,7 @@ async function onPublished(): Promise<void> {
         :disabled="dirty || draftStore.saving"
         @click="publishOpen = true"
       >
-        发布
+        {{ t('deploy.publish') }}
       </a-button>
     </div>
 
@@ -278,16 +281,16 @@ async function onPublished(): Promise<void> {
       v-if="structural"
       type="warning"
       show-icon
-      message="仅校验了结构"
-      description="运行时包不在本进程，字段是否能被 pipeline 接受未经运行验证。"
+      :message="t('deploy.structuralOnly')"
+      :description="t('deploy.structuralDesc')"
     />
     <a-alert v-else-if="notice" type="info" show-icon :message="notice" />
     <a-alert
       v-if="groupReadOnly"
       type="info"
       show-icon
-      message="该组只读"
-      description="deploy / env / client 不在运维面可写范围：前两类改它要重建容器，第三类属对话页客户端。只读行不进 patch，也不会触发发布。"
+      :message="t('deploy.groupReadOnly')"
+      :description="t('deploy.groupReadOnlyDesc')"
     />
     <ErrorBanner :error="saveError" />
     <ErrorBanner :error="catalogStore.error" />
@@ -331,7 +334,7 @@ async function onPublished(): Promise<void> {
         <a-collapse v-if="folded.length" class="params__fold" ghost>
           <a-collapse-panel
             key="expert-ops"
-            :header="`expert / ops ${folded.length} 条（含 ${opsCount} 条仅运维可见）—— 展开前先读完警告`"
+            :header="t('deploy.foldHeader', { count: folded.length, ops: opsCount })"
           >
             <template v-for="row in foldedRows" :key="row.entry.key">
               <VoicePicker
@@ -359,11 +362,11 @@ async function onPublished(): Promise<void> {
           </a-collapse-panel>
         </a-collapse>
 
-        <a-empty v-if="!visible.length && !catalogStore.loading" description="该级别下没有参数" />
+        <a-empty v-if="!visible.length && !catalogStore.loading" :description="t('deploy.noParams')" />
       </section>
 
       <aside class="params__preview">
-        <h3>本次改动（{{ Object.keys(patch).length }}）</h3>
+        <h3>{{ t('deploy.changesTitle', { count: Object.keys(patch).length }) }}</h3>
         <DiffTable :draft="patch" :masked="draftStore.masked" />
       </aside>
     </div>

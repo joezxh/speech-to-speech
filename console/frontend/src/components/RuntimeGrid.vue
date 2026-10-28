@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import ModelRuntimeCard from '@/components/ModelRuntimeCard.vue'
 import { describeAlert } from '@/utils/error'
 import { DASH, formatTime } from '@/utils/format'
 import { gpuHeadline } from '@/utils/runtime-view'
 import type { RuntimeSnapshot } from '@/types/runtime'
+
+const { t } = useI18n()
 
 const props = defineProps<{ snapshot: RuntimeSnapshot | null; loading: boolean; error: string }>()
 
@@ -27,13 +30,11 @@ const barLevel = computed<'ok' | 'warn' | 'bad'>(() => {
 <template>
   <section class="runtime">
     <div class="runtime__head">
-      <span class="runtime__title">模型运行时</span>
+      <span class="runtime__title">{{ t('deploy.runtimeTitle') }}</span>
       <span class="runtime__gpu">{{ gpuHeadline(gpu) }}</span>
       <span class="runtime__meta">
-        <template v-if="snapshot">
-          采样于 {{ formatTime(snapshot.collectedAt) }} · 窗口 {{ snapshot.windowS }}s
-        </template>
-        <template v-else>{{ loading ? '采样中…' : DASH }}</template>
+        <template v-if="snapshot">{{ t('deploy.sampledAt', { time: formatTime(snapshot.collectedAt), window: snapshot.windowS }) }}</template>
+        <template v-else>{{ loading ? t('deploy.sampling') : DASH }}</template>
       </span>
     </div>
 
@@ -61,7 +62,7 @@ const barLevel = computed<'ok' | 'warn' | 'bad'>(() => {
       <ModelRuntimeCard v-for="stage in stages" :key="stage.stage" :stage="stage" :gpu="gpu" />
     </div>
 
-    <a-empty v-else description="还没有模型运行时数据" />
+    <a-empty v-else :description="t('deploy.noRuntimeData')" />
   </section>
 </template>
 

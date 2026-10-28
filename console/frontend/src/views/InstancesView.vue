@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { AppError } from '@/api/client'
@@ -25,6 +26,7 @@ const runtime = useRuntimeStore()
 const logs = useLogsStore()
 const auth = useAuthStore()
 const router = useRouter()
+const { t } = useI18n()
 const {
   open: confirmOpen,
   title: confirmTitle,
@@ -37,15 +39,16 @@ const snapshot = ref<InstanceSnapshot | null>(null)
 const error = ref('')
 const actionError = ref<AppError | null>(null)
 
-// 机器级状态的中文标签：与 unit 级 (idle/active/…) 无关，来自 registry 巡检推导。
-const STATUS_LABEL: Record<string, string> = {
-  unknown: '未探测',
-  online: '在线',
-  degraded: '降级',
-  offline: '离线',
-  draining: '摘除中'
+// 机器级状态的展示键：与 unit 级 (idle/active/…) 无关，来自 registry 巡检推导。
+// 展示译、比较仍用原值（§8.4）。
+const STATUS_KEYS: Record<string, string> = {
+  unknown: 'machines.status.unknown',
+  online: 'machines.status.online',
+  degraded: 'machines.status.degraded',
+  offline: 'machines.status.offline',
+  draining: 'machines.status.draining'
 }
-const statusLabel = (status: string) => STATUS_LABEL[status] ?? status
+const statusLabel = (status: string) => (STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status)
 
 // badge 只吃 antd 的四个状态色，把 statusColor 的橙/蓝并到 processing/warning。
 const BADGE_STATUS: Record<string, 'success' | 'warning' | 'error' | 'processing' | 'default'> = {
@@ -68,7 +71,7 @@ async function poll(): Promise<void> {
     error.value = ''
   } catch (caught) {
     snapshot.value = null
-    error.value = caught instanceof AppError ? caught.message : '实例状态不可读'
+    error.value = caught instanceof AppError ? caught.message : t('machines.statusUnreadable')
   }
 }
 
@@ -110,11 +113,12 @@ onBeforeUnmount(() => {
 async function runAction(row: InstanceRow, action: 'drain' | 'undrain' | 'probe'): Promise<void> {
   if (action !== 'probe') {
     const confirmed = await askConfirm({
-      title: action === 'drain' ? `摘除 ${row.instance_id}` : `恢复 ${row.instance_id}`,
-      content:
+      title:
         action === 'drain'
-          ? '摘除后分配器不再把新会话派给这台，已连接的会话不受影响。'
-          : '恢复后这台重新参与分配（仍需探测为在线/降级才会被选中）。'
+          ? t('machines.confirm.drainTitle', { id: row.instance_id })
+          : t('machines.confirm.undrainTitle', { id: row.instance_id }),
+      content:
+        action === 'drain' ? t('machines.confirm.drainContent') : t('machines.confirm.undrainContent')
     })
     if (!confirmed) return
   }
@@ -123,7 +127,7 @@ async function runAction(row: InstanceRow, action: 'drain' | 'undrain' | 'probe'
     await postInstanceAction(row.instance_id, action)
     await refresh()
   } catch (caught) {
-    actionError.value = caught instanceof AppError ? caught : new AppError('unknown', '操作失败')
+    actionError.value = caught instanceof AppError ? caught : new AppError('unknown', t('machines.actionFailed'))
   }
 }
 
@@ -136,9 +140,9 @@ function goTrends(row: InstanceRow): void {
 <template>
   <div class="instances">
     <div class="instances__bar">
-      <a-badge :status="active ? 'processing' : 'default'" :text="active ? '每 5s 刷新' : '已暂停'" />
+      <a-badge :status="active ? 'processing' : 'default'" :text="active ? t('machines.poll.every5s') : t('machines.poll.paused')" />
       <a-button size="small" @click="active ? stopAll() : startAll()">
-        {{ active ? '暂停' : '继续' }}
+        {{ active ? t('machines.poll.pause') : t('machines.poll.resume') }}
       </a-button>
     </div>
 
@@ -153,24 +157,24 @@ function goTrends(row: InstanceRow): void {
     <section v-if="summary" class="instances__summary">
       <div class="instances__grid">
         <div class="instances__cell">
-          <span class="instances__k">实例总数</span>
+          <span class="instances__k">{{ t('machines.summary.total') }}</span>
           <span class="instances__v">{{ summary.instances_total }}</span>
         </div>
         <div class="instances__cell">
-          <span class="instances__k">在线 · 降级 · 离线 · 摘除</span>
+          <span class="instances__k">{{ t('machines.summary.statusSplit') }}</span>
           <span class="instances__v">
             {{ summary.online }} / {{ summary.degraded }} / {{ summary.offline }} /
             {{ summary.draining }}
           </span>
         </div>
         <div class="instances__cell">
-          <span class="instances__k">槽位（总/占/闲）</span>
+          <span class="instances__k">{{ t('machines.summary.slots') }}</span>
           <span class="instances__v">
             {{ summary.slots_total }} / {{ summary.slots_in_use }} / {{ summary.slots_free }}
           </span>
         </div>
         <div class="instances__cell">
-          <span class="instances__k">待领取授权</span>
+          <span class="instances__k">{{ t('machines.summary.pendingGrants') }}</span>
           <span class="instances__v">{{ summary.pending_grants }}</span>
         </div>
       </div>
@@ -185,13 +189,13 @@ function goTrends(row: InstanceRow): void {
       :data-source="instances"
       :scroll="{ x: 900 }"
       :columns="[
-        { title: '实例', key: 'instance_id', width: 180 },
-        { title: '状态', key: 'status', width: 110 },
-        { title: '容量', key: 'capacity', width: 140 },
-        { title: '占用/空闲', key: 'slots', width: 110 },
-        { title: '权重', dataIndex: 'weight', key: 'weight', width: 70 },
-        { title: '探测(ms)', key: 'probe', width: 110 },
-        { title: '操作', key: 'actions', width: 210 }
+        { title: t('machines.columns.instance'), key: 'instance_id', width: 180 },
+        { title: t('machines.columns.status'), key: 'status', width: 110 },
+        { title: t('machines.columns.capacity'), key: 'capacity', width: 140 },
+        { title: t('machines.columns.slots'), key: 'slots', width: 110 },
+        { title: t('machines.columns.weight'), dataIndex: 'weight', key: 'weight', width: 70 },
+        { title: t('machines.columns.probe'), key: 'probe', width: 110 },
+        { title: t('machines.columns.actions'), key: 'actions', width: 210 }
       ]"
     >
       <template #bodyCell="{ column, record }">
@@ -201,7 +205,7 @@ function goTrends(row: InstanceRow): void {
         </template>
         <template v-else-if="column.key === 'status'">
           <a-badge :status="badgeStatus(record.status)" :text="statusLabel(record.status)" />
-          <div v-if="record.declared_mismatch" class="instances__warn">声明容量与实际不符</div>
+          <div v-if="record.declared_mismatch" class="instances__warn">{{ t('machines.declaredMismatch') }}</div>
           <div v-else-if="record.last_error" class="instances__err" :title="record.last_error">
             {{ record.last_error }}
           </div>
@@ -211,12 +215,12 @@ function goTrends(row: InstanceRow): void {
             :percent="capacityPercent(record)"
             :stroke-color="statusColor(record.status)"
             size="small"
-            :format="() => `${record.size ?? '—'} 槽`"
+            :format="() => t('machines.slotUnit', { count: record.size ?? '—' })"
           />
         </template>
         <template v-else-if="column.key === 'slots'">
           {{ record.in_use ?? '—' }} / {{ record.free ?? '—' }}
-          <span v-if="record.stuck"> · 卡 {{ record.stuck }}</span>
+          <span v-if="record.stuck"> · {{ t('machines.stuckCount', { count: record.stuck }) }}</span>
         </template>
         <template v-else-if="column.key === 'probe'">
           {{ record.probe_ms ?? '—' }}
@@ -226,17 +230,17 @@ function goTrends(row: InstanceRow): void {
         </template>
         <template v-else-if="column.key === 'actions'">
           <a-space>
-            <a-button size="small" @click="goTrends(record)">趋势</a-button>
+            <a-button size="small" @click="goTrends(record)">{{ t('machines.actions.trends') }}</a-button>
             <template v-if="canOperate">
               <a-button
                 v-if="!record.drain_requested"
                 size="small"
                 @click="runAction(record, 'drain')"
               >
-                摘除
+                {{ t('machines.actions.drain') }}
               </a-button>
-              <a-button v-else size="small" @click="runAction(record, 'undrain')">恢复</a-button>
-              <a-button size="small" @click="runAction(record, 'probe')">探测</a-button>
+              <a-button v-else size="small" @click="runAction(record, 'undrain')">{{ t('machines.actions.undrain') }}</a-button>
+              <a-button size="small" @click="runAction(record, 'probe')">{{ t('machines.actions.probe') }}</a-button>
             </template>
           </a-space>
         </template>

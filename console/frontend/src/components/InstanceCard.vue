@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import type { InstanceSnapshot } from '@/types/api'
 import { describeAlert } from '@/utils/error'
 import { formatTime } from '@/utils/format'
 
 const props = defineProps<{ snapshot: InstanceSnapshot | null; error: string }>()
+const { t } = useI18n()
 
 const container = computed(() => props.snapshot?.container ?? null)
 const pool = computed(() => props.snapshot?.pool ?? null)
@@ -22,22 +24,22 @@ const pool = computed(() => props.snapshot?.pool ?? null)
       :message="describeAlert(alert)"
     />
 
-    <a-descriptions v-if="container" title="进程" size="small" bordered :column="3">
+    <a-descriptions v-if="container" :title="t('machines.containerTitle')" size="small" bordered :column="3">
       <a-descriptions-item label="program">{{ container.name }}</a-descriptions-item>
-      <a-descriptions-item label="状态">
+      <a-descriptions-item :label="t('machines.fieldStatus')">
         <a-tag :color="container.status === 'running' ? 'green' : 'red'">{{ container.status }}</a-tag>
       </a-descriptions-item>
       <a-descriptions-item label="pid">{{ container.pid ?? '—' }}</a-descriptions-item>
-      <a-descriptions-item label="镜像">{{ container.image || '—' }}</a-descriptions-item>
-      <a-descriptions-item label="启动时间">{{ formatTime(container.startedAt) }}</a-descriptions-item>
-      <a-descriptions-item label="详情">{{ container.detail || '—' }}</a-descriptions-item>
+      <a-descriptions-item :label="t('machines.image')">{{ container.image || '—' }}</a-descriptions-item>
+      <a-descriptions-item :label="t('machines.startedAt')">{{ formatTime(container.startedAt) }}</a-descriptions-item>
+      <a-descriptions-item :label="t('machines.detail')">{{ container.detail || '—' }}</a-descriptions-item>
     </a-descriptions>
 
-    <a-descriptions v-if="pool" title="会话池" size="small" bordered :column="2">
-      <a-descriptions-item label="大小">{{ pool.size }}</a-descriptions-item>
-      <a-descriptions-item label="占用">{{ pool.inUse }}</a-descriptions-item>
+    <a-descriptions v-if="pool" :title="t('machines.poolTitle')" size="small" bordered :column="2">
+      <a-descriptions-item :label="t('machines.size')">{{ pool.size }}</a-descriptions-item>
+      <a-descriptions-item :label="t('machines.inUse')">{{ pool.inUse }}</a-descriptions-item>
     </a-descriptions>
-    <a-alert v-else-if="snapshot" type="warning" show-icon message="会话池不可达（/v1/pool 无响应）" />
+    <a-alert v-else-if="snapshot" type="warning" show-icon :message="t('machines.poolUnreachable')" />
 
     <a-table
       v-if="pool && pool.units.length"
@@ -46,8 +48,8 @@ const pool = computed(() => props.snapshot?.pool ?? null)
       :data-source="pool.units"
       :columns="[
         { title: '#', dataIndex: 'index', key: 'index', width: 60 },
-        { title: '状态', dataIndex: 'state', key: 'state', width: 110 },
-        { title: '会话', dataIndex: 'sessionId', key: 'sessionId' }
+        { title: t('machines.fieldStatus'), dataIndex: 'state', key: 'state', width: 110 },
+        { title: t('machines.columnSession'), dataIndex: 'sessionId', key: 'sessionId' }
       ]"
       row-key="index"
     />

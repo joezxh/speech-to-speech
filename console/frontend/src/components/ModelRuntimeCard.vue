@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { DASH } from '@/utils/format'
 import {
@@ -15,6 +16,7 @@ import {
 import type { GpuInfo, RuntimeStage } from '@/types/runtime'
 
 const props = defineProps<{ stage: RuntimeStage; gpu: GpuInfo | null }>()
+const { t } = useI18n()
 
 /**
  * 显存是**整卡**峰值（`resources.vram_used_mb_peak`，采样线程按设备聚合），
@@ -23,8 +25,8 @@ const props = defineProps<{ stage: RuntimeStage; gpu: GpuInfo | null }>()
  */
 const vramHint = computed(() =>
   props.gpu?.available && props.gpu.totalMb
-    ? `调用期间的整卡峰值（含同卡其它进程），不是该模型独占量；整卡 ${props.gpu.totalMb} MB`
-    : '调用期间的整卡峰值（含同卡其它进程），不是该模型独占量'
+    ? t('deploy.vramHintFull', { total: props.gpu.totalMb })
+    : t('deploy.vramHintShort')
 )
 </script>
 
@@ -47,7 +49,7 @@ const vramHint = computed(() =>
       <dt>VRAM</dt>
       <dd>
         {{ vramText(stage) }}
-        <a-tooltip :title="vramHint"><span class="rt-card__hint">整卡</span></a-tooltip>
+        <a-tooltip :title="vramHint"><span class="rt-card__hint">{{ t('deploy.wholeCard') }}</span></a-tooltip>
       </dd>
 
       <dt>Busy</dt>
@@ -62,7 +64,7 @@ const vramHint = computed(() =>
       <dt>p50 / p95</dt>
       <dd>
         {{ latencyText(stage) }}
-        <span class="rt-card__hint">取自观测窗口</span>
+        <span class="rt-card__hint">{{ t('deploy.fromObservationWindow') }}</span>
       </dd>
     </dl>
   </a-card>

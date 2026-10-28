@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import EffectBadge from '@/components/EffectBadge.vue'
 import ExposureTag from '@/components/ExposureTag.vue'
 import FixedField from '@/components/FixedField.vue'
 import type { CatalogEntry } from '@/types/catalog'
 import { isReadOnlyRow } from '@/utils/catalog-view'
+
+const { t, te } = useI18n()
 
 const props = defineProps<{
   entry: CatalogEntry
@@ -33,28 +36,27 @@ const control = computed(() => {
 
 const isFixed = computed(() => isReadOnlyRow(props.entry))
 
-const IMPACT_LABEL: Record<string, string> = {
-  process: '进程',
-  pipeline: 'pipeline',
-  session: '会话',
-  container: '容器'
-}
-
-const COST_LABEL: Record<string, string> = {
-  seconds: '秒级',
-  restart: '重启',
-  minutes: '分钟级'
-}
-
-const impactLabel = computed(() => IMPACT_LABEL[props.entry.impact] ?? props.entry.impact)
-const changeCostLabel = computed(() => COST_LABEL[props.entry.change_cost] ?? props.entry.change_cost)
-
-/** `ops` 必须把 risk 归到三类之一（§7.2）；完整文案进 `title`，不把长句塞进标签。 */
-const riskCategory = computed(() => {
-  const risk = props.entry.risk ?? ''
-  for (const tag of ['安全', '隐私', '环境绑定']) if (risk.includes(tag)) return tag
-  return risk ? '其他' : ''
+const impactLabel = computed(() => {
+  const key = `deploy.impact.${props.entry.impact}`
+  return te(key) ? t(key) : props.entry.impact
 })
+const changeCostLabel = computed(() => {
+  const key = `deploy.cost.${props.entry.change_cost}`
+  return te(key) ? t(key) : props.entry.change_cost
+})
+
+/**
+ * `ops` 必须把 risk 归到三类之一（§7.2）；完整文案进 `title`，不把长句塞进标签。
+ * 比对用中文原值（后端 risk 数据为中文，§8.4 “展示译、比较不译”），展示走稳定键。
+ */
+const riskCategoryKey = computed(() => {
+  const risk = props.entry.risk ?? ''
+  if (risk.includes('安全')) return 'security'
+  if (risk.includes('隐私')) return 'privacy'
+  if (risk.includes('环境绑定')) return 'envBound'
+  return risk ? 'other' : ''
+})
+const riskCategory = computed(() => (riskCategoryKey.value ? t(`deploy.risk.${riskCategoryKey.value}`) : ''))
 
 function formatDefault(value: unknown): string {
   if (value === null || value === undefined) return '—'
@@ -68,8 +70,8 @@ const hint = computed(() => {
   // advanced 带建议值：同一个值不再用「默认」和「建议」各说一遍。
   const lead =
     props.suggested === undefined
-      ? `默认 ${formatDefault(props.entry.default)}`
-      : `建议 ${formatDefault(props.suggested)}`
+      ? t('deploy.defaultPrefix', { value: formatDefault(props.entry.default) })
+      : t('deploy.suggestPrefix', { value: formatDefault(props.suggested) })
   return [lead, impactLabel.value, changeCostLabel.value].join(' · ')
 })
 
@@ -99,16 +101,16 @@ function onNumber(value: number | string | null): void {
       <a-tag v-if="entry.exposure === 'ops' && riskCategory" color="red" :title="entry.risk ?? ''">
         {{ riskCategory }}
       </a-tag>
-      <a-tag v-if="inDraft" color="purple">草稿</a-tag>
+      <a-tag v-if="inDraft" color="purple">{{ t('deploy.draftTag') }}</a-tag>
       <span class="param-field__spacer" />
       <a-button
         type="link"
         size="small"
         :disabled="disabled"
-        :title="`默认 ${formatDefault(entry.default)}`"
+        :title="t('deploy.defaultPrefix', { value: formatDefault(entry.default) })"
         @click="emit('reset')"
       >
-        恢复默认
+        {{ t('deploy.restoreDefault') }}
       </a-button>
     </div>
 
@@ -153,7 +155,7 @@ function onNumber(value: number | string | null): void {
     />
 
     <p v-if="entry.exposure === 'expert'" class="param-field__warn">
-      expert：改错会让 pipeline 起不来，先存草稿、再审 diff 后发布。
+      {{ t('deploy.expertWarn') }}
     </p>
     <p class="param-field__hint">{{ hint }}</p>
 

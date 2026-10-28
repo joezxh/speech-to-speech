@@ -1,3 +1,5 @@
+import i18n from '@/i18n'
+
 import type { CatalogEntry } from '@/types/catalog'
 
 export interface FieldGroup {
@@ -83,5 +85,9 @@ export function isReadOnlyRow(entry: CatalogEntry): boolean {
 
 /** 计数行唯一文案：不得手写数字（§14.7）。 */
 export function countLabel(total: number, deduped: Deduped): string {
-  return `${total} 条 · ${deduped.items.length} 个唯一名 · ${deduped.multiBackend} 个多后端字段`
+  return i18n.global.t('deploy.countLabel', {
+    total,
+    unique: deduped.items.length,
+    multi: deduped.multiBackend
+  })
 }

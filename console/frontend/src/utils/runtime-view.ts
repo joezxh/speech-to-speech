@@ -6,6 +6,7 @@
  * （`reasons.<字段>`），前端只负责把它和字段绑在一起，不自己判断「大概是多少」。
  */
 
+import i18n from '@/i18n'
 import { DASH } from './format'
 
 import type { GpuInfo, RuntimeReason, RuntimeStage, RuntimeStageName } from '@/types/runtime'
@@ -19,7 +20,7 @@ export const STAGE_LABEL: Record<RuntimeStageName, string> = {
 
 /** `不可用 · queue_depth_not_exposed`：码必须跟着走，否则运维要猜。 */
 export function unavailable(reason?: RuntimeReason): string {
-  return `不可用 · ${reason ?? 'unknown'}`
+  return i18n.global.t('deploy.unavailable', { reason: reason ?? 'unknown' })
 }
 
 export function loadLabel(loaded: boolean): 'loaded' | 'not loaded' {
@@ -29,7 +30,7 @@ export function loadLabel(loaded: boolean): 'loaded' | 'not loaded' {
 /** 模型名取不到时：运行中却无调用样本（部署主链路 STT/LLM 未埋点）说中性话，不谎称不可用；停机才退回加载理由。 */
 export function modelText(stage: RuntimeStage): string {
   if (stage.modelName) return stage.modelName
-  return stage.loaded ? '已加载 · 窗口内无调用样本' : unavailable(stage.reasons.loaded)
+  return stage.loaded ? i18n.global.t('deploy.loadedNoSamples') : unavailable(stage.reasons.loaded)
 }
 
 export function percentText(percent: number | null): string {
@@ -44,7 +45,7 @@ export function vramText(stage: RuntimeStage): string {
 export function busyText(stage: RuntimeStage): string {
   if (stage.busy.inUse === null) return unavailable(stage.reasons.busy)
   const size = stage.busy.size ?? DASH
-  return `${stage.busy.inUse} / ${size} ${stage.busy.occupied ? '占用中' : '空闲'}`
+  return `${stage.busy.inUse} / ${size} ${stage.busy.occupied ? i18n.global.t('deploy.occupied') : i18n.global.t('deploy.free')}`
 }
 
 export function queueText(stage: RuntimeStage): string {
@@ -65,8 +66,8 @@ export function latencyText(stage: RuntimeStage): string {
 }
 
 export function gpuHeadline(gpu: GpuInfo | null): string {
-  if (!gpu) return 'GPU 状态未知'
-  if (!gpu.available) return `GPU 不可用 · ${gpu.reason ?? 'nvidia_smi_missing'}`
+  if (!gpu) return i18n.global.t('deploy.gpuUnknown')
+  if (!gpu.available) return i18n.global.t('deploy.gpuUnavailable', { reason: gpu.reason ?? 'nvidia_smi_missing' })
   const name = gpu.name ?? 'GPU'
   const used = gpu.usedMb ?? null
   const total = gpu.totalMb ?? null
