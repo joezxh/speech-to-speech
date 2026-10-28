@@ -12,7 +12,8 @@ import overview from './overview'
 import release from './release'
 import sessionUpdate from './sessionUpdate'
 import shell from './shell'
+import traffic from './traffic'
 import voice from './voice'
 import voices from './voices'
 
-export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices, voice, logs, latency, overview }
+export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices, voice, logs, latency, overview, traffic }
