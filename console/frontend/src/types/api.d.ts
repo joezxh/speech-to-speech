@@ -48,6 +48,12 @@ export interface StatusSnapshot {
   db: 'ok' | 'unavailable'
   pipeline: 'ok' | 'unreachable'
   internalTokenConfigured: boolean
+  // P1.3（spec §12）：allocator/seed 状态，与后端 status_service.snapshot 对齐。
+  allocatorMode?: string
+  instancesRegistered?: number
+  seedConfigured?: boolean
+  consoleId?: string
+  secretsConsistent?: boolean
 }
 
 export interface PoolUnit {
