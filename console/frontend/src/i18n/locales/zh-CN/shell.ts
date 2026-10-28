@@ -1,0 +1,17 @@
+export default {
+  brand: 'S2S 控制台',
+  signIn: '登录',
+  signOut: '退出',
+  language: '语言',
+  toggleSider: '折叠/展开侧栏',
+  collapseSider: '折叠侧栏',
+  expandSider: '展开侧栏',
+  pipelineOk: 'pipeline 正常',
+  pipelineUnreachable: 'pipeline 不可达',
+  pipelineNotPublished: '未发布',
+  notConnected: '未连接',
+  selectMenuPrompt: '选择左侧菜单开始',
+  username: '用户名',
+  password: '密码',
+  profile: 'Profile'
+}

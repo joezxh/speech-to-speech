@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n'
 import { frontOverlays, type NavIcon, type NavMeta, type VoiceOverlay } from '@/router/nav'
 import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore } from '@/stores/console'
+import { useLocaleStore } from '@/stores/locale'
 import { DRAWER_BREAKPOINT, useShellStore } from '@/stores/shell'
 import { useVoiceStore } from '@/stores/voice'
 import AccountWidget from '@/features/voice/components/AccountWidget.vue'
@@ -16,6 +17,7 @@ const auth = useAuthStore()
 const consoleStore = useConsoleStore()
 const shell = useShellStore()
 const voice = useVoiceStore()
+const localeStore = useLocaleStore()
 const { t } = useI18n()
 
 /** 面仅用于样式与对话页顶栏动作；菜单与顶栏已统一，不再按面切换。 */
@@ -122,6 +124,11 @@ function signOut(): void {
   void router.replace({ name: 'login' })
 }
 
+/** 顶栏语言切换：两态直接互切，对齐 demo `#lang-btn`（非下拉）。 */
+function toggleLocale(): void {
+  localeStore.setLocale(localeStore.locale === 'zh-CN' ? 'en-US' : 'zh-CN')
+}
+
 /**
  * 顶栏的会话按钮是开合切换（demo chat.js:83），不是只会打开。抽屉的开合存在
  * `voice.historyOpen`（而不是页面本地），因为徽标与开关分属外壳与 `VoiceView`。
@@ -193,6 +200,15 @@ function onHistoryClick(): void {
         @click="shell.toggleSider()"
       >
         {{ shell.siderCollapsed ? '»' : '«' }}
+      </button>
+
+      <button
+        class="shell__lang"
+        type="button"
+        :aria-label="t('shell.language')"
+        @click="toggleLocale"
+      >
+        {{ localeStore.locale === 'zh-CN' ? '中 / EN' : 'EN / 中' }}
       </button>
 
       <span class="shell__user">{{ auth.user?.username }} · {{ auth.user?.role }}</span>
@@ -317,6 +333,22 @@ function onHistoryClick(): void {
   &__user {
     color: var(--s2s-color-muted);
     font-size: 12px;
+  }
+
+  &__lang {
+    background: transparent;
+    border: 1px solid var(--s2s-color-border);
+    border-radius: 6px;
+    color: var(--s2s-color-muted);
+    cursor: pointer;
+    flex: none;
+    font-size: 12px;
+    padding: 3px 8px;
+
+    &:hover {
+      background: var(--s2s-color-surface-2);
+      color: var(--s2s-color-text);
+    }
   }
 
   &__body {
