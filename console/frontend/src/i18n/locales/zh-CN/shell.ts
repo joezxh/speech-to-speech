@@ -11,6 +11,7 @@ export default {
   pipelineNotPublished: '未发布',
   notConnected: '未连接',
   selectMenuPrompt: '选择左侧菜单开始',
+  mainNav: '主导航',
   username: '用户名',
   password: '密码',
   profile: 'Profile'

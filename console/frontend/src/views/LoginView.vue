@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { AppError } from '@/api/client'
@@ -9,6 +10,7 @@ import { useAuthStore } from '@/stores/auth'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const { t } = useI18n()
 
 const username = ref('')
 const password = ref('')
@@ -33,7 +35,7 @@ async function submit(): Promise<void> {
     await router.replace(next.value)
   } catch (error) {
     failure.value =
-      error instanceof AppError ? error : new AppError('unknown', '登录失败，请重试')
+      error instanceof AppError ? error : new AppError('unknown', t('auth.loginFailed'))
   } finally {
     pending.value = false
   }
@@ -43,12 +45,12 @@ async function submit(): Promise<void> {
 <template>
   <div class="login">
     <form class="login__card" @submit.prevent="submit">
-      <h1 class="login__title">S2S 控制台</h1>
+      <h1 class="login__title">{{ t('shell.brand') }}</h1>
 
-      <label class="login__label" for="username">用户名</label>
+      <label class="login__label" for="username">{{ t('shell.username') }}</label>
       <a-input id="username" v-model:value="username" autocomplete="username" :disabled="pending" />
 
-      <label class="login__label" for="password">密码</label>
+      <label class="login__label" for="password">{{ t('shell.password') }}</label>
       <a-input-password
         id="password"
         v-model:value="password"
@@ -58,7 +60,7 @@ async function submit(): Promise<void> {
 
       <ErrorBanner :error="failure" />
 
-      <a-button type="primary" html-type="submit" block :loading="pending">登录</a-button>
+      <a-button type="primary" html-type="submit" block :loading="pending">{{ t('shell.signIn') }}</a-button>
     </form>
   </div>
 </template>

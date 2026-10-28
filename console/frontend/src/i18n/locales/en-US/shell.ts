@@ -11,6 +11,7 @@ export default {
   pipelineNotPublished: 'not published',
   notConnected: 'Not connected',
   selectMenuPrompt: 'Select a menu item to begin',
+  mainNav: 'Main navigation',
   username: 'Username',
   password: 'Password',
   profile: 'Profile'

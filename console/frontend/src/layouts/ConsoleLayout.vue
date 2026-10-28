@@ -78,9 +78,9 @@ const profileOptions = ['prod', 'dev'].map((value) => ({ value, label: value }))
 
 const pipelineText = computed(() => {
   const status = consoleStore.status
-  if (!status) return consoleStore.statusError || '未连接'
-  const version = status.version === null ? '未发布' : `v${status.version}`
-  return status.pipeline === 'ok' ? `pipeline ok · ${version}` : 'pipeline 不可达'
+  if (!status) return consoleStore.statusError || t('shell.notConnected')
+  const version = status.version === null ? t('shell.pipelineNotPublished') : `v${status.version}`
+  return status.pipeline === 'ok' ? `${t('shell.pipelineOk')} · ${version}` : t('shell.pipelineUnreachable')
 })
 
 const pipelineBadge = computed(() => {
@@ -154,7 +154,7 @@ function onHistoryClick(): void {
         <span /><span /><span />
       </button>
 
-      <span class="shell__brand">S2S 控制台</span>
+      <span class="shell__brand">{{ t('shell.brand') }}</span>
 
       <a-select
         :value="consoleStore.profile"
@@ -196,7 +196,7 @@ function onHistoryClick(): void {
         type="button"
         aria-label="Toggle sidebar"
         :aria-pressed="shell.siderCollapsed ? 'true' : 'false'"
-        :title="shell.siderCollapsed ? '展开侧栏' : '折叠侧栏'"
+        :title="shell.siderCollapsed ? t('shell.expandSider') : t('shell.collapseSider')"
         @click="shell.toggleSider()"
       >
         {{ shell.siderCollapsed ? '»' : '«' }}
@@ -212,11 +212,11 @@ function onHistoryClick(): void {
       </button>
 
       <span class="shell__user">{{ auth.user?.username }} · {{ auth.user?.role }}</span>
-      <a-button type="link" size="small" @click="signOut">退出</a-button>
+      <a-button type="link" size="small" @click="signOut">{{ t('shell.signOut') }}</a-button>
     </header>
 
     <div class="shell__body">
-      <nav id="shell-nav" class="shell__nav" :class="{ 'is-open': shell.drawerOpen }" aria-label="主导航">
+      <nav id="shell-nav" class="shell__nav" :class="{ 'is-open': shell.drawerOpen }" :aria-label="t('shell.mainNav')">
         <template v-for="(group, gi) in groups" :key="group.key">
           <div class="shell__nav-label" :class="{ 'is-first': gi === 0 }">{{ t(`nav.group.${group.key}`) }}</div>
 
@@ -244,7 +244,7 @@ function onHistoryClick(): void {
       <main class="shell__content">
         <router-view v-slot="{ Component }">
           <component :is="Component" v-if="Component" />
-          <a-empty v-else description="选择左侧菜单开始" />
+          <a-empty v-else :description="t('shell.selectMenuPrompt')" />
         </router-view>
       </main>
     </div>
