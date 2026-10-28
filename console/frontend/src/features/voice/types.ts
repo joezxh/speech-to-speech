@@ -172,3 +172,16 @@ export interface ToolResult {
   /** Base64 data URL; the client turns it into an `addImage` turn. */
   image?: string
 }
+
+/**
+ * `/api/config` 的 `sessionRecord` 块（spec 2026-10-26 session-archive）：后端
+ * 逐字下发本部署实际会保留什么，语音页与归档页据此决定文案，不在 bundle 里
+ * 硬编码。缺省由 `demo.ts` 兜底成全 0/false（宁可不录）。
+ */
+export interface SessionRecordConfig {
+  enabled: boolean
+  retentionDays: number
+  retentionMaxDays: number
+  maxAudioBytes: number
+  maxAudioSeconds: number
+}

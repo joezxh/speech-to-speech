@@ -213,8 +213,10 @@ void getDemoConfig()
         <ul class="recordings__rules">
           <li>只有对话页勾了「录制」的通话才会写入；未勾选时音频与转写都不出浏览器。</li>
           <li>保留期从会话结束（或最后一轮）起算，到期后连文件带行一起物理删除。</li>
-          <li>单轮音频超过 {{ formatBytes(gate.maxAudioBytes) }} 或
-            {{ gate.maxAudioSeconds || DASH }} 秒时浏览器会放弃这段音频，只留转写。</li>
+          <li>
+            单轮音频超过 {{ formatBytes(gate.maxAudioBytes) }} 或
+            {{ gate.maxAudioSeconds || DASH }} 秒时浏览器会放弃这段音频，只留转写。
+          </li>
           <li>删除是物理删除：归档是别人的声音，只有本人或管理员能动。</li>
         </ul>
       </template>
