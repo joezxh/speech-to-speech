@@ -222,13 +222,13 @@ function onHistoryClick(): void {
   flex-direction: column;
   height: 100%;
   min-height: 0;
-  background: #0b1020;
-  color: #e6e8f0;
+  background: var(--s2s-color-bg);
+  color: var(--s2s-color-text);
 
   &__top {
     align-items: center;
-    background: #141a2e;
-    border-bottom: 1px solid #1f2740;
+    background: var(--s2s-color-surface);
+    border-bottom: 1px solid var(--s2s-color-border);
     display: flex;
     flex: 0 0 56px;
     gap: 16px;
@@ -242,7 +242,7 @@ function onHistoryClick(): void {
     align-items: center;
     background: transparent;
     border: 0;
-    color: #8b93a7;
+    color: var(--s2s-color-muted);
     cursor: pointer;
     display: none;
     flex-direction: column;
@@ -281,7 +281,7 @@ function onHistoryClick(): void {
   &__collapse {
     background: transparent;
     border: 0;
-    color: #8b93a7;
+    color: var(--s2s-color-muted);
     cursor: pointer;
     flex: none;
     font-size: 14px;
@@ -290,13 +290,13 @@ function onHistoryClick(): void {
     border-radius: 6px;
 
     &:hover {
-      background: #1d2742;
-      color: #e6e8f0;
+      background: var(--s2s-color-surface-2);
+      color: var(--s2s-color-text);
     }
   }
 
   &__user {
-    color: #8b93a7;
+    color: var(--s2s-color-muted);
     font-size: 12px;
   }
 
@@ -308,8 +308,8 @@ function onHistoryClick(): void {
   }
 
   &__nav {
-    background: #0f1424;
-    border-right: 1px solid #1f2740;
+    background: var(--s2s-color-surface);
+    border-right: 1px solid var(--s2s-color-border);
     flex: 0 0 200px;
     min-width: 0;
     overflow: auto;
@@ -318,7 +318,7 @@ function onHistoryClick(): void {
   }
 
   &__link {
-    color: #8b93a7;
+    color: var(--s2s-color-muted);
     display: block;
     font-size: 12px;
     margin: 10px 8px 12px;
@@ -327,7 +327,7 @@ function onHistoryClick(): void {
 
   // 分组标题：11px 全大写小标，折叠后没有宽度可容，直接隐藏。
   &__nav-label {
-    color: #6b7285;
+    color: var(--s2s-color-faint);
     font-size: 11px;
     letter-spacing: 0.6px;
     padding: 10px 18px 6px;
@@ -336,7 +336,7 @@ function onHistoryClick(): void {
 
     // 第二组起：顶部细线 + 间距把两个菜单组分开（对齐 preview 的组间留白）。
     &:not(.is-first) {
-      border-top: 1px solid #1f2740;
+      border-top: 1px solid var(--s2s-color-border);
       margin-top: 10px;
       padding-top: 14px;
     }
@@ -378,7 +378,7 @@ function onHistoryClick(): void {
   background: none;
   border: 0;
   border-radius: 6px;
-  color: #8b93a7;
+  color: var(--s2s-color-muted);
   cursor: pointer;
   display: flex;
   gap: 9px;
@@ -389,13 +389,13 @@ function onHistoryClick(): void {
   width: calc(100% - 16px);
 
   &:hover {
-    background: #1b2338;
-    color: #e6e8f0;
+    background: var(--s2s-color-surface-2);
+    color: var(--s2s-color-text);
   }
 
   &[aria-current='true'] {
-    background: #1d2a4a;
-    color: #e6e8f0;
+    background: var(--s2s-color-surface-2);
+    color: var(--s2s-color-text);
     font-weight: 500;
   }
 

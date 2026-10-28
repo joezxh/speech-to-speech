@@ -30,6 +30,7 @@ export const voiceTokens = {
   voiceSurface: '#13151c',
   voiceSurface2: '#1b1e29',
   voiceSurfaceMix: '#2a2e3c',
+  voiceSurfaceDeep: '#0d1326',
   voiceBorder: 'rgba(255, 255, 255, 0.08)',
   voiceBorderStrong: 'rgba(255, 255, 255, 0.16)',
   voiceText: '#f5f6fa',

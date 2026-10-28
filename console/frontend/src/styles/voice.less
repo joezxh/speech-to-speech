@@ -1,27 +1,6 @@
 // 彩色只属于声音：界面本身是无彩度的，只有 orb / 弧线 / 状态色带颜色。
-:root {
-  --voice-bg: #0a0b10;
-  --voice-surface: #13151c;
-  --voice-surface-2: #1b1e29;
-  --voice-border: rgba(255, 255, 255, 0.08);
-  --voice-border-strong: rgba(255, 255, 255, 0.16);
-  --voice-text: #f5f6fa;
-  --voice-dim: rgba(245, 246, 250, 0.65);
-  --voice-faint: rgba(245, 246, 250, 0.42);
-  --voice-accent: #8b7dff;
-  --voice-listening: #22d3ee;
-  --voice-processing: #f59e0b;
-  --voice-error: #ff6a75;
-  --voice-ready: #34d399;
-  --voice-queued: #94a3b8;
-  // 角色色：demo 用三个独立 token 标出气泡与列表行的归属（`style.css:28-30`），
-  // 这里的值与本页已有的状态色逐个相同，只是把语义名字也立起来。
-  --voice-user: var(--voice-listening);
-  --voice-assistant: var(--voice-accent);
-  --voice-tool: var(--voice-processing);
-  // demo 的 `--radius-md`：气泡与列表行共用同一个圆角。
-  --voice-radius: 14px;
-}
+// 所有 `--voice-*` 变量已收进 styles/tokens.ts，运行时由 applyTokens() 注入根元素
+// （spec §9），此处不再重复定义，避免同一色值两处漂移。
 
 // ── 对话页嵌在外壳里的高度契约（§3.2.4）────────────────────────────────
 // `.shell__content` 是 `flex: 1 1 auto; min-height: 0`，所以这里写 `height: 100%`
@@ -159,7 +138,7 @@
   place-items: center;
   border-radius: 50%;
   border: 1px solid var(--voice-border-strong);
-  background: color-mix(in srgb, var(--voice-surface-2) 80%, #2a2e3c);
+  background: color-mix(in srgb, var(--voice-surface-2) 80%, var(--voice-surface-mix));
   color: var(--voice-dim);
   cursor: pointer;
 
@@ -240,7 +219,7 @@
 
   // 九态只用一条轴：--glow。
   &[data-state="idle"] { --glow: var(--voice-ready); }
-  &[data-state="connecting"] { --glow: #facd15; }
+  &[data-state="connecting"] { --glow: var(--voice-connecting); }
   &[data-state="your-turn"] { --glow: var(--voice-accent); }
   &[data-state="queued"] { --glow: var(--voice-queued); }
   &[data-state="listening"],
@@ -326,7 +305,7 @@
 .v-join {
   border: 0 !important;
   background: var(--voice-accent) !important;
-  color: #0a0b10 !important;
+  color: var(--voice-bg) !important;
   font-weight: 600;
   border-radius: 999px !important;
 
@@ -461,7 +440,7 @@
     overflow: auto;
     padding: 6px 8px;
     border-radius: 6px;
-    background: #0d1326;
+    background: var(--voice-surface-deep);
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
   }
@@ -687,7 +666,7 @@
   padding: 6px 10px;
   border: 1px solid var(--voice-border);
   border-radius: 8px;
-  background: #0d1326;
+  background: var(--voice-surface-deep);
 
   &__tag {
     padding: 1px 7px;

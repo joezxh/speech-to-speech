@@ -71,7 +71,7 @@ async function submit(): Promise<void> {
   min-height: 100vh;
 
   &__card {
-    background: #141a2e;
+    background: var(--s2s-color-surface);
     border-radius: 10px;
     display: flex;
     flex-direction: column;
@@ -81,13 +81,13 @@ async function submit(): Promise<void> {
   }
 
   &__title {
-    color: #e6e8f0;
+    color: var(--s2s-color-text);
     font-size: 16px;
     margin: 0 0 8px;
   }
 
   &__label {
-    color: #8b93a7;
+    color: var(--s2s-color-muted);
     font-size: 12px;
   }
 }
