@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import { fetchVoiceAudio } from '@/api/voices'
@@ -12,6 +13,7 @@ import { useVoicesStore } from '@/stores/voices'
 import type { VoiceFilter, VoiceRow, VoiceSource } from '@/types/voice-library'
 import { describeInUse, sourceLabel } from '@/utils/voice-text'
 
+const { t } = useI18n()
 const store = useVoicesStore()
 const {
   open: confirmOpen,
@@ -65,7 +67,7 @@ async function audition(row: VoiceRow): Promise<void> {
   try {
     auditionUrl.value = await fetchVoiceAudio(row.id)
   } catch (caught) {
-    auditionError.value = caught instanceof AppError ? caught : new AppError('unknown', '试听加载失败')
+    auditionError.value = caught instanceof AppError ? caught : new AppError('unknown', t('voices.list.auditionFailed'))
   }
 }
 
@@ -79,7 +81,7 @@ function closeAudition(): void {
 async function duplicate(row: VoiceRow): Promise<void> {
   notice.value = ''
   deleteError.value = null
-  if (await store.duplicate(row.id)) notice.value = `已复制「${row.name}」`
+  if (await store.duplicate(row.id)) notice.value = t('voices.list.duplicated', { name: row.name })
   else deleteError.value = store.error
 }
 
@@ -87,12 +89,12 @@ async function remove(row: VoiceRow): Promise<void> {
   notice.value = ''
   deleteError.value = null
   const confirmed = await askConfirm({
-    title: '删除音色',
-    content: `删除「${row.name}」会把音频与预计算产物一起移除，且不可恢复。`
+    title: t('voices.list.deleteTitle'),
+    content: t('voices.list.deleteConfirm', { name: row.name })
   })
   if (!confirmed) return
   if (await store.remove(row.id)) {
-    notice.value = `已删除「${row.name}」`
+    notice.value = t('voices.list.deleted', { name: row.name })
     return
   }
   // 409 的 detail 是唯一可信的引用计数来源，原样翻成那一句固定文案。
@@ -104,7 +106,7 @@ async function remove(row: VoiceRow): Promise<void> {
 
 function onCreated(): void {
   dialogOpen.value = false
-  notice.value = '音色已创建，预计算完成后可以选择它'
+  notice.value = t('voices.list.created')
   void reload()
 }
 </script>
@@ -115,7 +117,7 @@ function onCreated(): void {
       <a-select
         :value="filter.backend ?? undefined"
         :options="backendOptions"
-        placeholder="后端"
+        :placeholder="t('voices.filters.backend')"
         allow-clear
         class="voices__filter"
         @change="(value: unknown) => applyFilter({ backend: value ? String(value) : undefined })"
@@ -123,7 +125,7 @@ function onCreated(): void {
       <a-select
         :value="filter.source ?? undefined"
         :options="(['builtin', 'clone', 'design'] as VoiceSource[]).map((value) => ({ value, label: sourceLabel(value) }))"
-        placeholder="来源"
+        :placeholder="t('voices.filters.source')"
         allow-clear
         class="voices__filter"
         @change="(value: unknown) => applyFilter({ source: value ? String(value) : undefined })"
@@ -131,34 +133,34 @@ function onCreated(): void {
       <a-select
         :value="filter.status ?? undefined"
         :options="[
-          { value: 'ready', label: '可用' },
-          { value: 'precomputing', label: '制作中' },
-          { value: 'failed', label: '失败' },
-          { value: 'draft', label: '草稿' }
+          { value: 'ready', label: t('voices.status.ready') },
+          { value: 'precomputing', label: t('voices.status.precomputing') },
+          { value: 'failed', label: t('voices.status.failed') },
+          { value: 'draft', label: t('voices.status.draft') }
         ]"
-        placeholder="状态"
+        :placeholder="t('voices.filters.status')"
         allow-clear
         class="voices__filter"
         @change="(value: unknown) => applyFilter({ status: value ? String(value) : undefined })"
       />
       <a-input-search
         :value="filter.q ?? ''"
-        placeholder="按名字搜索"
+        :placeholder="t('voices.filters.search')"
         allow-clear
         class="voices__search"
         @search="(value: string) => applyFilter({ q: value || undefined })"
       />
-      <a-button v-if="filterCount > 0" type="link" @click="clearFilter">清空筛选</a-button>
+      <a-button v-if="filterCount > 0" type="link" @click="clearFilter">{{ t('voices.filters.clear') }}</a-button>
 
       <span class="voices__spacer" />
 
       <a-select
         v-model:value="createBackend"
         :options="backendOptions"
-        placeholder="后端"
+        :placeholder="t('voices.filters.backend')"
         class="voices__filter"
       />
-      <a-button type="primary" :disabled="!createBackend" @click="dialogOpen = true">新建音色</a-button>
+      <a-button type="primary" :disabled="!createBackend" @click="dialogOpen = true">{{ t('voices.list.create') }}</a-button>
     </div>
 
     <a-alert v-if="notice" type="success" show-icon :message="notice" />
@@ -175,7 +177,7 @@ function onCreated(): void {
 
     <a-empty
       v-if="!store.loading && store.rows.length === 0"
-      description="还没有音色：上传一段参考音频，或直接用后端内置音色"
+      :description="t('voices.list.empty')"
     />
 
     <VoiceCreateDialog
@@ -188,7 +190,7 @@ function onCreated(): void {
 
     <a-modal
       :open="auditionRow !== null"
-      :title="auditionRow ? `试听 · ${auditionRow.name}` : '试听'"
+      :title="auditionRow ? t('voices.list.auditionTitle', { name: auditionRow.name }) : t('voices.list.audition')"
       :footer="null"
       :width="520"
       @cancel="closeAudition"
@@ -196,7 +198,7 @@ function onCreated(): void {
       <ErrorBanner :error="auditionError" />
       <audio v-if="auditionUrl" :src="auditionUrl" controls preload="auto" class="voices__player" />
       <p class="voices__hint">
-        试听走 <code>GET /api/v1/voices/{{ '{id}' }}/audio</code> 的 Range 读，不经过 8765，也不占用 pipeline。
+        {{ t('voices.list.auditionHint') }}
       </p>
     </a-modal>
 

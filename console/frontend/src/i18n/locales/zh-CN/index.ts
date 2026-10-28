@@ -1,10 +1,14 @@
 import alerts from './alerts'
+import audit from './audit'
 import auth from './auth'
 import common from './common'
 import deploy from './deploy'
 import errors from './errors'
 import machines from './machines'
 import nav from './nav'
+import release from './release'
+import sessionUpdate from './sessionUpdate'
 import shell from './shell'
+import voices from './voices'
 
-export default { nav, shell, common, errors, alerts, auth, machines, deploy }
+export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices }

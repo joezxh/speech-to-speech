@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import { getVersions, rollbackProfile } from '@/api/profiles'
@@ -10,6 +11,7 @@ import { useConfirm } from '@/composables/useConfirm'
 import { useConsoleStore } from '@/stores/console'
 import type { VersionRow } from '@/types/profile'
 
+const { t } = useI18n()
 const consoleStore = useConsoleStore()
 const {
   open: confirmOpen,
@@ -37,7 +39,7 @@ async function load(): Promise<void> {
     rows.value = data.list
     total.value = data.total
   } catch (caught) {
-    error.value = caught instanceof AppError ? caught : new AppError('unknown', '版本列表加载失败')
+    error.value = caught instanceof AppError ? caught : new AppError('unknown', t('release.loadFailed'))
     rows.value = []
   } finally {
     loading.value = false
@@ -48,8 +50,8 @@ watch([() => consoleStore.profile, page, pageSize], () => void load(), { immedia
 
 async function rollback(target: number): Promise<void> {
   const confirmed = await askConfirm({
-    title: `回滚到 v${target}`,
-    content: '回滚会写入一个新版本并重启 pipeline，正在进行的语音会话会中断。'
+    title: t('release.rollbackConfirmTitle', { version: target }),
+    content: t('release.rollbackConfirmContent')
   })
   if (!confirmed) return
   rollbackError.value = null
@@ -58,7 +60,7 @@ async function rollback(target: number): Promise<void> {
     await load()
     await consoleStore.refreshStatus()
   } catch (caught) {
-    rollbackError.value = caught instanceof AppError ? caught : new AppError('unknown', '回滚失败')
+    rollbackError.value = caught instanceof AppError ? caught : new AppError('unknown', t('release.rollbackFailed'))
   }
 }
 </script>

@@ -1,0 +1,31 @@
+export default {
+  tri: { keep: '不修改', on: '开启', off: '关闭' },
+  updateFailed: '热更新失败，请重试',
+  rulesTitle: '热更新只改活跃连接，不写任何文件',
+  rules: {
+    r1: '只影响当前活跃连接；新连接仍读 init_chat_prompt，与这里下发的值可能不一致。',
+    r2: '空闲 unit 没有连接可下发；改默认人设必须同时改 YAML 并发布，否则重启后又回到旧默认。',
+    r3: '不支持 transcription 类型会话，必须是 realtime 会话。',
+    r4: 'language 必须被活跃后端支持；auto 需要后端支持自动重置，否则 400。',
+    r5: '不提供 model 与 audio.output.voice：它们在协议里只是回显，下发也不会改变音色或模型。'
+  },
+  tokenMissingTitle: '控制器未配置 S2S_INTERNAL_TOKEN，链路 B 不可用',
+  tokenMissingDesc: '在 config/prod.env 里设置 S2S_INTERNAL_TOKEN 后 docker compose up -d --force-recreate pipeline。',
+  scopeLabel: '作用域',
+  scope: { all: '全部活跃连接', pipeline: '单个 unit', session: '单条会话' },
+  targetLabelPipeline: 'unit 序号',
+  targetLabelSession: 'session id',
+  targetPlaceholderSession: '复现实时转写里的 session id',
+  instructionsLabel: 'instructions（人设）',
+  blankPlaceholder: '留空即不修改',
+  createResponseLabel: 'turn_detection.create_response（自动应答）',
+  interruptResponseLabel: 'turn_detection.interrupt_response（允许打断）',
+  languagePlaceholder: 'auto / zh / en —— 必须是活跃后端支持的值',
+  extensionsLabel: 'extensions（JSON，留空即不修改）',
+  submit: '下发到活跃会话',
+  resultTitle: '下发结果',
+  resultSummary: '已更新 {updated} 条连接；失败 {failed} 条。审计号 {auditId}',
+  problemScopeAllNoTarget: 'scope=all 不需要 target',
+  problemPipelineTarget: 'target 必须是 unit 序号（整数）',
+  problemSessionTarget: 'target 必须是 session id'
+}

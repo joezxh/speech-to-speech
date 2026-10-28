@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import EffectBadge from '@/components/EffectBadge.vue'
 import ExposureTag from '@/components/ExposureTag.vue'
@@ -28,6 +29,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [patch: Values] }>()
 
 const store = useVoicesStore()
+const { t } = useI18n()
 const dialogOpen = ref(false)
 
 const slot = computed(() => voiceSlot(props.entry.name))
@@ -51,9 +53,9 @@ const selectedId = computed(() => voiceIdIn(props.current))
 const textValue = computed(() => (typeof props.current === 'string' && !selectedId.value ? props.current : ''))
 
 const emptyHint = computed(() => {
-  if (slot.value === 'builtin') return '也可以直接填后端内置音色名'
-  if (slot.value === 'clone') return '还没有克隆音色：先制作一个'
-  return '还没有指令式音色：先制作一个'
+  if (slot.value === 'builtin') return t('voices.picker.builtinHint')
+  if (slot.value === 'clone') return t('voices.picker.cloneEmpty')
+  return t('voices.picker.designEmpty')
 })
 
 function pickVoice(id: unknown): void {
@@ -81,11 +83,11 @@ function onCreated(row: VoiceRow): void {
       <span class="voice-picker__name" :title="entry.key">{{ entry.name }}</span>
       <ExposureTag :exposure="entry.exposure" />
       <EffectBadge :entry="entry" />
-      <a-tag color="purple">{{ slot === 'builtin' ? '内置音色' : sourceLabel(slot ?? 'clone') }}</a-tag>
-      <a-tag v-if="inDraft" color="purple">草稿</a-tag>
+      <a-tag color="purple">{{ slot === 'builtin' ? t('voices.picker.builtinTag') : sourceLabel(slot ?? 'clone') }}</a-tag>
+      <a-tag v-if="inDraft" color="purple">{{ t('voices.picker.draftTag') }}</a-tag>
       <span class="voice-picker__spacer" />
       <span class="voice-picker__current">
-        {{ selectedId ? `音色 ${selectedId}` : textValue || '未选' }}
+        {{ selectedId ? t('voices.picker.voiceLabel', { id: selectedId }) : textValue || t('voices.picker.none') }}
       </span>
     </div>
 
@@ -96,7 +98,7 @@ function onCreated(row: VoiceRow): void {
         :options="options"
         :disabled="disabled"
         class="voice-picker__control"
-        placeholder="内置音色名，如 Aiden"
+        :placeholder="t('voices.picker.builtinPlaceholder')"
         @search="pickBuiltin"
         @change="pickBuiltin"
       />
@@ -113,14 +115,13 @@ function onCreated(row: VoiceRow): void {
       />
 
       <a-button v-if="slot !== null && slot !== 'builtin'" :disabled="disabled" @click="dialogOpen = true">
-        制作新音色
+        {{ t('voices.picker.create') }}
       </a-button>
-      <router-link v-if="slot !== 'builtin'" to="/console/voices" class="voice-picker__link">音色库</router-link>
+      <router-link v-if="slot !== 'builtin'" to="/console/voices" class="voice-picker__link">{{ t('voices.picker.library') }}</router-link>
     </div>
 
     <p class="voice-picker__hint">
-      选中音色会把 {{ slot === 'clone' ? 'ref_spk / ref_rvq / ref_text' : slot === 'design' ? 'instruct' : 'speaker' }}
-      写进草稿（不会直接改配置）；克隆与内置互斥，切过去时 speaker 会被置空。
+      {{ t('voices.picker.hint', { fields: slot === 'clone' ? 'ref_spk / ref_rvq / ref_text' : slot === 'design' ? 'instruct' : 'speaker' }) }}
     </p>
 
     <VoiceCreateDialog

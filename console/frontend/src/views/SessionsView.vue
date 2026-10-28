@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import { updateSessions } from '@/api/sessions'
@@ -9,15 +10,16 @@ import { translate } from '@/utils/error'
 import { buildSessionPatch } from '@/utils/session-patch'
 import type { SessionScope, SessionUpdateResult } from '@/types/session'
 
+const { t } = useI18n()
 const consoleStore = useConsoleStore()
 
 type Tri = 'keep' | 'on' | 'off'
 
-const TRI_OPTIONS: Array<{ value: Tri; label: string }> = [
-  { value: 'keep', label: '不修改' },
-  { value: 'on', label: '开启' },
-  { value: 'off', label: '关闭' }
-]
+const TRI_OPTIONS = computed(() => [
+  { value: 'keep', label: t('sessionUpdate.tri.keep') },
+  { value: 'on', label: t('sessionUpdate.tri.on') },
+  { value: 'off', label: t('sessionUpdate.tri.off') }
+])
 
 // 模板里的引号转义不被 Vue 属性解析器接受，所以示例 JSON 走绑定。
 const EXTENSIONS_PLACEHOLDER = '{"speech_to_speech":{"input_audio_transcription":{"snapshot":true}}}'
@@ -58,11 +60,11 @@ const preview = computed(() =>
 
 const problems = computed<string[]>(() => {
   const list = [...preview.value.problems]
-  if (form.scope === 'all' && form.targetText.trim()) list.push('scope=all 不需要 target')
+  if (form.scope === 'all' && form.targetText.trim()) list.push(t('sessionUpdate.problemScopeAllNoTarget'))
   if (form.scope === 'pipeline' && !Number.isInteger(target.value)) {
-    list.push('target 必须是 unit 序号（整数）')
+    list.push(t('sessionUpdate.problemPipelineTarget'))
   }
-  if (form.scope === 'session' && !form.targetText.trim()) list.push('target 必须是 session id')
+  if (form.scope === 'session' && !form.targetText.trim()) list.push(t('sessionUpdate.problemSessionTarget'))
   return list
 })
 
@@ -81,7 +83,7 @@ async function submit(): Promise<void> {
       session: preview.value.session
     })
   } catch (error) {
-    failure.value = error instanceof AppError ? error : new AppError('unknown', '热更新失败，请重试')
+    failure.value = error instanceof AppError ? error : new AppError('unknown', t('sessionUpdate.updateFailed'))
   } finally {
     pending.value = false
   }
@@ -90,14 +92,14 @@ async function submit(): Promise<void> {
 
 <template>
   <div class="sessions">
-    <a-alert message="热更新只改活跃连接，不写任何文件">
+    <a-alert :message="t('sessionUpdate.rulesTitle')">
       <template #description>
         <ul class="sessions__rules">
-          <li>只影响当前活跃连接；新连接仍读 <code>init_chat_prompt</code>，与这里下发的值可能不一致。</li>
-          <li>空闲 unit 没有连接可下发；改默认人设必须同时改 YAML 并发布，否则重启后又回到旧默认。</li>
-          <li>不支持 <code>transcription</code> 类型会话，必须是 <code>realtime</code> 会话。</li>
-          <li><code>language</code> 必须被活跃后端支持；<code>auto</code> 需要后端支持自动重置，否则 400。</li>
-          <li>不提供 <code>model</code> 与 <code>audio.output.voice</code>：它们在协议里只是回显，下发也不会改变音色或模型。</li>
+          <li>{{ t('sessionUpdate.rules.r1') }}</li>
+          <li>{{ t('sessionUpdate.rules.r2') }}</li>
+          <li>{{ t('sessionUpdate.rules.r3') }}</li>
+          <li>{{ t('sessionUpdate.rules.r4') }}</li>
+          <li>{{ t('sessionUpdate.rules.r5') }}</li>
         </ul>
       </template>
     </a-alert>
@@ -106,40 +108,40 @@ async function submit(): Promise<void> {
       v-if="tokenMissing"
       type="warning"
       show-icon
-      message="控制器未配置 S2S_INTERNAL_TOKEN，链路 B 不可用"
-      description="在 config/prod.env 里设置 S2S_INTERNAL_TOKEN 后 docker compose up -d --force-recreate pipeline。"
+      :message="t('sessionUpdate.tokenMissingTitle')"
+      :description="t('sessionUpdate.tokenMissingDesc')"
     />
 
     <a-form layout="vertical" class="sessions__form">
-      <a-form-item label="作用域">
+      <a-form-item :label="t('sessionUpdate.scopeLabel')">
         <a-radio-group v-model:value="form.scope" button-style="solid">
-          <a-radio-button value="all">全部活跃连接</a-radio-button>
-          <a-radio-button value="pipeline">单个 unit</a-radio-button>
-          <a-radio-button value="session">单条会话</a-radio-button>
+          <a-radio-button value="all">{{ t('sessionUpdate.scope.all') }}</a-radio-button>
+          <a-radio-button value="pipeline">{{ t('sessionUpdate.scope.pipeline') }}</a-radio-button>
+          <a-radio-button value="session">{{ t('sessionUpdate.scope.session') }}</a-radio-button>
         </a-radio-group>
       </a-form-item>
 
-      <a-form-item v-if="form.scope !== 'all'" :label="form.scope === 'pipeline' ? 'unit 序号' : 'session id'">
-        <a-input v-model:value="form.targetText" :placeholder="form.scope === 'pipeline' ? '0' : '复现实时转写里的 session id'" />
+      <a-form-item v-if="form.scope !== 'all'" :label="form.scope === 'pipeline' ? t('sessionUpdate.targetLabelPipeline') : t('sessionUpdate.targetLabelSession')">
+        <a-input v-model:value="form.targetText" :placeholder="form.scope === 'pipeline' ? '0' : t('sessionUpdate.targetPlaceholderSession')" />
       </a-form-item>
 
-      <a-form-item label="instructions（人设）">
-        <a-textarea v-model:value="form.instructions" :rows="3" placeholder="留空即不修改" />
+      <a-form-item :label="t('sessionUpdate.instructionsLabel')">
+        <a-textarea v-model:value="form.instructions" :rows="3" :placeholder="t('sessionUpdate.blankPlaceholder')" />
       </a-form-item>
 
-      <a-form-item label="turn_detection.create_response（自动应答）">
+      <a-form-item :label="t('sessionUpdate.createResponseLabel')">
         <a-select v-model:value="form.createResponse" :options="TRI_OPTIONS" style="width: 160px" />
       </a-form-item>
 
-      <a-form-item label="turn_detection.interrupt_response（允许打断）">
+      <a-form-item :label="t('sessionUpdate.interruptResponseLabel')">
         <a-select v-model:value="form.interruptResponse" :options="TRI_OPTIONS" style="width: 160px" />
       </a-form-item>
 
       <a-form-item label="transcription.language">
-        <a-input v-model:value="form.language" placeholder="auto / zh / en —— 必须是活跃后端支持的值" />
+        <a-input v-model:value="form.language" :placeholder="t('sessionUpdate.languagePlaceholder')" />
       </a-form-item>
 
-      <a-form-item label="extensions（JSON，留空即不修改）">
+      <a-form-item :label="t('sessionUpdate.extensionsLabel')">
         <a-textarea
           v-model:value="form.extensions"
           :rows="3"
@@ -157,15 +159,12 @@ async function submit(): Promise<void> {
         :disabled="tokenMissing || problems.length > 0"
         @click="submit"
       >
-        下发到活跃会话
+        {{ t('sessionUpdate.submit') }}
       </a-button>
     </a-form>
 
-    <a-card v-if="result" size="small" title="下发结果">
-      <p>
-        已更新 <strong>{{ result.updated.length }}</strong> 条连接；失败
-        <strong>{{ result.failed.length }}</strong> 条。审计号 <code>{{ result.auditId }}</code>
-      </p>
+    <a-card v-if="result" size="small" :title="t('sessionUpdate.resultTitle')">
+      <p>{{ t('sessionUpdate.resultSummary', { updated: result.updated.length, failed: result.failed.length, auditId: result.auditId }) }}</p>
       <a-list v-if="result.failed.length" size="small" bordered :data-source="result.failed">
         <template #renderItem="{ item }">
           <a-list-item><code>{{ item.sessionId }}</code> — {{ translate(item.error) }}</a-list-item>

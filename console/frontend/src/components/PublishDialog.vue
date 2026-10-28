@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import { publishProfile } from '@/api/profiles'
@@ -7,6 +8,7 @@ import DiffTable from '@/components/DiffTable.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import type { PublishResult } from '@/types/profile'
 
+const { t } = useI18n()
 const props = defineProps<{
   open: boolean
   profile: string
@@ -33,7 +35,7 @@ async function submit(): Promise<void> {
     note.value = ''
     emit('published', result.value)
   } catch (caught) {
-    error.value = caught instanceof AppError ? caught : new AppError('unknown', '发布失败')
+    error.value = caught instanceof AppError ? caught : new AppError('unknown', t('release.publish.failed'))
   } finally {
     pending.value = false
   }
@@ -48,17 +50,17 @@ function close(): void {
 </script>
 
 <template>
-  <a-modal :open="open" title="发布" :footer="null" :mask-closable="!pending" @cancel="close">
+  <a-modal :open="open" :title="t('release.publish.title')" :footer="null" :mask-closable="!pending" @cancel="close">
     <a-alert
       type="warning"
       show-icon
-      message="发布会重启 pipeline 进程"
-      description="正在进行的语音会话会中断，并在重连后使用新配置。"
+      :message="t('release.publish.alertMessage')"
+      :description="t('release.publish.alertDescription')"
     />
 
     <DiffTable :draft="draft" :masked="masked" />
 
-    <a-textarea v-model:value="note" :rows="2" placeholder="变更说明（会写进版本记录与审计）" />
+    <a-textarea v-model:value="note" :rows="2" :placeholder="t('release.publish.notePlaceholder')" />
 
     <ErrorBanner :error="error" />
 
@@ -66,14 +68,14 @@ function close(): void {
       v-if="result"
       type="success"
       show-icon
-      :message="`v${result.version} 已生效`"
-      :description="`耗时 ${result.durationS}s · 池大小 ${result.healthcheck.poolSize ?? '—'} · 审计 ${result.auditId}`"
+      :message="t('release.publish.publishedMessage', { version: result.version })"
+      :description="t('release.publish.publishedDescription', { duration: result.durationS, poolSize: result.healthcheck.poolSize ?? '—', auditId: result.auditId })"
     />
 
     <div class="publish-dialog__actions">
-      <a-button :disabled="pending" @click="close">{{ result ? '关闭' : '取消' }}</a-button>
+      <a-button :disabled="pending" @click="close">{{ result ? t('release.publish.close') : t('release.publish.cancel') }}</a-button>
       <a-button v-if="!result" type="primary" danger :loading="pending" @click="submit">
-        确认发布
+        {{ t('release.publish.confirm') }}
       </a-button>
     </div>
   </a-modal>

@@ -1,27 +1,29 @@
+import i18n from '@/i18n'
 import type { VoiceSource, VoiceStatus } from '@/types/voice-library'
 
 /** §3.11.2 步骤 5：`errorCode` 原样展示，四个固定文案，不新增第五个。 */
-const PRECOMPUTE_TEXT: Record<string, string> = {
-  model_not_found: '未找到 VoiceDesign / 说话人模型',
-  audio_too_short: '参考音频太短（< 3 s）',
-  oom_cpu: 'CPU 内存不足',
-  timeout: '预计算超时'
+const PRECOMPUTE_KEYS: Record<string, string> = {
+  model_not_found: 'voices.precompute.modelNotFound',
+  audio_too_short: 'voices.precompute.audioTooShort',
+  oom_cpu: 'voices.precompute.oomCpu',
+  timeout: 'voices.precompute.timeout'
 }
 
 export function precomputeText(code: string | null | undefined): string {
   if (!code) return ''
-  return PRECOMPUTE_TEXT[code] ?? '预计算失败'
+  return i18n.global.t(PRECOMPUTE_KEYS[code] ?? 'voices.precompute.failed')
 }
 
-const STATUS_TEXT: Record<VoiceStatus, string> = {
-  draft: '草稿',
-  precomputing: '制作中',
-  ready: '可用',
-  failed: '失败'
+const STATUS_KEYS: Record<VoiceStatus, string> = {
+  draft: 'voices.status.draft',
+  precomputing: 'voices.status.precomputing',
+  ready: 'voices.status.ready',
+  failed: 'voices.status.failed'
 }
 
 export function statusLabel(status: VoiceStatus): string {
-  return STATUS_TEXT[status] ?? status
+  const key = STATUS_KEYS[status]
+  return key ? i18n.global.t(key) : status
 }
 
 /** 表格 `bodyCell` 里的 `record` 是 `Record<string, any>`，用这两个收口，避免在模板里做类型断言。 */
@@ -29,14 +31,15 @@ export function statusText(status: unknown): string {
   return statusLabel(String(status) as VoiceStatus)
 }
 
-const SOURCE_TEXT: Record<VoiceSource, string> = {
-  builtin: '内置',
-  clone: '克隆',
-  design: '指令设计'
+const SOURCE_KEYS: Record<VoiceSource, string> = {
+  builtin: 'voices.source.builtin',
+  clone: 'voices.source.clone',
+  design: 'voices.source.design'
 }
 
 export function sourceLabel(source: VoiceSource): string {
-  return SOURCE_TEXT[source] ?? source
+  const key = SOURCE_KEYS[source]
+  return key ? i18n.global.t(key) : source
 }
 
 export function sourceText(source: unknown): string {
@@ -69,12 +72,18 @@ export function describeInUse(name: string, detail: unknown[]): string {
 
   const total = profiles.length + versions
   if (total === 0) {
-    return `无法删除「${name}」：仍被配置引用。先从这些配置里换成别的音色并发布，再回来删除。`
+    return i18n.global.t('voices.inUse.none', { name })
   }
 
-  // 中文里「与」两侧不对称：前面不留空格、后面留一个（与后面的数字分开）。
   let lead = ''
-  if (profiles.length > 0) lead = `${profiles.join('、')}（草稿）`
-  if (versions > 0) lead = lead ? `${lead}与 ${versions} 个已发布版本` : `${versions} 个已发布版本`
-  return `无法删除「${name}」：正被 ${lead}引用，共 ${total} 处。先从这些配置里换成别的音色并发布，再回来删除。`
+  if (profiles.length > 0) {
+    lead = i18n.global.t('voices.inUse.draftSuffix', {
+      profiles: profiles.join(i18n.global.t('voices.inUse.list'))
+    })
+  }
+  if (versions > 0) {
+    const published = i18n.global.t('voices.inUse.publishedCount', { count: versions })
+    lead = lead ? i18n.global.t('voices.inUse.join', { a: lead, b: published }) : published
+  }
+  return i18n.global.t('voices.inUse.total', { name, lead, total })
 }

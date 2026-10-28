@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
+const { t } = useI18n()
 const props = defineProps<{
   src: string
   /** 整段音频长度，滑块的右边界。 */
@@ -47,7 +49,7 @@ function onEnd(value: number): void {
 
     <div class="audition__trim">
       <label class="audition__row">
-        <span>起点</span>
+        <span>{{ t('voices.audition.start') }}</span>
         <a-slider
           :value="trimStartMs"
           :min="0"
@@ -59,7 +61,7 @@ function onEnd(value: number): void {
         />
       </label>
       <label class="audition__row">
-        <span>终点</span>
+        <span>{{ t('voices.audition.end') }}</span>
         <a-slider
           :value="endMs"
           :min="0"
@@ -71,8 +73,7 @@ function onEnd(value: number): void {
         />
       </label>
       <p class="audition__hint">
-        裁剪只改元数据：保存时按区间重写 WAV，服务端不需要重新解码整段（§3.11.2 步骤 3）。
-        区间 {{ (trimStartMs / 1000).toFixed(2) }} – {{ (endMs / 1000).toFixed(2) }} s
+        {{ t('voices.audition.hint', { start: (trimStartMs / 1000).toFixed(2), end: (endMs / 1000).toFixed(2) }) }}
       </p>
     </div>
   </div>

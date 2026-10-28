@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import { getAudit } from '@/api/profiles'
@@ -8,6 +9,7 @@ import ErrorBanner from '@/components/ErrorBanner.vue'
 import { useConsoleStore } from '@/stores/console'
 import type { AuditRow } from '@/types/profile'
 
+const { t } = useI18n()
 const consoleStore = useConsoleStore()
 
 const rows = ref<AuditRow[]>([])
@@ -37,7 +39,7 @@ async function load(): Promise<void> {
     rows.value = data.list
     total.value = data.total
   } catch (caught) {
-    error.value = caught instanceof AppError ? caught : new AppError('unknown', '审计列表加载失败')
+    error.value = caught instanceof AppError ? caught : new AppError('unknown', t('audit.loadFailed'))
     rows.value = []
   } finally {
     loading.value = false
@@ -50,18 +52,18 @@ watch([() => consoleStore.profile, page, pageSize], () => void load(), { immedia
 <template>
   <div class="audit">
     <form class="audit__filters" @submit.prevent="page = 1; void load()">
-      <a-input v-model:value="actor" placeholder="操作人" allow-clear />
-      <a-input v-model:value="action" placeholder="动作（如 draft.patch）" allow-clear />
+      <a-input v-model:value="actor" :placeholder="t('audit.filters.actor')" allow-clear />
+      <a-input v-model:value="action" :placeholder="t('audit.filters.actionPlaceholder')" allow-clear />
       <a-select
         v-model:value="result"
         :options="[
-          { value: '', label: '全部结果' },
+          { value: '', label: t('audit.filters.allResults') },
           { value: 'ok', label: 'ok' },
           { value: 'failed', label: 'failed' }
         ]"
       />
-      <a-input v-model:value="field" placeholder="字段名（如 vad.min_silence_ms）" allow-clear />
-      <a-button type="primary" html-type="submit">查询</a-button>
+      <a-input v-model:value="field" :placeholder="t('audit.filters.fieldPlaceholder')" allow-clear />
+      <a-button type="primary" html-type="submit">{{ t('audit.filters.search') }}</a-button>
     </form>
 
     <ErrorBanner :error="error" />

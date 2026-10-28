@@ -1,7 +1,11 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+
 import type { VoiceRow } from '@/types/voice-library'
 import { formatSeconds, sourceText, statusText } from '@/utils/voice-text'
 
+const { t } = useI18n()
 const props = defineProps<{ rows: VoiceRow[]; loading?: boolean }>()
 
 const emit = defineEmits<{
@@ -10,15 +14,15 @@ const emit = defineEmits<{
   remove: [row: VoiceRow]
 }>()
 
-const columns = [
-  { title: '名称', dataIndex: 'name', key: 'name' },
-  { title: '来源', key: 'source', width: 96 },
-  { title: '后端', dataIndex: 'backend', key: 'backend', width: 140 },
-  { title: '时长', key: 'audioSeconds', width: 88 },
-  { title: '状态', key: 'status', width: 140 },
-  { title: '引用', key: 'usedBy', width: 180 },
-  { title: '操作', key: 'actions', width: 208 }
-]
+const columns = computed(() => [
+  { title: t('voices.columns.name'), dataIndex: 'name', key: 'name' },
+  { title: t('voices.columns.source'), key: 'source', width: 96 },
+  { title: t('voices.columns.backend'), dataIndex: 'backend', key: 'backend', width: 140 },
+  { title: t('voices.columns.duration'), key: 'audioSeconds', width: 88 },
+  { title: t('voices.columns.status'), key: 'status', width: 140 },
+  { title: t('voices.columns.usedBy'), key: 'usedBy', width: 180 },
+  { title: t('voices.columns.actions'), key: 'actions', width: 208 }
+])
 
 const STATUS_COLOR: Record<string, string> = {
   ready: 'green',
@@ -34,8 +38,8 @@ function usageText(row: Record<string, unknown>): string {
   const versions = typeof usedBy.versions === 'number' ? usedBy.versions : 0
   if (profiles.length === 0 && versions === 0) return '—'
   const parts: string[] = []
-  if (profiles.length > 0) parts.push(`${profiles.join('、')}（草稿）`)
-  if (versions > 0) parts.push(`${versions} 个版本`)
+  if (profiles.length > 0) parts.push(t('voices.usage.draftSuffix', { profiles: profiles.join(t('voices.inUse.list')) }))
+  if (versions > 0) parts.push(t('voices.usage.versionCount', { count: versions }))
   return parts.join(' · ')
 }
 
@@ -77,18 +81,18 @@ function errorOf(row: Record<string, unknown>): string {
       <template v-else-if="column.key === 'actions'">
         <a-space size="small">
           <!-- 内置音色没有参考音频（`audio_seconds=0`），试听会是 410，直接禁掉。 -->
-          <a-tooltip :title="Number(record.audioSeconds ?? 0) > 0 ? '' : '内置音色没有参考音频'">
+          <a-tooltip :title="Number(record.audioSeconds ?? 0) > 0 ? '' : t('voices.builtinNoAudio')">
             <a-button
               type="link"
               size="small"
               :disabled="Number(record.audioSeconds ?? 0) <= 0"
               @click="emit('audition', props.rows[index])"
             >
-              试听
+              {{ t('voices.actions.audition') }}
             </a-button>
           </a-tooltip>
-          <a-button type="link" size="small" @click="emit('duplicate', props.rows[index])">复制</a-button>
-          <a-button type="link" size="small" danger @click="emit('remove', props.rows[index])">删除</a-button>
+          <a-button type="link" size="small" @click="emit('duplicate', props.rows[index])">{{ t('voices.actions.duplicate') }}</a-button>
+          <a-button type="link" size="small" danger @click="emit('remove', props.rows[index])">{{ t('voices.actions.remove') }}</a-button>
         </a-space>
       </template>
     </template>

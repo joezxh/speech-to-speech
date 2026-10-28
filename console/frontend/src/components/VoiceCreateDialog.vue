@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -23,13 +24,14 @@ const emit = defineEmits<{
 }>()
 
 const store = useVoicesStore()
+const { t } = useI18n()
 
-const STEPS = [
-  { title: '来源' },
-  { title: '音频 / 转写' },
-  { title: '试听与裁剪' },
-  { title: '命名保存' }
-]
+const STEPS = computed(() => [
+  { title: t('voices.create.steps.source') },
+  { title: t('voices.create.steps.audio') },
+  { title: t('voices.create.steps.audition') },
+  { title: t('voices.create.steps.name') }
+])
 
 const step = ref(0)
 const source = ref<VoiceSource>('builtin')
@@ -132,7 +134,7 @@ async function startRecording(): Promise<void> {
     recorder.start()
     recording.value = true
   } catch (caught) {
-    error.value = caught instanceof AppError ? caught : new AppError('voice_audio_invalid', '无法访问麦克风')
+    error.value = caught instanceof AppError ? caught : new AppError('voice_audio_invalid', t('voices.create.micDenied'))
   }
 }
 
@@ -159,11 +161,11 @@ const canSave = computed(
 
 function next(): void {
   if (step.value === 1 && (audioMissing.value || refTextMissing.value || instructMissing.value)) {
-    error.value = new AppError('invalid_parameter', '这一步还有必填项没填')
+    error.value = new AppError('invalid_parameter', t('voices.create.requiredMissing'))
     return
   }
   error.value = null
-  step.value = Math.min(STEPS.length - 1, step.value + 1)
+  step.value = Math.min(STEPS.value.length - 1, step.value + 1)
 }
 
 function back(): void {
@@ -229,7 +231,7 @@ function close(): void {
 </script>
 
 <template>
-  <a-modal :open="open" title="制作音色" :width="640" :footer="null" @cancel="close">
+  <a-modal :open="open" :title="t('voices.create.title')" :width="640" :footer="null" @cancel="close">
     <a-steps :current="step" size="small" :items="STEPS" class="voice-create__steps" />
 
     <ErrorBanner :error="error" />
@@ -239,11 +241,11 @@ function close(): void {
         :percent="precompute?.progress ?? 0"
         :status="precompute?.errorCode ? 'exception' : precompute?.stage === 'done' ? 'success' : 'active'"
       />
-      <p class="voice-create__stage">阶段：{{ precompute?.stage ?? 'queued' }}</p>
+      <p class="voice-create__stage">{{ t('voices.create.stage', { stage: precompute?.stage ?? 'queued' }) }}</p>
       <a-alert v-if="errorText" type="error" show-icon :message="errorText" />
-      <p v-if="canRetry" class="voice-create__hint">可以关掉对话框后重新上传同一段音频重试预计算。</p>
+      <p v-if="canRetry" class="voice-create__hint">{{ t('voices.create.retryHint') }}</p>
       <div class="voice-create__actions">
-        <a-button type="primary" @click="close">完成</a-button>
+        <a-button type="primary" @click="close">{{ t('voices.create.done') }}</a-button>
       </div>
     </div>
 
@@ -255,8 +257,7 @@ function close(): void {
           </a-radio-button>
         </a-radio-group>
         <p class="voice-create__hint">
-          后端 <code>{{ backend }}</code> 支持：
-          {{ sources.length ? sources.map((item) => sourceLabel(item)).join(' / ') : '无（该后端不接受音色绑定）' }}
+          {{ t('voices.create.backendSupport', { backend, list: sources.length ? sources.map((item) => sourceLabel(item)).join(' / ') : t('voices.create.backendNone') }) }}
         </p>
       </section>
 
@@ -264,33 +265,33 @@ function close(): void {
         <template v-if="isClone">
           <div class="voice-create__row">
             <a-upload :before-upload="onPick" :show-upload-list="false" accept="audio/wav,.wav">
-              <a-button>上传 WAV</a-button>
+              <a-button>{{ t('voices.create.uploadWav') }}</a-button>
             </a-upload>
-            <a-button v-if="!recording" @click="startRecording">录音</a-button>
-            <a-button v-else danger @click="stopRecording">停止录音</a-button>
-            <span v-if="audio" class="voice-create__picked">已选 {{ (durationMs / 1000).toFixed(2) }} s</span>
+            <a-button v-if="!recording" @click="startRecording">{{ t('voices.create.record') }}</a-button>
+            <a-button v-else danger @click="stopRecording">{{ t('voices.create.stopRecord') }}</a-button>
+            <span v-if="audio" class="voice-create__picked">{{ t('voices.create.selected', { sec: (durationMs / 1000).toFixed(2) }) }}</span>
           </div>
           <p class="voice-create__hint">
-            16 kHz / 单声道 / PCM16，1–30 s，≤ 10 MiB。录音会自动重采样并转成 WAV。
+            {{ t('voices.create.audioFormatHint') }}
           </p>
           <a-textarea
             v-model:value="refText"
             :rows="3"
-            placeholder="逐字转写（必须与音频内容一致；不是逐字会让合成失真）"
+            :placeholder="t('voices.create.refTextPlaceholder')"
           />
-          <a-alert v-if="refTextMissing" type="warning" show-icon message="克隆必须填写逐字转写" />
+          <a-alert v-if="refTextMissing" type="warning" show-icon :message="t('voices.create.refTextRequired')" />
         </template>
 
         <template v-else-if="source === 'design'">
           <a-textarea
             v-model:value="instruct"
             :rows="3"
-            placeholder="音色设计指令，例如「低沉的男声，语速偏慢」"
+            :placeholder="t('voices.create.instructPlaceholder')"
           />
-          <a-alert v-if="instructMissing" type="warning" show-icon message="指令式音色需要填写设计指令" />
+          <a-alert v-if="instructMissing" type="warning" show-icon :message="t('voices.create.instructRequired')" />
         </template>
 
-        <p v-else class="voice-create__hint">内置音色只需要名字，不需要参考音频。</p>
+        <p v-else class="voice-create__hint">{{ t('voices.create.builtinHint') }}</p>
       </section>
 
       <section v-else-if="step === 2" class="voice-create__body">
@@ -302,25 +303,25 @@ function close(): void {
           :trim-end-ms="trimEndMs"
           @update:trim="(start: number, end: number) => { trimStartMs = start; trimEndMs = end }"
         />
-        <p v-else class="voice-create__hint">这一段没有可试听的音频（内置与指令式音色都不带参考音频）。</p>
+        <p v-else class="voice-create__hint">{{ t('voices.create.noAudioStep') }}</p>
       </section>
 
       <section v-else class="voice-create__body">
-        <a-input v-model:value="name" placeholder="音色名（不区分大小写唯一）" :maxlength="64" />
+        <a-input v-model:value="name" :placeholder="t('voices.create.namePlaceholder')" :maxlength="64" />
         <label class="voice-create__row">
-          <span class="voice-create__hint">留存天数</span>
+          <span class="voice-create__hint">{{ t('voices.create.retentionDays') }}</span>
           <a-input-number v-model:value="retentionDays" :min="1" :max="180" />
         </label>
         <a-checkbox v-model:checked="consent">
-          我确认已获得该声音所有者的书面授权，同意按上述期限上传并保存其生物特征数据
+          {{ t('voices.create.consent') }}
         </a-checkbox>
-        <a-alert v-if="!consent" type="warning" show-icon message="未勾选授权时后端会直接拒绝（400 voice_consent_required）" />
+        <a-alert v-if="!consent" type="warning" show-icon :message="t('voices.create.consentRequired')" />
       </section>
 
       <div class="voice-create__actions">
-        <a-button v-if="step > 0" @click="back">上一步</a-button>
-        <a-button v-if="step < STEPS.length - 1" type="primary" @click="next">下一步</a-button>
-        <a-button v-else type="primary" :disabled="!canSave" :loading="store.saving" @click="save">保存</a-button>
+        <a-button v-if="step > 0" @click="back">{{ t('voices.create.back') }}</a-button>
+        <a-button v-if="step < STEPS.length - 1" type="primary" @click="next">{{ t('voices.create.next') }}</a-button>
+        <a-button v-else type="primary" :disabled="!canSave" :loading="store.saving" @click="save">{{ t('voices.create.save') }}</a-button>
       </div>
     </template>
   </a-modal>

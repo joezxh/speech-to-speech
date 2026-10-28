@@ -1,25 +1,27 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import type { AuditRow } from '@/types/profile'
 import { formatDuration, formatTime } from '@/utils/format'
 
+const { t } = useI18n()
 const props = defineProps<{ rows: AuditRow[]; loading?: boolean }>()
 
 const data = computed(() => props.rows.map((row) => ({ ...row, key: row.auditId, atText: formatTime(row.at) })))
 
 // 列必须走 `props.columns`：ant-design-vue 4 只认 `columns` 属性或默认插槽里的
 // `a-table-column`，`<template #columns>` 会被静默忽略（表格零列）。
-const columns = [
-  { title: '时间', dataIndex: 'atText', key: 'at', width: 170 },
-  { title: '操作人', dataIndex: 'actor', key: 'actor', width: 120 },
-  { title: '动作', dataIndex: 'action', key: 'action', width: 130 },
-  { title: '版本', dataIndex: 'version', key: 'version', width: 80 },
-  { title: '结果', key: 'result', width: 100 },
-  { title: '字段（仅名称）', key: 'fields' },
-  { title: '耗时', key: 'durationS', width: 90 },
-  { title: '错误码', dataIndex: 'errorCode', key: 'errorCode', width: 160 }
-]
+const columns = computed(() => [
+  { title: t('audit.columns.time'), dataIndex: 'atText', key: 'at', width: 170 },
+  { title: t('audit.columns.actor'), dataIndex: 'actor', key: 'actor', width: 120 },
+  { title: t('audit.columns.action'), dataIndex: 'action', key: 'action', width: 130 },
+  { title: t('audit.columns.version'), dataIndex: 'version', key: 'version', width: 80 },
+  { title: t('audit.columns.result'), key: 'result', width: 100 },
+  { title: t('audit.columns.fields'), key: 'fields' },
+  { title: t('audit.columns.duration'), key: 'durationS', width: 90 },
+  { title: t('audit.columns.errorCode'), dataIndex: 'errorCode', key: 'errorCode', width: 160 }
+])
 </script>
 
 <template>

@@ -1,0 +1,31 @@
+export default {
+  tri: { keep: 'Keep', on: 'On', off: 'Off' },
+  updateFailed: 'Hot update failed, please retry',
+  rulesTitle: 'Hot updates only change active connections and write no files',
+  rules: {
+    r1: 'Affects only current active connections; new connections still read init_chat_prompt and may differ from the values sent here.',
+    r2: 'Idle units have no connection to push to; changing the default persona requires editing the YAML and publishing, otherwise it reverts to the old default after restart.',
+    r3: 'transcription-type sessions are not supported; sessions must be realtime.',
+    r4: 'language must be supported by the active backend; auto requires the backend to support auto-reset, otherwise 400.',
+    r5: 'model and audio.output.voice are not provided: they are protocol echoes only, sending them changes neither voice nor model.'
+  },
+  tokenMissingTitle: 'Controller has no S2S_INTERNAL_TOKEN; chain B is unavailable',
+  tokenMissingDesc: 'Set S2S_INTERNAL_TOKEN in config/prod.env, then docker compose up -d --force-recreate pipeline.',
+  scopeLabel: 'Scope',
+  scope: { all: 'All active connections', pipeline: 'Single unit', session: 'Single session' },
+  targetLabelPipeline: 'unit index',
+  targetLabelSession: 'session id',
+  targetPlaceholderSession: 'reuse the session id from the realtime transcript',
+  instructionsLabel: 'instructions (persona)',
+  blankPlaceholder: 'leave blank to keep unchanged',
+  createResponseLabel: 'turn_detection.create_response (auto-response)',
+  interruptResponseLabel: 'turn_detection.interrupt_response (allow interrupt)',
+  languagePlaceholder: 'auto / zh / en — must be supported by the active backend',
+  extensionsLabel: 'extensions (JSON, blank keeps unchanged)',
+  submit: 'Push to active sessions',
+  resultTitle: 'Push result',
+  resultSummary: 'Updated {updated} connection(s); {failed} failed. Audit {auditId}',
+  problemScopeAllNoTarget: 'scope=all does not need a target',
+  problemPipelineTarget: 'target must be a unit index (integer)',
+  problemSessionTarget: 'target must be a session id'
+}
