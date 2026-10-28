@@ -20,6 +20,7 @@ def register_api_routers(app: FastAPI) -> None:
         runtime,
         sessions,
         status,
+        traffic,
         turn_latency,
         voices,
     )
@@ -41,6 +42,8 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(voices.router)
     app.include_router(sessions.router)
     app.include_router(status.router)
+    # S1 spec §10.2: read-only traffic settings snapshot; no write path, no DB, no audit.
+    app.include_router(traffic.router)
     # A.15/A.16: read-only side channels; no prefix overlap with anything above.
     app.include_router(logs.router)
     app.include_router(turn_latency.router)
