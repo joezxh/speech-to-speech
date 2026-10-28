@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
-import { navGroups, type NavGroup, type NavItem } from '@/router/nav'
+import { frontOverlays, type NavIcon, type NavMeta, type VoiceOverlay } from '@/router/nav'
 import { useAuthStore } from '@/stores/auth'
 import { useConsoleStore } from '@/stores/console'
 import { DRAWER_BREAKPOINT, useShellStore } from '@/stores/shell'
@@ -15,6 +16,7 @@ const auth = useAuthStore()
 const consoleStore = useConsoleStore()
 const shell = useShellStore()
 const voice = useVoiceStore()
+const { t } = useI18n()
 
 /** 面仅用于样式与对话页顶栏动作；菜单与顶栏已统一，不再按面切换。 */
 const face = computed<'console' | 'voice'>(() => (route.meta.face === 'voice' ? 'voice' : 'console'))
@@ -27,22 +29,39 @@ const showAccount = computed(() => voice.me.enabled)
 // （demo 的 `_markUnread` / `_openPanel`）。直接用 `voice.unread` 而不是「有没有条目」：
 // 后者在纯手动的抽屉上没有任何信息量，且会让顶栏随每条转写重渲染。
 
-// 侧栏各分组同时显示（对齐 console-preview.html）：路由项受 `hasRoute` 约束，
-// 浮层项不受。折叠时分组标题由 CSS 隐藏。
-const groups = computed<NavGroup[]>(() =>
-  navGroups().map((group) => ({
-    ...group,
-    items: group.items.filter((item) => !item.name || router.hasRoute(item.name))
-  }))
-)
+// 侧栏导航从路由表 `meta` 派生（spec §6.1）：`navGroup` 分桶、`navOrder` 排序，
+// 路由项受 `hasRoute` 约束；front 段额外拼上三个非路由的 overlay。
+interface Row { key: string; icon: NavIcon; labelKey: string; to?: string; overlay?: VoiceOverlay }
+interface Group { key: 'lb' | 'front' | 'ops'; rows: Row[] }
 
-function keyOf(item: NavItem): string {
-  return item.name ?? `overlay:${item.action}`
-}
+const GROUP_ORDER: Array<Group['key']> = ['lb', 'front', 'ops']
+
+const groups = computed<Group[]>(() => {
+  const buckets: Record<Group['key'], Array<{ row: Row; order: number }>> = { lb: [], front: [], ops: [] }
+  for (const rec of router.getRoutes()) {
+    const m = rec.meta as unknown as NavMeta
+    if (!m.navKey || !m.navGroup) continue
+    if (rec.name && !router.hasRoute(rec.name)) continue
+    buckets[m.navGroup].push({
+      row: { key: String(rec.name), icon: m.navIcon, labelKey: m.navKey, to: String(rec.name) },
+      order: m.navOrder
+    })
+  }
+  for (const ov of frontOverlays) {
+    buckets.front.push({
+      row: { key: `overlay:${ov.overlay}`, icon: ov.navIcon, labelKey: ov.navKey, overlay: ov.overlay },
+      order: ov.navOrder
+    })
+  }
+  return GROUP_ORDER.map((key) => ({
+    key,
+    rows: buckets[key].sort((a, b) => a.order - b.order).map((entry) => entry.row)
+  })).filter((group) => group.rows.length > 0)
+})
 
 /** 当前路由项高亮：对话页时 `voice`，其余页面对应路由；浮层项不参与。 */
-function isCurrent(item: NavItem): boolean {
-  return route.name === item.name
+function isCurrent(row: Row): boolean {
+  return row.to !== undefined && route.name === row.to
 }
 
 const narrow = ref(false)
@@ -86,13 +105,13 @@ onBeforeUnmount(() => {
   consoleStore.stopPolling()
 })
 
-function onNavClick(item: NavItem): void {
-  if (item.name) {
-    void router.push({ name: item.name })
-  } else if (item.action) {
+function onNavClick(row: Row): void {
+  if (row.to) {
+    void router.push({ name: row.to })
+  } else if (row.overlay) {
     // 先写待处理的浮层，再导航到对话页；VoiceView 的 `immediate` watch 会接手开启。
     // 已在对话页时，openOverlay 触发 watch 变更 → 直接开浮层。
-    shell.openOverlay(item.action)
+    shell.openOverlay(row.overlay)
     if (route.name !== 'voice') void router.push({ name: 'voice' })
   }
   shell.closeDrawer()
@@ -183,23 +202,23 @@ function onHistoryClick(): void {
     <div class="shell__body">
       <nav id="shell-nav" class="shell__nav" :class="{ 'is-open': shell.drawerOpen }" aria-label="主导航">
         <template v-for="(group, gi) in groups" :key="group.key">
-          <div class="shell__nav-label" :class="{ 'is-first': gi === 0 }">{{ group.label }}</div>
+          <div class="shell__nav-label" :class="{ 'is-first': gi === 0 }">{{ t(`nav.group.${group.key}`) }}</div>
 
           <!-- 原生纽而非 `a-menu`：折叠后 `.nav` 只剩图标，geometry 与
                console-preview.html 的侧栏一致（图标 + 文字 / 居中图标）。 -->
           <button
-            v-for="item in group.items"
-            :key="keyOf(item)"
+            v-for="row in group.rows"
+            :key="row.key"
             class="nav"
             type="button"
-            :aria-current="isCurrent(item) ? 'true' : undefined"
-            :title="item.label"
-            @click="onNavClick(item)"
+            :aria-current="isCurrent(row) ? 'true' : undefined"
+            :title="t(row.labelKey)"
+            @click="onNavClick(row)"
           >
             <svg class="nav__icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
-              <use :href="`#i-${item.icon}`" />
+              <use :href="`#i-${row.icon}`" />
             </svg>
-            <span>{{ item.label }}</span>
+            <span>{{ t(row.labelKey) }}</span>
           </button>
         </template>
       </nav>

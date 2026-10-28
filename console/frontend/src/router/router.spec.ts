@@ -4,7 +4,6 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 
 import { routes } from './index'
 
-/** 与 `index.ts` 同一张表，但用内存 history：不碰地址栏，也不跑守卫。 */
 function makeRouter() {
   return createRouter({ history: createMemoryHistory(), routes })
 }
@@ -17,27 +16,42 @@ describe('shell routing', () => {
     expect(matched[1].meta.face).toBe('voice')
   })
 
-  it('keeps the console namespace record componentless so RouterView skips it', () => {
-    const record = makeRouter()
-      .getRoutes()
-      .find((route) => route.name === 'console')
+  it('keeps the console namespace record componentless', () => {
+    const record = makeRouter().getRoutes().find((r) => r.name === 'console')
     expect(record?.path).toBe('/console')
     expect(record?.components?.default).toBeUndefined()
     expect(record?.meta.requiresAuth).toBe(true)
   })
 
   it('inherits face and requiresAuth on console children', () => {
-    const resolved = makeRouter().resolve('/console/params')
-    // 链首是挂在 `/` 上的外壳记录（匿名，与第 1 条同一个 `ConsoleLayout`），
-    // 所以这里只比对有名字的那两条。
-    expect(resolved.matched.map((record) => record.name).filter(Boolean)).toEqual(['console', 'params'])
+    const resolved = makeRouter().resolve('/console/deploy')
+    expect(resolved.matched.map((r) => r.name).filter(Boolean)).toEqual(['console', 'deploy'])
     expect(resolved.meta.face).toBe('console')
     expect(resolved.meta.requiresAuth).toBe(true)
   })
 
-  it('gates the voice face behind auth like the console face', () => {
+  it('gates the voice face behind auth', () => {
     const resolved = makeRouter().resolve('/')
     expect(resolved.meta.face).toBe('voice')
     expect(resolved.meta.requiresAuth).toBe(true)
+  })
+
+  it('defaults /console to overview', () => {
+    // `resolve()` 不跟随 redirect 记录，直接断言叶子路由声明的重定向目标。
+    const matched = makeRouter().resolve('/console').matched
+    expect(matched[matched.length - 1]?.redirect).toEqual({ name: 'overview' })
+  })
+
+  it('redirects every legacy path to its new name', () => {
+    const r = makeRouter()
+    const redirectTo = (p: string) => {
+      const matched = r.resolve(p).matched
+      return matched[matched.length - 1]?.redirect
+    }
+    expect(redirectTo('/console/params')).toEqual({ name: 'deploy' })
+    expect(redirectTo('/console/instances')).toEqual({ name: 'machines' })
+    expect(redirectTo('/console/instances/trends')).toEqual({ name: 'traffic' })
+    expect(redirectTo('/console/versions')).toEqual({ name: 'release' })
+    expect(redirectTo('/console/sessions')).toEqual({ name: 'session-update' })
   })
 })
