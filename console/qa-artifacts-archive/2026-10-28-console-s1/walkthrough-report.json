@@ -1,0 +1,118 @@
+{
+  "base": "http://127.0.0.1:3200",
+  "checks": [
+    {
+      "name": "④ POST /auth/login returns a token bundle",
+      "pass": true,
+      "detail": "admin"
+    },
+    {
+      "name": "④ /console redirects to /console/overview",
+      "pass": true,
+      "detail": "http://127.0.0.1:3200/console/overview"
+    },
+    {
+      "name": "① nav has 3 group headings",
+      "pass": true,
+      "detail": "负载均衡管理 · 总架构 | 语音对话前台 | 运维台 · 集群维度"
+    },
+    {
+      "name": "① nav items >= 12, each with an i18n title",
+      "pass": true,
+      "detail": "12 items"
+    },
+    {
+      "name": "⑦ overview renders >=15 real KPI cells",
+      "pass": true,
+      "detail": "20 cells"
+    },
+    {
+      "name": "⑦ every KPI cell key is overview.kpi.*",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "⑦ unavailable facts render DASH not mock",
+      "pass": true,
+      "detail": "overview.kpi.pipelineInstances,overview.kpi.online,overview.kpi.degraded,overview.kpi.offline,overview.kpi.draining,overview.kpi.activeSessions,overview.kpi.freeSlots,overview.kpi.totalSlots,overview.kpi.pendingGrants,overview.kpi.version"
+    },
+    {
+      "name": "⑦ unimplemented markers carry S2/S3/none",
+      "pass": true,
+      "detail": "S2,S3,S3,S3,none,S2"
+    },
+    {
+      "name": "⑦ each unimplemented card shows its tag",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "⑧ traffic route renders",
+      "pass": true,
+      "detail": "http://127.0.0.1:3200/console/traffic"
+    },
+    {
+      "name": "⑧ off-mode info banner present",
+      "pass": true,
+      "detail": ""
+    },
+    {
+      "name": "⑧ allocator fields rendered read-only",
+      "pass": true,
+      "detail": "allocatorMode=off consoleId=Han-PC seedConfigured=false probeIntervalS=5 probeTimeoutS=2 failThreshold=3 recoverThreshold=2 grantTtlS=60 usageIntervalS=30 metricRetentionDays=7 queueEnabled=false webrtcHangupEnabled=false policy=least-in-use tieBreaker=weight-random"
+    },
+    {
+      "name": "⑧ routing features marked S3",
+      "pass": true,
+      "detail": "3"
+    },
+    {
+      "name": "③ /console/params -> /console/deploy",
+      "pass": true,
+      "detail": "http://127.0.0.1:3200/console/deploy"
+    },
+    {
+      "name": "③ /console/instances -> /console/machines",
+      "pass": true,
+      "detail": "http://127.0.0.1:3200/console/machines"
+    },
+    {
+      "name": "③ /console/instances/trends -> /console/traffic",
+      "pass": true,
+      "detail": "http://127.0.0.1:3200/console/traffic"
+    },
+    {
+      "name": "③ /console/versions -> /console/release",
+      "pass": true,
+      "detail": "http://127.0.0.1:3200/console/release"
+    },
+    {
+      "name": "③ /console/sessions -> /console/session-update",
+      "pass": true,
+      "detail": "http://127.0.0.1:3200/console/session-update"
+    },
+    {
+      "name": "⑤ toggle writes locale=en-US",
+      "pass": true,
+      "detail": "en-US"
+    },
+    {
+      "name": "⑤ locale persists after reload (nav English)",
+      "pass": true,
+      "detail": "Load Balancing · TopologyCluster OverviewTraffic & RoutingVoice FrontendConversation DemoC"
+    },
+    {
+      "name": "⑧ traffic off banner translated to EN",
+      "pass": true,
+      "detail": "Load balancing is currently disabled. The values below are configuration, not live behavior."
+    }
+  ],
+  "screenshots": [
+    "01-login-zh.png",
+    "02-overview-zh.png",
+    "05-traffic-zh.png",
+    "03-overview-en.png",
+    "04-traffic-en.png"
+  ],
+  "pageErrors": []
+}
