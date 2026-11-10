@@ -144,7 +144,8 @@
 | `get` | `(model_id: str) -> ModelCard` | 不存在抛 `ModelRegistryError`，消息列出相近 id |
 | `list` | `(*, kind=None, status=None) -> tuple[ModelCard, ...]` | 按 `id` 稳定排序 |
 | `by_backend` | `(backend_name: str) -> tuple[ModelCard, ...]` | 供 `models list` 反查 |
-| `validate` | `() -> None` | 校验 id 唯一、`kind` 与 backend 一致、`backend_name` 存在、`status="available"` 的 backend 必须能构造（只查注册表，不 import handler）、`default_load_params` 键名属于对应 `config_type` 字段；一次性收集全部冲突后抛出 |
+| `bind` | `(registries: Mapping[str, Mapping[str, BackendSpec]]) -> None` | 由 `bind_model_cards()` 在三张注册表构建完成后调用，记录 `backend_name → (kind, config_type 字段名集合)` 索引并执行 `validate()`；**不 import 任何 handler 模块**，保持延迟导入边界 |
+| `validate` | `() -> None` | 校验 id 唯一、`kind` 与 backend 一致、**`status="available"` 的 `backend_name` 必须已注册**（`planned` / `deprecated` 允许指向尚未实现的 backend，如 `breeze-tts-2` / `cosyvoice2`）、`default_load_params` 键名属于对应 `config_type` 字段；一次性收集全部冲突后抛出 |
 | `resolve_model` | 门面 `(model_id) -> ModelCard` | `status="planned"` 抛 `ModelNotAvailableError`，消息含 Spec B 与接入规范章节号；`deprecated` 返回 card 但由 CLI 打印告警 |
 
 **无 card 的后端不虚构元信息**：`models list` 对没有 card 的后端显示 `unregistered` 行（只列 backend name 与 kind），不填写版本/许可/显存。Spec B 之外不批量补卡。
