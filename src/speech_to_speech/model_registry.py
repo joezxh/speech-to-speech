@@ -6,7 +6,7 @@ Importing this module never imports a backend handler module.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Any, Literal, get_type_hints
 
 ModelKind = Literal["stt", "llm", "tts"]
@@ -46,7 +46,7 @@ class ModelCard:
 class ModelRegistry:
     def __init__(self) -> None:
         self._cards: dict[str, ModelCard] = {}
-        self._backend_index: dict[str, tuple[ModelKind, dict[str, Any]]] = {}
+        self._backend_index: dict[str, tuple[str, dict[str, Any]]] = {}
 
     def register(self, card: ModelCard) -> None:
         if card.id in self._cards:
@@ -60,9 +60,7 @@ class ModelRegistry:
             known = ", ".join(sorted(self._cards)) or "<none>"
             raise ModelRegistryError(f"Unknown model id {model_id!r}. Known ids: {known}.") from None
 
-    def list(
-        self, *, kind: ModelKind | None = None, status: ModelStatus | None = None
-    ) -> tuple[ModelCard, ...]:
+    def list(self, *, kind: ModelKind | None = None, status: ModelStatus | None = None) -> tuple[ModelCard, ...]:
         selected = (
             item
             for item in self._cards.values()
@@ -79,7 +77,7 @@ class ModelRegistry:
         )
 
     def bind(self, registries: Mapping[str, Mapping[str, Any]]) -> None:
-        index: dict[str, tuple[ModelKind, dict[str, Any]]] = {}
+        index: dict[str, tuple[str, dict[str, Any]]] = {}
         for kind, registry in registries.items():
             for name, spec in registry.items():
                 hints = get_type_hints(spec.config_type)
@@ -98,18 +96,14 @@ class ModelRegistry:
             entry = self._backend_index.get(card.backend_name)
             if entry is None:
                 if card.status == "available":
-                    problems.append(
-                        f"{card.id}: available card references unregistered backend {card.backend_name!r}."
-                    )
+                    problems.append(f"{card.id}: available card references unregistered backend {card.backend_name!r}.")
                 continue
             kind, hints = entry
             if card.kind != kind:
                 problems.append(f"{card.id}: kind {card.kind!r} != backend kind {kind!r}.")
             unknown = sorted(set(card.default_load_params) - set(hints))
             if unknown:
-                problems.append(
-                    f"{card.id}: unknown load params {unknown} for backend {card.backend_name!r}."
-                )
+                problems.append(f"{card.id}: unknown load params {unknown} for backend {card.backend_name!r}.")
         if problems:
             raise ModelRegistryError("Model catalog validation failed:\n" + "\n".join(problems))
 
@@ -121,9 +115,7 @@ def register_model(card: ModelCard) -> None:
     MODEL_REGISTRY.register(card)
 
 
-def list_models(
-    *, kind: ModelKind | None = None, status: ModelStatus | None = None
-) -> tuple[ModelCard, ...]:
+def list_models(*, kind: ModelKind | None = None, status: ModelStatus | None = None) -> tuple[ModelCard, ...]:
     return MODEL_REGISTRY.list(kind=kind, status=status)
 
 
