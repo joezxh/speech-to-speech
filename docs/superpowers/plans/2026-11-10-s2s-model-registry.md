@@ -704,7 +704,7 @@ git commit -m "feat(model-registry): bind builtin cards to backend registry"
 - Test: `tests/test_model_config_overrides.py`
 
 **Interfaces:**
-- Consumes: `ModelCard`、`resolve_model()`、`load_param_types()`（Task 1）；`_mapping()` / `_error()` / `_value()`（`config.py` 既有）。
+- Consumes: `ModelCard`、`get_model()`、`load_param_types()`（Task 1）；`_mapping()` / `_error()` / `_value()`（`config.py` 既有）。
 - Produces: `ResolvedPipeline.model_cards: Mapping[str, ModelCard]`；`_validate_models_section(document)`；`_apply_model_overrides(document, environment) -> dict[str, ModelCard]`。
 
 - [ ] **Step 1: Write the failing test**
@@ -726,7 +726,7 @@ def test_example_yaml_resolves_model_overrides():
     config = resolve_config(load_config(EXAMPLE), environ={"BREEZE_REPO": "/models/Breeze-TTS-2"})
     pipeline = config.pipelines["prod"]
     assert pipeline.model_cards["qwen3-tts-1.7b-customvoice"].repo_id == "/models/qwen3-tts"
-    assert pipeline.model_cards["qwen3-tts-1.7b-customvoice"].default_load_params == {"device": "cpu"}
+    assert pipeline.model_cards["qwen3-tts-1.7b-customvoice"].default_load_params == {"qwen3_tts_device": "cpu"}
     assert pipeline.model_cards["minicpm-homologous-qwen3-8b"].repo_id == "/models/Breeze-TTS-2"
     assert resolve_model("qwen3-tts-1.7b-customvoice").repo_id != "/models/qwen3-tts"
 
@@ -738,7 +738,11 @@ def test_overrides_are_pipeline_local():
         "num_pipelines": 1,
     }
     config = resolve_config(document, environ={"BREEZE_REPO": "/models/Breeze-TTS-2"})
-    assert config.pipelines["second"].model_cards == {}
+    first = config.pipelines["prod"].model_cards["qwen3-tts-1.7b-customvoice"]
+    second = config.pipelines["second"].model_cards["qwen3-tts-1.7b-customvoice"]
+    assert first is not second
+    assert first.repo_id == second.repo_id == "/models/qwen3-tts"
+    assert resolve_model("qwen3-tts-1.7b-customvoice").repo_id != "/models/qwen3-tts"
 
 
 def test_unknown_model_id_is_rejected(tmp_path):
@@ -753,7 +757,7 @@ def test_unknown_model_id_is_rejected(tmp_path):
 def test_unknown_load_param_is_rejected(tmp_path):
     path = tmp_path / "bad.yaml"
     path.write_text(EXAMPLE.read_text(encoding="utf-8").replace(
-        "device: cpu", "bogus: cpu", 1
+        "qwen3_tts_device: cpu", "bogus: cpu", 1
     ), encoding="utf-8")
     with pytest.raises(ConfigurationError, match="Unknown load param"):
         resolve_config(load_config(path), environ={"BREEZE_REPO": "/models/Breeze-TTS-2"})
@@ -802,7 +806,7 @@ blocks:
     kind: llm
     backend: chat-completions
     settings:
-      responses_api_api_key: {env: GPUSTACK_API_KEY}
+      responses_api_api_key: "not-needed"
   tts:
     kind: tts
     backend: qwen3
@@ -814,7 +818,7 @@ models:
   qwen3-tts-1.7b-customvoice:
     repo_id: /models/qwen3-tts
     default_load_params:
-      device: cpu
+      qwen3_tts_device: cpu
   minicpm-homologous-qwen3-8b:
     repo_id: {env: BREEZE_REPO}
 ```
