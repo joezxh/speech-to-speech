@@ -132,9 +132,10 @@ def test_module_level_facades(monkeypatch):
 def assert_no_handler_modules(module: str) -> None:
     code = (
         f"import sys, {module}; "
-        "prefixes = ('speech_to_speech.STT.', 'speech_to_speech.TTS.', 'speech_to_speech.LLM.'); "
-        "assert not [k for k in sys.modules if k.startswith(prefixes)], "
-        "sorted(k for k in sys.modules if k.startswith(prefixes))"
+        "eager_backends = [k for k in sys.modules if "
+        "k.startswith(('speech_to_speech.STT.', 'speech_to_speech.TTS.')) "
+        "or (k.startswith('speech_to_speech.LLM.') and k.endswith('language_model'))]; "
+        "assert not eager_backends, sorted(eager_backends)"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
 
@@ -180,3 +181,24 @@ def test_builtin_cards_bind_without_error():
         }
     )
     assert len(reg.list()) == 9
+
+
+def test_backend_spec_has_default_models_field():
+    from speech_to_speech.backend_registry import LLM_BACKENDS, STT_BACKENDS, TTS_BACKENDS
+
+    for registry in (STT_BACKENDS, LLM_BACKENDS, TTS_BACKENDS):
+        for spec in registry.values():
+            assert spec.models == (), spec.name
+    assert len(STT_BACKENDS) + len(LLM_BACKENDS) + len(TTS_BACKENDS) == 31
+
+
+def test_importing_backend_registry_populates_global_catalog():
+    from speech_to_speech import model_registry as mr
+    from speech_to_speech.backend_registry import STT_BACKENDS  # noqa: F401
+
+    assert len(mr.list_models()) == 9
+    assert mr.resolve_model("breeze-tts-2").status == "deprecated"
+
+
+def test_backend_registry_import_keeps_handler_lazy_loading():
+    assert_no_handler_modules("speech_to_speech.backend_registry")

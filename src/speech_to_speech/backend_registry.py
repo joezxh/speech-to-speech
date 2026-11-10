@@ -54,6 +54,7 @@ from speech_to_speech.arguments_classes.sense_voice_stt_arguments import SenseVo
 from speech_to_speech.arguments_classes.supertonic_tts_arguments import SupertonicTTSHandlerArguments
 from speech_to_speech.arguments_classes.vllm_realtime_stt_arguments import VLLMRealtimeSTTHandlerArguments
 from speech_to_speech.arguments_classes.whisper_stt_arguments import WhisperSTTHandlerArguments
+from speech_to_speech.model_registry import ModelCard, bind_model_cards
 from speech_to_speech.pipeline.cancel_scope import CancelScope
 from speech_to_speech.pipeline.speculative_turns import SpeculativeTurnTracker
 
@@ -112,6 +113,7 @@ class BackendSpec:
     normalize_config: ConfigNormalizer | None = None
     required_extra: str | None = None
     capabilities: BackendCapabilities = field(default_factory=BackendCapabilities)
+    models: tuple[ModelCard, ...] = ()
 
     def normalize(self, config: Any) -> BackendConfig:
         if not isinstance(config, self.config_type):
@@ -705,3 +707,5 @@ TTS_BACKENDS = build_backend_registry(
         ),
     ],
 )
+
+bind_model_cards({"stt": STT_BACKENDS, "llm": LLM_BACKENDS, "tts": TTS_BACKENDS})
