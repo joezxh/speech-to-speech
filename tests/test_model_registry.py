@@ -141,3 +141,42 @@ def assert_no_handler_modules(module: str) -> None:
 
 def test_import_does_not_load_backend_handlers():
     assert_no_handler_modules("speech_to_speech.model_registry")
+
+
+def test_builtin_catalog_status_counts_and_license_gate():
+    from speech_to_speech.models.builtin import builtin_model_cards
+
+    cards = builtin_model_cards()
+    assert len(cards) == 9
+    assert len({c.id for c in cards}) == 9
+    assert sorted(c.id for c in cards if c.status == "available") == [
+        "qwen3-asr-1.7b-hf",
+        "qwen3-tts-1.7b-customvoice",
+        "qwen3.5-4b-transformers",
+    ]
+    assert [c.id for c in cards if c.status == "deprecated"] == ["breeze-tts-2"]
+    assert sum(c.status == "planned" for c in cards) == 5
+
+    breeze = next(c for c in cards if c.id == "breeze-tts-2")
+    assert "Research and Non-Commercial" in breeze.license
+    assert "商用" in breeze.notes
+    assert breeze.min_vram_gb == 7.7
+
+    qwen_llm = next(c for c in cards if c.id == "minicpm-homologous-qwen3-8b")
+    assert qwen_llm.min_vram_gb == 16.0
+
+
+def test_builtin_cards_bind_without_error():
+    from speech_to_speech.models.builtin import builtin_model_cards
+
+    reg = ModelRegistry()
+    for item in builtin_model_cards():
+        reg.register(item)
+    reg.bind(
+        {
+            "stt": {"qwen3-asr": FakeSpec("stt"), "whisper": FakeSpec("stt")},
+            "llm": {"transformers": FakeSpec("llm")},
+            "tts": {"qwen3": FakeSpec("tts")},
+        }
+    )
+    assert len(reg.list()) == 9
