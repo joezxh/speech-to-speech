@@ -3,11 +3,11 @@ schema_version: 1
 locale: zh-CN
 branch: main
 nodes_managed: true
-exported_at: "2026-10-24T12:19:30Z"
+exported_at: "2026-10-29T02:11:28Z"
 modules:
     "":
-        dir_name: Speech-to-Speech 语音智能体流水线项目根
-        title: Speech-to-Speech 语音智能体流水线项目根
+        dir_name: Speech-to-Speech 语音智能体平台（根编排）
+        title: Speech-to-Speech 语音智能体平台（根编排）
         scope:
             - README.md
             - README-CN.md
@@ -51,6 +51,7 @@ modules:
         source_files: []
         children:
             - archive
+            - console
             - core_library
             - demo_app
             - docs
@@ -68,6 +69,17 @@ modules:
         children: []
         depends_on: []
         related_to: []
+    console:
+        dir_name: Console 控制台（FastAPI 后端 + Vue3 SPA）
+        title: Console 控制台（FastAPI 后端 + Vue3 SPA）
+        scope:
+            - console/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: core_library/speech_core_entrypoints
+            - path: demo_app/python_backend
     core_library:
         dir_name: Speech-to-Speech 语音对话核心库
         title: Speech-to-Speech 语音对话核心库
@@ -77,13 +89,10 @@ modules:
         children:
             - core_library/speech_core_entrypoints
         depends_on: []
-        related_to:
-            - path: scripts_and_examples
-            - path: silero_vad_vendor
-            - path: tests
+        related_to: []
     core_library/speech_core_entrypoints:
-        dir_name: Speech-to-Speech 入口与配置运行时
-        title: Speech-to-Speech 入口与配置运行时
+        dir_name: Speech-to-Speech 包入口与配置运行时核心层
+        title: Speech-to-Speech 包入口与配置运行时核心层
         scope:
             - src/speech_to_speech/__init__.py
             - src/speech_to_speech/baseHandler.py
@@ -97,20 +106,60 @@ modules:
         children: []
         depends_on: []
         related_to:
-            - path: demo_app
+            - path: console
     demo_app:
-        dir_name: Speech-to-Speech 实时语音演示应用
-        title: Speech-to-Speech 实时语音演示应用
+        dir_name: Speech-to-Speech 演示应用（Demo）
+        title: Speech-to-Speech 演示应用（Demo）
         scope:
             - demo/
+        source_files: []
+        children:
+            - demo_app/console_ui
+            - demo_app/node_runtime
+            - demo_app/python_backend
+        depends_on: []
+        related_to: []
+    demo_app/console_ui:
+        dir_name: 对话与部署控制台前端页面
+        title: 对话与部署控制台前端页面
+        scope:
+            - demo/console.html
+            - demo/console.css
+            - demo/style.css
+            - demo/index.html
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    demo_app/node_runtime:
+        dir_name: 语音对话演示应用（Node_浏览器运行时）
+        title: 语音对话演示应用（Node/浏览器运行时）
+        scope:
+            - demo/main.js
+            - demo/s2s-realtime-client.js
+            - demo/turn-latency.js
         source_files: []
         children: []
         depends_on: []
         related_to:
-            - path: core_library/speech_core_entrypoints
+            - path: demo_app/python_backend
+    demo_app/python_backend:
+        dir_name: Speech-to-Speech Demo FastAPI 后端
+        title: Speech-to-Speech Demo FastAPI 后端
+        scope:
+            - demo/auth.py
+            - demo/server.py
+            - demo/limiter.py
+            - demo/param_api.py
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: console
+            - path: demo_app/node_runtime
     docs:
-        dir_name: Speech-to-Speech 项目文档与部署手册
-        title: Speech-to-Speech 项目文档与部署手册
+        dir_name: S2S 语音智能体文档与参数目录
+        title: S2S 语音智能体文档与参数目录
         scope:
             - docs/
         source_files: []
@@ -127,8 +176,7 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: core_library
+        related_to: []
     silero_vad_vendor:
         dir_name: Silero VAD 语音活动检测 Python 包
         title: Silero VAD 语音活动检测 Python 包
@@ -137,15 +185,13 @@ modules:
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: core_library
+        related_to: []
     tests:
-        dir_name: 语音到语音代理套件测试集
-        title: 语音到语音代理套件测试集
+        dir_name: speech-to-speech 全量 pytest 测试套件与安装冒烟验证
+        title: speech-to-speech 全量 pytest 测试套件与安装冒烟验证
         scope:
             - tests/
         source_files: []
         children: []
         depends_on: []
-        related_to:
-            - path: core_library
+        related_to: []

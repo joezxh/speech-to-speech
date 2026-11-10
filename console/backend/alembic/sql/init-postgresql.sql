@@ -175,81 +175,28 @@ CREATE INDEX ix_param_instance_metric_observed_at ON param_instance_metric (obse
 
 UPDATE alembic_version SET version_num='0005_instances' WHERE alembic_version.version_num = '0004_turn_latency';
 
--- Running upgrade 0005_instances -> 0006_voice_sessions
+-- Running upgrade 0005_instances -> 0006_clusters
 
-CREATE TABLE voice_sessions (
-    id VARCHAR(26) NOT NULL,
-    pipeline_session_id VARCHAR(64),
-    client_kind VARCHAR(16) DEFAULT 'console' NOT NULL,
-    record_source VARCHAR(16) DEFAULT 'client' NOT NULL,
-    status VARCHAR(16) DEFAULT 'recording' NOT NULL,
-    title VARCHAR(120),
-    turn_count INTEGER DEFAULT '0' NOT NULL,
-    audio_bytes INTEGER DEFAULT '0' NOT NULL,
-    created_by VARCHAR(64) DEFAULT '' NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    started_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    last_turn_at TIMESTAMP WITH TIME ZONE,
-    closed_at TIMESTAMP WITH TIME ZONE,
-    consent_ack_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    retention_days INTEGER DEFAULT '30' NOT NULL,
-    PRIMARY KEY (id)
-);
-
-CREATE INDEX ix_voice_sessions_created_at ON voice_sessions (created_at);
-
-CREATE INDEX ix_voice_sessions_closed_at ON voice_sessions (closed_at);
-
-CREATE TABLE voice_turns (
-    id VARCHAR(26) NOT NULL,
-    session_id VARCHAR(26) NOT NULL,
-    ordinal INTEGER DEFAULT '0' NOT NULL,
-    role VARCHAR(16) NOT NULL,
-    natural_key VARCHAR(96) NOT NULL,
-    text TEXT NOT NULL,
-    started_at TIMESTAMP WITH TIME ZONE,
-    ended_at TIMESTAMP WITH TIME ZONE,
-    response_key VARCHAR(96),
-    speaker_label VARCHAR(24),
-    speaker_profile_id VARCHAR(26),
-    audio_relpath VARCHAR(255),
-    audio_bytes INTEGER DEFAULT '0' NOT NULL,
-    audio_seconds FLOAT DEFAULT '0' NOT NULL,
-    audio_state VARCHAR(16) DEFAULT 'none' NOT NULL,
-    audio_truncated BOOLEAN DEFAULT '0' NOT NULL,
-    rev INTEGER DEFAULT '0' NOT NULL,
-    PRIMARY KEY (id),
-    CONSTRAINT uq_voice_turns_session_key UNIQUE (session_id, natural_key),
-    FOREIGN KEY(session_id) REFERENCES voice_sessions (id) ON DELETE CASCADE
-);
-
-CREATE INDEX ix_voice_turns_session_ordinal ON voice_turns (session_id, ordinal);
-
-CREATE INDEX ix_voice_turns_speaker_label ON voice_turns (speaker_label);
-
-UPDATE alembic_version SET version_num='0006_voice_sessions' WHERE alembic_version.version_num = '0005_instances';
-
--- Running upgrade 0006_voice_sessions -> 0007_speaker_profiles
-
-CREATE TABLE speaker_profiles (
-    id VARCHAR(26) NOT NULL,
+CREATE TABLE param_cluster (
+    id SERIAL NOT NULL,
     name VARCHAR(64) NOT NULL,
-    embedding_ciphertext BYTEA NOT NULL,
-    embedding_nonce BYTEA NOT NULL,
-    key_id VARCHAR(32) DEFAULT 'v1' NOT NULL,
-    embedding_dim INTEGER DEFAULT '0' NOT NULL,
-    consent_ack_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    retention_days INTEGER DEFAULT '30' NOT NULL,
-    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    registry VARCHAR(255) DEFAULT '' NOT NULL,
+    policy VARCHAR(16) DEFAULT 'least' NOT NULL,
+    note VARCHAR(255) DEFAULT '' NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
-    PRIMARY KEY (id)
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_cluster_name UNIQUE (name)
 );
 
-CREATE INDEX ix_speaker_profiles_created_at ON speaker_profiles (created_at);
+INSERT INTO param_cluster (name, registry, policy, note, created_at, updated_at, updated_by) SELECT 'default', '', 'least', '', now(), now(), 'migration' WHERE NOT EXISTS (SELECT 1 FROM param_cluster WHERE name = 'default');
 
-CREATE INDEX ix_speaker_profiles_name ON speaker_profiles (name);
+ALTER TABLE param_instance ADD COLUMN cluster_id VARCHAR(64) DEFAULT 'default' NOT NULL;
 
-UPDATE alembic_version SET version_num='0007_speaker_profiles' WHERE alembic_version.version_num = '0006_voice_sessions';
+CREATE INDEX ix_param_instance_cluster_id ON param_instance (cluster_id);
+
+UPDATE alembic_version SET version_num='0006_clusters' WHERE alembic_version.version_num = '0005_instances';
 
 COMMIT;
 

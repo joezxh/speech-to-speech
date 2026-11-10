@@ -1,0 +1,27 @@
+# 本地镜像 + 独立 ASR / TTS REST 端点（speech-to-speech-local:cu130-1.2-rest）
+#
+# 背景：ASR/TTS 的 OpenAI 兼容 REST 端点由 scripts/patch_pipeline_rest.py 注入到
+#   openai_realtime/websocket_router.py。生产基座 Dockerfile.ttsfix（cu130-1.0）
+#   已在构建期固化该补丁，但本地基座 Dockerfile.local（cu130-1.1）**未包含**，
+#   导致本地镜像的 pipeline 只提供 WS /v1/realtime，ASR/TTS 无法被单独调用。
+#
+# 本文件在本地基座之上补齐同一补丁，使镜像具备：
+#   WS  /v1/realtime              —— 完整 S2S 会话
+#   POST /v1/audio/transcriptions —— ASR 独立接口（OpenAI 兼容）
+#   POST /v1/audio/speech         —— TTS 独立接口（OpenAI 兼容）
+#
+# 构建（上下文 = speech-to-speech-src/）：
+#   docker build -f Dockerfile.local.rest -t speech-to-speech-local:cu130-1.2-rest .
+#
+# 部署：
+#   docker compose -f docker-compose.thirdparty.yml --env-file .env.thirdparty up -d
+FROM speech-to-speech-local:cu130-1.1-sox
+USER root
+
+COPY scripts/patch_pipeline_rest.py /tmp/patch_pipeline_rest.py
+RUN python3 /tmp/patch_pipeline_rest.py && rm /tmp/patch_pipeline_rest.py
+
+# 端点自检：确认补丁已生效，避免镜像被复用时静默缺失
+RUN grep -q "rest_transcriptions" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
+    && grep -q "rest_speech" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
+    && echo "ASR/TTS REST endpoints baked OK"

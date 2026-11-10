@@ -1,5 +1,10 @@
 export default {
   brand: 'S2S Console',
+  brandName: 'Voice Agent Console',
+  brandSub: 'Load Balancing · Unified Entry',
+  cluster: 'Cluster',
+  healthOk: 'All machines online',
+  sideFoot: 'Load balancing as the backbone\nFront office and ops console share this console.',
   signIn: 'Sign in',
   signOut: 'Sign out',
   language: 'Language',

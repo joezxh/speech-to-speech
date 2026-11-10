@@ -1,0 +1,1234 @@
+[
+ {
+  "stage": "client",
+  "backend": null,
+  "name": "model",
+  "type": "string",
+  "default": "local",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "session",
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "both",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "seconds",
+  "risk": "本地后端可能忽略该值，改它无实际效果",
+  "source_ref": "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.model"
+ },
+ {
+  "stage": "client",
+  "backend": null,
+  "name": "voice",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "session",
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "hot",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "seconds",
+  "risk": "音色名由 TTS 后端决定，错名会导致合成失败或回退",
+  "source_ref": "api/openai_realtime/audio_client.py:RealtimeAudioClientConfig.voice"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "cache_volume",
+  "type": "fixed",
+  "default": "./cache/:/root/.cache/",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "compose_file"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "container",
+  "change_cost": "minutes",
+  "risk": "环境绑定：不挂卷则每次重建重下权重；卷权限需与容器 UID 匹配",
+  "source_ref": "docker-compose.yml:services.pipeline.volumes"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "env_reference",
+  "type": "fixed",
+  "default": "{env: NAME}",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "container",
+  "change_cost": "restart",
+  "risk": "引用不存在的变量不会回退默认而是报错；这是密钥不进仓的主要手段",
+  "source_ref": "config.py:_expand_env"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "gpu_reservation",
+  "type": "fixed",
+  "default": "deploy.resources.reservations.devices.capabilities=[gpu]",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "compose_file"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "container",
+  "change_cost": "minutes",
+  "risk": "环境绑定：无 GPU 预留时 pipeline 会退到 CPU，实时性不保",
+  "source_ref": "docker-compose.yml:services.pipeline.deploy"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "healthcheck",
+  "type": "fixed",
+  "default": "none (probe GET /v1/pool)",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "compose_file"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "container",
+  "change_cost": "minutes",
+  "risk": "无 healthcheck 意味着 compose 不知道服务是否就绪，平台必须自己探 /v1/pool",
+  "source_ref": "docker-compose.yml (no healthcheck defined)"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "max_config_bytes",
+  "type": "fixed",
+  "default": 1048576,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "container",
+  "change_cost": "minutes",
+  "risk": "环境绑定：超过 1 MiB 直接拒读；平台模板体积远低于此",
+  "source_ref": "_config_yaml.py:13 _MAX_BYTES"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "max_config_depth",
+  "type": "fixed",
+  "default": 32,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "container",
+  "change_cost": "minutes",
+  "risk": "环境绑定：超 32 层拒绝；平台生成器不应生成深层嵌套",
+  "source_ref": "_config_yaml.py:14 _MAX_DEPTH"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "path_field_resolution",
+  "type": "fixed",
+  "default": "expand ~ then resolve relative to YAML directory",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "container",
+  "change_cost": "restart",
+  "risk": "容器内路径必须用绝对路径；相对路径按 YAML 所在目录解析易错",
+  "source_ref": "config.py:_PATH_FIELDS"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "silero_vad_volume",
+  "type": "fixed",
+  "default": "../.silero-dl2/silero-vad-master:/opt/silero-vad:ro",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "compose_file"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "container",
+  "change_cost": "minutes",
+  "risk": "环境绑定：缺该卷则回退联网下载，离线环境下启动挂掉",
+  "source_ref": "docker-compose.yml:services.pipeline.volumes"
+ },
+ {
+  "stage": "deploy",
+  "backend": null,
+  "name": "top_level_keys",
+  "type": "fixed",
+  "default": "[schema_version, runtime, blocks, pipelines]",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "container",
+  "change_cost": "minutes",
+  "risk": "环境绑定：多余键被拒（无向前兼容），平台模板需严格对齐",
+  "source_ref": "config.py:374"
+ },
+ {
+  "stage": "llm",
+  "backend": null,
+  "name": "http_retry_policy",
+  "type": "fixed",
+  "default": "single attempt, no retry",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "环境绑定：无重试意味着瞬时网络抖动直接失败，平台侧需提供健康检查与重启",
+  "source_ref": "LLM/base_openai_compatible_language_model.py"
+ },
+ {
+  "stage": "llm",
+  "backend": null,
+  "name": "request_timeout_s",
+  "type": "fixed",
+  "default": 20.0,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "不可配置；20s 后强制结束本轮回复，长回答可能被截断（connect=min(10.0, x)）",
+  "source_ref": "LLM/base_openai_compatible_language_model.py:196"
+ },
+ {
+  "stage": "runtime",
+  "backend": null,
+  "name": "chunk_samples",
+  "type": "fixed",
+  "default": 512,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "环境绑定：固定 512；改动影响全部下游分块假设",
+  "source_ref": "api/openai_realtime/service.py:111 CHUNK_SAMPLES"
+ },
+ {
+  "stage": "runtime",
+  "backend": null,
+  "name": "cors_policy",
+  "type": "fixed",
+  "default": "no CORSMiddleware installed",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "process",
+  "change_cost": "restart",
+  "risk": "安全：固定行为：跨域前端需与 API 同源或由反代补 CORS 头",
+  "source_ref": "demo/server.py"
+ },
+ {
+  "stage": "runtime",
+  "backend": null,
+  "name": "monitoring_endpoints",
+  "type": "fixed",
+  "default": "GET /v1/pool, GET /v1/usage",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "process",
+  "change_cost": "restart",
+  "risk": "平台健康检查与回滚判定复用这两个端点；池状态含 stuck 单元可识别卡死管线",
+  "source_ref": "api/openai_realtime/websocket_router.py:615,639"
+ },
+ {
+  "stage": "runtime",
+  "backend": null,
+  "name": "pipeline_sample_rate",
+  "type": "fixed",
+  "default": 16000,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "环境绑定：固定 16kHz；改它需改源码与全部后端适配",
+  "source_ref": "api/openai_realtime/service.py:110 PIPELINE_SAMPLE_RATE"
+ },
+ {
+  "stage": "runtime",
+  "backend": null,
+  "name": "pool_reject_when_full",
+  "type": "fixed",
+  "default": true,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "环境绑定：无排队意味着高峰期直接失败；扩容只能加 num_pipelines 或加实例",
+  "source_ref": "api/openai_realtime/websocket_router.py"
+ },
+ {
+  "stage": "runtime",
+  "backend": null,
+  "name": "realtime_api_auth",
+  "type": "fixed",
+  "default": "none",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "code_constant"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "process",
+  "change_cost": "restart",
+  "risk": "安全：任何拿到 host:port 的人都能开会话、读 /v1/pool；平台必须在反代层加 token 与网络隔离",
+  "source_ref": "api/openai_realtime/websocket_router.py"
+ },
+ {
+  "stage": "tts",
+  "backend": "kokoro",
+  "name": "kokoro_blocksize",
+  "type": "integer",
+  "default": 512,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "与 CHUNK_SAMPLES=512 对齐最佳",
+  "source_ref": "arguments_classes/kokoro_tts_arguments.py:35"
+ },
+ {
+  "stage": "tts",
+  "backend": "kokoro",
+  "name": "kokoro_device",
+  "type": "string",
+  "default": "auto",
+  "choices": [
+   "auto",
+   "cuda",
+   "cpu",
+   "mps"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "CPU 可接受但并发受限",
+  "source_ref": "arguments_classes/kokoro_tts_arguments.py:13"
+ },
+ {
+  "stage": "tts",
+  "backend": "kokoro",
+  "name": "kokoro_lang_code",
+  "type": "string",
+  "default": "b",
+  "choices": [
+   "a",
+   "b"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "决定可用音色集合",
+  "source_ref": "arguments_classes/kokoro_tts_arguments.py:25"
+ },
+ {
+  "stage": "tts",
+  "backend": "kokoro",
+  "name": "kokoro_model_name",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "minutes",
+  "risk": "留空依赖后端默认下载，离线环境需显式路径",
+  "source_ref": "arguments_classes/kokoro_tts_arguments.py:7"
+ },
+ {
+  "stage": "tts",
+  "backend": "kokoro",
+  "name": "kokoro_speed",
+  "type": "float",
+  "default": 1.0,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "restart",
+  "risk": "过快影响可懂度",
+  "source_ref": "arguments_classes/kokoro_tts_arguments.py:31"
+ },
+ {
+  "stage": "tts",
+  "backend": "kokoro",
+  "name": "kokoro_voice",
+  "type": "string",
+  "default": "bm_fable",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "session",
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "both",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "seconds",
+  "risk": "与 lang_code 不匹配会读错音",
+  "source_ref": "arguments_classes/kokoro_tts_arguments.py:19"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_api_key",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "安全：未设时隐式回退 OPENAI_API_KEY",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:13"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_base_url",
+  "type": "string",
+  "default": "http://localhost:8091/v1",
+  "choices": [],
+  "required": true,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "环境绑定：错地址每句都失败，表现为全程静音",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:9"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_blocksize",
+  "type": "integer",
+  "default": 512,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "与 CHUNK_SAMPLES=512 对齐最佳",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:57"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_instructions",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "basic",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "仅在支持风格指令的服务上生效",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:33"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_language",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "restart",
+  "risk": "固定语言会覆盖自动识别",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:25"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_model",
+  "type": "string",
+  "default": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "名称须与远端一致",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:17"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_response_format",
+  "type": "string",
+  "default": "pcm",
+  "choices": [
+   "pcm",
+   "wav"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "只支持 pcm / wav；mp3 会报错",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:37"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_sample_rate",
+  "type": "integer",
+  "default": 24000,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "配错会变调/变速；Qwen3-TTS 固定 24000；仅对返回裸 PCM 的兼容服务生效",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:41"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_speed",
+  "type": "float",
+  "default": 1.0,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "restart",
+  "risk": "仅非流式端点生效",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:45"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_stream",
+  "type": "boolean",
+  "default": false,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "session",
+  "change_cost": "restart",
+  "risk": "非 vLLM-Omni 服务打开会报错",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:49"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_task_type",
+  "type": "string",
+  "default": null,
+  "choices": [
+   "CustomVoice",
+   "VoiceDesign",
+   "Base"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "仅 vLLM-Omni 需要",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:29"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_timeout",
+  "type": "float",
+  "default": 300.0,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "过小丢句，过大拖住会话；合成超时表现为该句静音",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:53"
+ },
+ {
+  "stage": "tts",
+  "backend": "openai_compatible",
+  "name": "openai_tts_voice",
+  "type": "string",
+  "default": "aiden",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "session",
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "both",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "seconds",
+  "risk": "不存在时远端报 400 或回退默认",
+  "source_ref": "arguments_classes/openai_tts_arguments.py:21"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_attn_implementation",
+  "type": "string",
+  "default": "eager",
+  "choices": [
+   "eager",
+   "flash_attention_2",
+   "sdpa"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "flash_attention_2 需额外依赖；Jetson 必须用 eager",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:25"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_backend",
+  "type": "string",
+  "default": "ggml",
+  "choices": [
+   "ggml",
+   "torch"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "minutes",
+  "risk": "ggml 与 torch 权重格式不同，切换需重下；Apple Silicon 忽略此值走 mlx-audio",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:31"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_blocksize",
+  "type": "integer",
+  "default": 512,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "与 CHUNK_SAMPLES=512 对齐最佳",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:131"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_device",
+  "type": "string",
+  "default": "cuda",
+  "choices": [
+   "cuda",
+   "auto"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "auto 在无 CUDA 时会落到 CPU，延迟不可接受",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:13"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_dtype",
+  "type": "string",
+  "default": "auto",
+  "choices": [
+   "auto",
+   "float16",
+   "bfloat16",
+   "float32"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "float32 显存与带宽开销翻倍",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:19"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_ggml_quantization",
+  "type": "string",
+  "default": "BF16",
+  "choices": [
+   "BF16",
+   "Q8_0",
+   "Q4_K_M",
+   "F32"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "minutes",
+  "risk": "Q4_K_M 显存最低但音质下降",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:37"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_gguf_codec_path",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "环境绑定：本地路径；必须与 talker 成对且 backend=ggml",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:49"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_gguf_talker_path",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "环境绑定：本地路径；必须与 codec 成对且 backend=ggml",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:43"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_instruct",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "basic",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "仅 VoiceDesign 模型生效",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:89"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_language",
+  "type": "string",
+  "default": "auto",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "session",
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "both",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "seconds",
+  "risk": "auto 在混合语种下会串音；可被 session.update 覆盖",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:115"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_max_new_tokens",
+  "type": "integer",
+  "default": 1536,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "过小长句被截断（约 12 token/秒音频）",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:125"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_mlx_quantization",
+  "type": "string",
+  "default": "6bit",
+  "choices": [
+   "bf16",
+   "4bit",
+   "6bit",
+   "8bit"
+  ],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "minutes",
+  "risk": "仅 Apple Silicon 生效",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:109"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_model_name",
+  "type": "string",
+  "default": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "minutes",
+  "risk": "CustomVoice / VoiceDesign / Base 三类模型可选字段不同，选错会启动失败",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:7"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_non_streaming_mode",
+  "type": "boolean",
+  "default": true,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "关掉（=句内流式）可降首音延迟；本仓 compose 即为 false",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:103"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_parity_mode",
+  "type": "boolean",
+  "default": false,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "关闭 CUDA graph 后吞吐下降，但可规避部分卡型的流式异常",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:99"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_ref_audio",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "minutes",
+  "risk": "隐私：参考音频是生物特征，入库需授权；与 ref_spk 互斥",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:61"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_ref_cache_dir",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "ops",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "环境绑定：容器内不挂卷会导致每次重建重算音色向量",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:55"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_ref_rvq",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "依赖 ref_spk + ref_text，缺一会报错",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:73"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_ref_spk",
+  "type": "string",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "expert",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "与 ref_audio 互斥，同时给会报错",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:67"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_ref_text",
+  "type": "string",
+  "default": "I'm confused why some people have super short timelines, yet at the same time are bullish on scaling up reinforcement learning atop LLMs. If we're actually close to a human-like learner, then this whole approach of training on verifiable outcomes.",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "必须是参考音频的逐字转写，否则克隆失真",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:79"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_speaker",
+  "type": "string",
+  "default": "Aiden",
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "session",
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "both",
+  "exposure": "basic",
+  "impact": "session",
+  "change_cost": "seconds",
+  "risk": "音色名不存在时后端会退到第一个可用音色",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:83"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_streaming_chunk_size",
+  "type": "integer",
+  "default": null,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "过小抬高调度开销，过大抬高首音延迟；缺省为 faster-qwen3-tts=8 / mlx-audio=4",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:119"
+ },
+ {
+  "stage": "tts",
+  "backend": "qwen3",
+  "name": "qwen3_tts_xvec_only",
+  "type": "boolean",
+  "default": false,
+  "choices": [],
+  "required": false,
+  "source_priority": [
+   "yaml",
+   "env",
+   "default"
+  ],
+  "effect": "startup",
+  "exposure": "advanced",
+  "impact": "pipeline",
+  "change_cost": "restart",
+  "risk": "开启后音色更稳定但相似度略降",
+  "source_ref": "arguments_classes/qwen3_tts_arguments.py:93"
+ }
+]

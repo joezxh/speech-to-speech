@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
 from queue import Queue
 from threading import Event
 from typing import Any
@@ -22,6 +23,7 @@ from speech_to_speech.STT.qwen3_asr_handler import (
     language_to_code,
     resolve_torch_dtype,
 )
+from speech_to_speech.utils.model_monitor import ModelMonitor
 
 _PROMPT_TOKENS = 3
 
@@ -78,6 +80,7 @@ def _handler(
     processor: _FakeProcessor | None = None,
     prompt: str | None = None,
     gen_kwargs: dict[str, Any] | None = None,
+    monitor: Any | None = None,
 ) -> Qwen3ASRSTTHandler:
     handler = object.__new__(Qwen3ASRSTTHandler)
     handler.processor = processor or _FakeProcessor()
@@ -86,6 +89,11 @@ def _handler(
     handler.torch_dtype = torch.float32
     handler.prompt = prompt
     handler.gen_kwargs = dict(gen_kwargs or {})
+    # ``object.__new__`` skips BaseHandler.__init__, so the fields process()
+    # now relies on for MODEL_CALL_METRICS are attached here. A disabled
+    # monitor keeps the tracing a no-op unless a test injects a recorder.
+    handler.model_name = qwen3_asr_handler.DEFAULT_MODEL
+    handler.monitor = monitor if monitor is not None else ModelMonitor(enabled=False)
     handler.configure_language(language)
     return handler
 
@@ -473,3 +481,50 @@ def test_registry_normalizes_qwen3_asr_arguments() -> None:
     assert selection.config["prompt"] is None
     assert selection.config["gen_kwargs"] == {"max_new_tokens": 64}
     assert selection.spec.required_extra is None
+
+
+# ── model metrics instrumentation ────────────────────────────────────
+
+
+class _RecordingRecord:
+    def __init__(self, category: str, model_name: str, input: dict[str, Any]) -> None:
+        self.category = category
+        self.model_name = model_name
+        self.input = input
+        self.output: dict[str, Any] = {}
+
+    def set_output(self, **kwargs: Any) -> None:
+        self.output.update(kwargs)
+
+    def mark_first_byte(self) -> None:
+        self.output.setdefault("first_byte_s", 0.0)
+
+
+class _RecordingMonitor:
+    """Captures ``trace`` calls so tests can assert what the console will read."""
+
+    def __init__(self) -> None:
+        self.records: list[_RecordingRecord] = []
+
+    @contextmanager
+    def trace(self, category: str, model_name: str, input: dict[str, Any] | None = None):
+        rec = _RecordingRecord(category, str(model_name), dict(input or {}))
+        self.records.append(rec)
+        yield rec
+
+
+def test_process_records_stt_call_metrics() -> None:
+    """The deployed Qwen3-ASR path must emit MODEL_CALL_METRICS so the runtime
+    card can show the real model name and latency instead of 'not loaded'."""
+    monitor = _RecordingMonitor()
+    handler = _handler(processor=_FakeProcessor(text="hello world"), monitor=monitor)
+
+    list(handler.process(_vad_audio("final")))
+
+    assert len(monitor.records) == 1
+    rec = monitor.records[0]
+    assert rec.category == "STT"
+    assert rec.model_name == qwen3_asr_handler.DEFAULT_MODEL
+    assert rec.input["mode"] == "final"
+    assert rec.output["text"] == "hello world"
+    assert rec.output["text_length"] == len("hello world")

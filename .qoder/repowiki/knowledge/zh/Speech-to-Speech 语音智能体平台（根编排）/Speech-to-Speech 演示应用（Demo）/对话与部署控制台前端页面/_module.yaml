@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: demo_app/console_ui
+title: 对话与部署控制台前端页面
+scope:
+    - demo/console.html
+    - demo/console.css
+    - demo/style.css
+    - demo/index.html
+source_files: []
+depends_on: []
+related_to: []

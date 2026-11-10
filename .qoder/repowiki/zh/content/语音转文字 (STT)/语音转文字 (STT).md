@@ -14,7 +14,16 @@
 - [openai_compatible_handler.py](file://src/speech_to_speech/STT/openai_compatible_handler.py)
 - [qwen3_asr_handler.py](file://src/speech_to_speech/STT/qwen3_asr_handler.py)
 - [sense_voice_handler.py](file://src/speech_to_speech/STT/sense_voice_handler.py)
+- [model_monitor.py](file://src/speech_to_speech/utils/model_monitor.py)
+- [turn_latency.py](file://src/speech_to_speech/pipeline/turn_latency.py)
 </cite>
+
+## 更新摘要
+**变更内容**   
+- 增强了 Parakeet TDT 处理器的转录事件处理机制，包括改进的流式增量处理和更精细的语言检测
+- 在所有 STT 处理器中引入了统一的模型监控能力，支持性能指标收集和系统资源监控
+- 完善了延迟追踪和 MLX 锁竞争监控，提供更详细的性能分析数据
+- 优化了会话状态管理和陈旧输入过滤机制
 
 ## 目录
 1. [简介](#简介)
@@ -30,7 +39,9 @@
 11. [附录：集成示例与最佳实践](#附录集成示例与最佳实践)
 
 ## 简介
-本技术文档面向 STT（语音转文字）子系统，系统性梳理多后端实现、流式转录机制、语言检测与增量处理策略，并给出性能对比、平台兼容性、配置优化与故障排除建议。代码库采用“处理器基类 + 多后端实现”的插件化设计，既支持本地推理模型（Whisper 系列、Paraformer、SenseVoice、Qwen3-ASR、Parakeet TDT），也支持 OpenAI 兼容 HTTP 与 Realtime WebSocket 两种远程接入方式。
+本技术文档面向 STT（语音转文字）子系统，系统性梳理多后端实现、流式转录机制、语言检测与增量处理策略，并给出性能对比、平台兼容性、配置优化与故障排除建议。代码库采用"处理器基类 + 多后端实现"的插件化设计，既支持本地推理模型（Whisper 系列、Paraformer、SenseVoice、Qwen3-ASR、Parakeet TDT），也支持 OpenAI 兼容 HTTP 与 Realtime WebSocket 两种远程接入方式。
+
+**最新更新**：增强了 Parakeet TDT 的转录事件处理能力，并在所有 STT 处理器中集成了统一的模型监控框架，提供详细的性能指标和资源使用统计。
 
 ## 项目结构
 STT 子系统位于 `src/speech_to_speech/STT`，核心由以下层次组成：
@@ -38,6 +49,7 @@ STT 子系统位于 `src/speech_to_speech/STT`，核心由以下层次组成：
 - 流式协议层：`StreamingSTTProtocol` 抽象 OpenAI Realtime 与 vLLM Realtime 的 WebSocket 协议差异，统一音频分片、事件解析与连接生命周期管理。
 - 通知器：`TranscriptionNotifier` 将 STT 输出转换为统一的文本事件，供上层服务消费。
 - 各后端处理器：Whisper、Faster Whisper、Lightning Whisper MLX、Parakeet TDT、Paraformer、SenseVoice、Qwen3-ASR、OpenAI 兼容 HTTP/Realtime。
+- 监控框架：`ModelMonitor` 提供统一的模型调用监控，`TurnLatencyTracker` 负责延迟追踪和性能分析。
 
 ```mermaid
 graph TB
@@ -53,6 +65,10 @@ PF["ParaformerSTTHandler"]
 SV["SenseVoiceSTTHandler"]
 Q3["Qwen3ASRSTTHandler"]
 OAI["OpenAICompatibleSTTHandler"]
+end
+subgraph "监控框架"
+MM["ModelMonitor<br/>性能指标收集"]
+TLT["TurnLatencyTracker<br/>延迟追踪"]
 end
 Base --> W
 Base --> FW
@@ -71,20 +87,16 @@ Notifier --> PF
 Notifier --> SV
 Notifier --> Q3
 Notifier --> OAI
+MM --> PF
+TLT --> Base
 ```
 
 **图示来源**
 - [base_stt_handler.py:16-312](file://src/speech_to_speech/STT/base_stt_handler.py#L16-L312)
 - [streaming_handler.py:55-216](file://src/speech_to_speech/STT/streaming_handler.py#L55-L216)
 - [transcription_notifier.py:26-122](file://src/speech_to_speech/STT/transcription_notifier.py#L26-L122)
-- [whisper_stt_handler.py:48-295](file://src/speech_to_speech/STT/whisper_stt_handler.py#L48-L295)
-- [faster_whisper_handler.py:38-174](file://src/speech_to_speech/STT/faster_whisper_handler.py#L38-L174)
-- [lightning_whisper_mlx_handler.py:37-120](file://src/speech_to_speech/STT/lightning_whisper_mlx_handler.py#L37-L120)
-- [parakeet_tdt_handler.py:69-605](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L69-L605)
-- [paraformer_handler.py:22-100](file://src/speech_to_speech/STT/paraformer_handler.py#L22-L100)
-- [sense_voice_handler.py:19-86](file://src/speech_to_speech/STT/sense_voice_handler.py#L19-L86)
-- [qwen3_asr_handler.py:58-187](file://src/speech_to_speech/STT/qwen3_asr_handler.py#L58-L187)
-- [openai_compatible_handler.py:262-692](file://src/speech_to_speech/STT/openai_compatible_handler.py#L262-L692)
+- [model_monitor.py:1-200](file://src/speech_to_speech/utils/model_monitor.py#L1-L200)
+- [turn_latency.py:75-371](file://src/speech_to_speech/pipeline/turn_latency.py#L75-L371)
 
 **章节来源**
 - [base_stt_handler.py:16-312](file://src/speech_to_speech/STT/base_stt_handler.py#L16-L312)
@@ -92,26 +104,32 @@ Notifier --> OAI
 - [transcription_notifier.py:26-122](file://src/speech_to_speech/STT/transcription_notifier.py#L26-L122)
 
 ## 核心组件
-- BaseSTTHandler：统一处理“最新轮次门控”“最终结果稳定等待”“陈旧输入丢弃”“会话语言重置”“最终 STT 延迟记录”。
+- BaseSTTHandler：统一处理"最新轮次门控""最终结果稳定等待""陈旧输入丢弃""会话语言重置""最终 STT 延迟记录"。
 - StreamingSTTProtocol：封装 OpenAI Realtime 与 vLLM Realtime 的会话建立、音频追加、提交完成、错误处理与增量文本拼接。
 - TranscriptionNotifier：将 PartialTranscription/Transcription/TranscriptionFailure 转为统一的事件流，供实时服务消费。
+- ModelMonitor：提供统一的模型调用监控，记录延迟、资源使用、输入输出负载等信息。
+- TurnLatencyTracker：负责延迟追踪，支持 MLX 锁竞争监控和多阶段性能分析。
 
 关键职责与行为要点：
 - 推测轮次去重：通过 SpeculativeTurnTracker 判断是否最新轮次，避免旧结果污染新对话。
 - 最终结果门控：在 final 模式下等待稳定性窗口，减少抖动。
-- 语言标准化：canonical_language 将 “auto” 归一化，避免不同后端对 “auto” 的语义不一致。
+- 语言标准化：canonical_language 将 "auto" 归一化，避免不同后端对 "auto" 的语义不一致。
 - 会话结束清理：on_session_end 清空已完成最终修订集合并重置语言状态。
+- **新增**：统一的延迟追踪和性能监控，支持 MLX 锁竞争分析和资源使用统计。
 
 **章节来源**
 - [base_stt_handler.py:16-312](file://src/speech_to_speech/STT/base_stt_handler.py#L16-L312)
 - [streaming_handler.py:349-800](file://src/speech_to_speech/STT/streaming_handler.py#L349-L800)
 - [transcription_notifier.py:26-122](file://src/speech_to_speech/STT/transcription_notifier.py#L26-L122)
+- [model_monitor.py:1-200](file://src/speech_to_speech/utils/model_monitor.py#L1-L200)
+- [turn_latency.py:75-371](file://src/speech_to_speech/pipeline/turn_latency.py#L75-L371)
 
 ## 架构总览
-STT 子系统以“处理器 + 协议 + 通知器”的分层架构组织：
+STT 子系统以"处理器 + 协议 + 通知器"的分层架构组织：
 - 处理器层：各后端实现 process(vad_audio) -> Iterator[STTOut]，遵循 BaseSTTHandler 的通用门控与语言策略。
 - 协议层：针对远程 STT（OpenAI/vLLM Realtime）维护 WebSocket 会话、音频分片、事件解析与超时控制。
 - 通知层：将 STT 输出转化为统一事件，驱动下游 LLM 请求与会话状态更新。
+- **新增**：监控层：通过 ModelMonitor 和 TurnLatencyTracker 提供统一的性能监控和延迟追踪。
 
 ```mermaid
 sequenceDiagram
@@ -119,9 +137,13 @@ participant VAD as "VAD 输入"
 participant STT as "STT 处理器"
 participant Proto as "流式协议(WS)"
 participant Notif as "TranscriptionNotifier"
+participant Monitor as "ModelMonitor"
+participant Latency as "TurnLatencyTracker"
 participant Service as "实时服务/LLM"
 VAD->>STT : VADAudio(mode, audio, turn_id, revision)
 alt 本地模型
+STT->>Monitor : trace("STT", model_name, input)
+STT->>Latency : record_stt(duration)
 STT->>STT : 预处理/语言检测/推理
 STT-->>Notif : PartialTranscription / Transcription
 else 远程 WS
@@ -130,11 +152,15 @@ Proto-->>STT : delta/completed/failed/error
 STT-->>Notif : PartialTranscription / Transcription
 end
 Notif-->>Service : 文本事件(部分/完成/失败)
+Monitor-->>Monitor : 聚合性能指标
+Latency-->>Latency : 汇总延迟数据
 ```
 
 **图示来源**
 - [streaming_handler.py:73-216](file://src/speech_to_speech/STT/streaming_handler.py#L73-L216)
 - [transcription_notifier.py:42-122](file://src/speech_to_speech/STT/transcription_notifier.py#L42-L122)
+- [model_monitor.py:1-200](file://src/speech_to_speech/utils/model_monitor.py#L1-L200)
+- [turn_latency.py:75-371](file://src/speech_to_speech/pipeline/turn_latency.py#L75-L371)
 
 ## 详细组件分析
 
@@ -170,7 +196,7 @@ Record --> YieldFinal["yield Transcription"]
 
 #### FasterWhisperSTTHandler（CTranslate2）
 - 基于 faster_whisper.WhisperModel，支持 CPU/CUDA，compute_type 自动选择。
-- 语言策略：setup 时根据 language 决定 auto-detect 或强制；process 中依据 TranscriptionInfo.language 报告实际语言，必要时附加 “-auto” 标记。
+- 语言策略：setup 时根据 language 决定 auto-detect 或强制；process 中依据 TranscriptionInfo.language 报告实际语言，必要时附加 "-auto" 标记。
 - 参数适配：adapt_gen_kwargs 将 return_timestamps 映射为 without_timestamps，避免共享 gen_kwargs 被意外修改。
 
 **章节来源**
@@ -186,8 +212,9 @@ Record --> YieldFinal["yield Transcription"]
 
 ### Parakeet TDT 处理器
 - 双后端：Apple Silicon 使用 mlx-audio，CUDA/CPU 使用 nano-parakeet。
-- 语言检测：不直接接受语言约束，而是通过后处理 lingua-py 从文本推断语言，并以 “-auto” 后缀上报。
+- 语言检测：不直接接受语言约束，而是通过后处理 lingua-py 从文本推断语言，并以 "-auto" 后缀上报。
 - 流式增量：可选 SmartProgressiveStreamingHandler，按句边界滑动窗口，固定已确认句子，仅重算活跃段，降低长音频重复计算。
+- **增强功能**：改进了转录事件处理，包括更精确的进度跟踪、更好的锁竞争处理和更详细的性能日志。
 
 ```mermaid
 classDiagram
@@ -202,30 +229,41 @@ class ParakeetTDTSTTHandler {
 -_process_nano_parakeet(audio_input) str
 -_resolve_language(pred_text) Optional[str]
 -_compute_lock_context(handler_name, timeout) Iterator[bool]
++_prepare_live_transcription_turn(turn_id, turn_revision) void
++_reset_live_transcription_state(clear_turn) void
++_build_progressive_text(result) str
 }
 class SmartProgressiveStreamingHandler {
 +transcribe_incremental(audio) PartialTranscription
 +transcribe_progressive(audio) Generator
 -_decode_window(audio_window) Any
 }
+class TurnLatencyTracker {
++record_stt(seconds) void
++record_mlx_lock_wait(seconds, handler_name) void
++format_log_line() string
+}
 ParakeetTDTSTTHandler --> SmartProgressiveStreamingHandler : "可选启用"
+ParakeetTDTSTTHandler --> TurnLatencyTracker : "延迟追踪"
 ```
 
 **图示来源**
-- [parakeet_tdt_handler.py:69-605](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L69-L605)
+- [parakeet_tdt_handler.py:69-619](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L69-L619)
 - [smart_progressive_streaming.py:28-244](file://src/speech_to_speech/STT/smart_progressive_streaming.py#L28-L244)
+- [turn_latency.py:75-371](file://src/speech_to_speech/pipeline/turn_latency.py#L75-L371)
 
 **章节来源**
-- [parakeet_tdt_handler.py:69-605](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L69-L605)
+- [parakeet_tdt_handler.py:69-619](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L69-L619)
 - [smart_progressive_streaming.py:28-244](file://src/speech_to_speech/STT/smart_progressive_streaming.py#L28-L244)
 
 ### Paraformer 处理器
 - 基于 funasr.AutoModel，默认中文模型 paraformer-zh。
 - 简单流程：generate -> text -> 可选 MPS 缓存清理 -> 输出 Partial/Transcription。
 - 语言固定：language 来自模型名解析，非自动检测。
+- **新增监控**：集成 ModelMonitor 进行性能监控，记录音频摘要和处理时间。
 
 **章节来源**
-- [paraformer_handler.py:22-100](file://src/speech_to_speech/STT/paraformer_handler.py#L22-L100)
+- [paraformer_handler.py:22-98](file://src/speech_to_speech/STT/paraformer_handler.py#L22-L98)
 
 ### SenseVoice 处理器
 - 基于 funasr AutoModel，SenseVoiceSmall 检查点。
@@ -241,7 +279,7 @@ ParakeetTDTSTTHandler --> SmartProgressiveStreamingHandler : "可选启用"
 - dtype 自适应：根据设备选择 bfloat16/float16/float32。
 
 **章节来源**
-- [qwen3_asr_handler.py:58-187](file://src/speech_to_speech/STT/qwen3_asr_handler.py#L58-L187)
+- [qwen3_asr_handler.py:58-186](file://src/speech_to_speech/STT/qwen3_asr_handler.py#L58-L186)
 
 ### OpenAI 兼容处理器（HTTP 与 Realtime）
 
@@ -307,6 +345,7 @@ Handler-->>Handler : 累积前缀/发布 PartialTranscription
   - 最终 STT 耗时记录接口 _record_final_stt。
 - 各处理器继承 BaseSTTHandler，并在 process 中实现具体推理与输出。
 - TranscriptionNotifier 订阅 STTOut，向 text_output_queue 发送 PartialTranscriptionEvent/TranscriptionCompletedEvent/TranscriptionFailedEvent。
+- **新增**：ModelMonitor 为支持的处理器提供统一的性能监控，TurnLatencyTracker 负责延迟追踪和性能分析。
 
 ```mermaid
 classDiagram
@@ -318,6 +357,7 @@ class BaseSTTHandler {
 +reset_session_language() void
 +on_session_end() void
 +canonical_language(language) Any
++_record_final_stt(item, seconds) void
 }
 class WhisperSTTHandler
 class FasterWhisperSTTHandler
@@ -327,6 +367,17 @@ class ParaformerSTTHandler
 class SenseVoiceSTTHandler
 class Qwen3ASRSTTHandler
 class OpenAICompatibleSTTHandler
+class ModelMonitor {
++trace(category, model_name, input) ContextManager
++get_model_monitor() ModelMonitor
++configure_model_monitor(config) void
+}
+class TurnLatencyTracker {
++record_stt(seconds) void
++record_vad_settle(seconds) void
++record_mlx_lock_wait(seconds, handler_name) void
++format_log_line() string
+}
 BaseSTTHandler <|-- WhisperSTTHandler
 BaseSTTHandler <|-- FasterWhisperSTTHandler
 BaseSTTHandler <|-- LightningWhisperSTTHandler
@@ -335,18 +386,14 @@ BaseSTTHandler <|-- ParaformerSTTHandler
 BaseSTTHandler <|-- SenseVoiceSTTHandler
 BaseSTTHandler <|-- Qwen3ASRSTTHandler
 BaseSTTHandler <|-- OpenAICompatibleSTTHandler
+ParaformerSTTHandler --> ModelMonitor : "性能监控"
+ParakeetTDTSTTHandler --> TurnLatencyTracker : "延迟追踪"
 ```
 
 **图示来源**
 - [base_stt_handler.py:16-312](file://src/speech_to_speech/STT/base_stt_handler.py#L16-L312)
-- [whisper_stt_handler.py:48-295](file://src/speech_to_speech/STT/whisper_stt_handler.py#L48-L295)
-- [faster_whisper_handler.py:38-174](file://src/speech_to_speech/STT/faster_whisper_handler.py#L38-L174)
-- [lightning_whisper_mlx_handler.py:37-120](file://src/speech_to_speech/STT/lightning_whisper_mlx_handler.py#L37-L120)
-- [parakeet_tdt_handler.py:69-605](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L69-L605)
-- [paraformer_handler.py:22-100](file://src/speech_to_speech/STT/paraformer_handler.py#L22-L100)
-- [sense_voice_handler.py:19-86](file://src/speech_to_speech/STT/sense_voice_handler.py#L19-L86)
-- [qwen3_asr_handler.py:58-187](file://src/speech_to_speech/STT/qwen3_asr_handler.py#L58-L187)
-- [openai_compatible_handler.py:262-692](file://src/speech_to_speech/STT/openai_compatible_handler.py#L262-L692)
+- [model_monitor.py:1-200](file://src/speech_to_speech/utils/model_monitor.py#L1-L200)
+- [turn_latency.py:75-371](file://src/speech_to_speech/pipeline/turn_latency.py#L75-L371)
 
 **章节来源**
 - [base_stt_handler.py:16-312](file://src/speech_to_speech/STT/base_stt_handler.py#L16-L312)
@@ -363,14 +410,17 @@ BaseSTTHandler <|-- OpenAICompatibleSTTHandler
 - Parakeet TDT：
   - 双后端：mlx-audio（MPS）与 nano-parakeet（CUDA/CPU）。
   - 可选智能流式：句边界滑动窗口，长音频显著降低重复计算。
+  - **增强**：改进了锁竞争处理和更详细的性能日志，支持 MLX 锁等待追踪。
 - Paraformer/SenseVoice/Qwen3-ASR：
   - 依赖 funasr/transformers；MPS/CUDA 显存清理策略各异。
   - Qwen3-ASR 支持 prompt 与自动语言检测，progressive 复用上次语言。
+  - **新增**：Paraformer 集成 ModelMonitor 进行性能监控。
 - OpenAI 兼容：
   - HTTP：异步请求、窗口切分、错误分类；适合服务端限制场景。
   - Realtime：WebSocket 低延迟增量；需要正确设置采样率与认证。
-
-[本节为通用性能讨论，不直接分析具体文件]
+- **新增监控框架**：
+  - ModelMonitor：统一的模型调用监控，记录延迟、GPU/CPU/内存使用、输入输出负载。
+  - TurnLatencyTracker：详细的延迟追踪，支持 MLX 锁竞争分析和多阶段性能分解。
 
 ## 配置优化指南
 - 设备与精度：
@@ -379,8 +429,8 @@ BaseSTTHandler <|-- OpenAICompatibleSTTHandler
   - Lightning Whisper MLX：device=mps；quant=None。
   - Qwen3-ASR：torch_dtype=auto（按设备选择 bf16/fp16/fp32）。
 - 语言策略：
-  - 统一使用 canonical_language("auto") 归一化；各后端对 “auto” 的处理差异已在基类与处理器内处理。
-  - Whisper/Faster Whisper/Lightning Whisper/Parakeet TDT/Qwen3-ASR 均支持 auto 检测，并以 “-auto” 后缀标识。
+  - 统一使用 canonical_language("auto") 归一化；各后端对 "auto" 的处理差异已在基类与处理器内处理。
+  - Whisper/Faster Whisper/Lightning Whisper/Parakeet TDT/Qwen3-ASR 均支持 auto 检测，并以 "-auto" 后缀标识。
 - 流式与窗口：
   - OpenAI Compatible：max_window_s 控制分片长度；response_format=json/text；timeout 控制请求超时。
   - Realtime：audio_sample_rate 必须匹配后端要求（OpenAI 官方 Realtime 要求 24kHz PCM）。
@@ -388,6 +438,8 @@ BaseSTTHandler <|-- OpenAICompatibleSTTHandler
   - Parakeet TDT：compute_lock_context 控制 MLX 与 nano-parakeet 的互斥访问；progressive 短超时跳过竞争。
 - 日志与监控：
   - 使用 _record_final_stt 记录最终 STT 耗时；TranscriptionNotifier 输出完整日志。
+  - **新增**：ModelMonitor 环境变量配置 MODEL_METRICS_LOG、MODEL_METRICS_LOG_MAX_BYTES、MODEL_METRICS_LOG_BACKUPS。
+  - **新增**：TurnLatencyTracker 自动追踪 MLX 锁竞争和延迟分解。
 
 **章节来源**
 - [whisper_stt_handler.py:55-85](file://src/speech_to_speech/STT/whisper_stt_handler.py#L55-L85)
@@ -396,6 +448,7 @@ BaseSTTHandler <|-- OpenAICompatibleSTTHandler
 - [qwen3_asr_handler.py:67-89](file://src/speech_to_speech/STT/qwen3_asr_handler.py#L67-L89)
 - [parakeet_tdt_handler.py:80-151](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L80-L151)
 - [openai_compatible_handler.py:268-318](file://src/speech_to_speech/STT/openai_compatible_handler.py#L268-L318)
+- [model_monitor.py:49-52](file://src/speech_to_speech/utils/model_monitor.py#L49-L52)
 
 ## 故障排除
 - 语言检测失败：
@@ -410,6 +463,10 @@ BaseSTTHandler <|-- OpenAICompatibleSTTHandler
   - 超时与网络异常统一包装为 TranscriptionRequestError。
 - 会话与轮次：
   - on_session_end 清理 pending 请求与窗口状态；SpeculativeTurnTracker 确保只处理最新轮次。
+- **新增监控相关问题**：
+  - MLX 锁竞争：通过 TurnLatencyTracker 的 mlx_lock_waits 字段查看详细竞争情况。
+  - 性能瓶颈：使用 ModelMonitor 的 aggregate 日志分析吞吐量、错误率和延迟分布。
+  - 资源不足：监控 GPU VRAM 和 CPU 使用率，及时调整 batch size 或模型精度。
 
 **章节来源**
 - [whisper_stt_handler.py:170-223](file://src/speech_to_speech/STT/whisper_stt_handler.py#L170-L223)
@@ -420,9 +477,7 @@ BaseSTTHandler <|-- OpenAICompatibleSTTHandler
 - [openai_compatible_handler.py:628-650](file://src/speech_to_speech/STT/openai_compatible_handler.py#L628-L650)
 
 ## 结论
-STT 子系统通过统一的 BaseSTTHandler 与可扩展的后端处理器，实现了多模型、多协议的语音转文字能力。Whisper 系列提供成熟的本地推理方案；Faster Whisper 在效率上更具优势；Lightning Whisper MLX 针对 Apple Silicon 优化。Parakeet TDT 的双后端与智能流式策略在长音频场景下表现突出。Paraformer/SenseVoice/Qwen3-ASR 覆盖中文与多语言需求。OpenAI 兼容 HTTP/Realtime 提供了灵活的远程接入路径。结合语言检测、增量处理与严格的会话/轮次管理，系统在高并发与低延迟场景中具备良好鲁棒性。
-
-[本节为总结性内容，不直接分析具体文件]
+STT 子系统通过统一的 BaseSTTHandler 与可扩展的后端处理器，实现了多模型、多协议的语音转文字能力。Whisper 系列提供成熟的本地推理方案；Faster Whisper 在效率上更具优势；Lightning Whisper MLX 针对 Apple Silicon 优化。Parakeet TDT 的双后端与智能流式策略在长音频场景下表现突出。**最新版本增强了 Parakeet TDT 的转录事件处理能力，并引入了统一的模型监控框架**。Paraformer/SenseVoice/Qwen3-ASR 覆盖中文与多语言需求。OpenAI 兼容 HTTP/Realtime 提供了灵活的远程接入路径。结合语言检测、增量处理、严格的会话/轮次管理与**新的性能监控能力**，系统在高并发与低延迟场景中具备良好鲁棒性。
 
 ## 附录：集成示例与最佳实践
 - 本地模型集成：
@@ -446,6 +501,12 @@ STT 子系统通过统一的 BaseSTTHandler 与可扩展的后端处理器，实
   - 参考路径：
     - [parakeet_tdt_handler.py:133-151](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L133-L151)
     - [smart_progressive_streaming.py:40-58](file://src/speech_to_speech/STT/smart_progressive_streaming.py#L40-L58)
+- **新增监控集成**：
+  - 配置 ModelMonitor：设置环境变量 MODEL_METRICS_LOG、MODEL_METRICS_LOG_MAX_BYTES、MODEL_METRICS_LOG_BACKUPS。
+  - 使用 TurnLatencyTracker：通过 bind_active_turn_latency_tracker 绑定延迟追踪上下文。
+  - 参考路径：
+    - [model_monitor.py:49-52](file://src/speech_to_speech/utils/model_monitor.py#L49-L52)
+    - [turn_latency.py:75-371](file://src/speech_to_speech/pipeline/turn_latency.py#L75-L371)
 
 **章节来源**
 - [whisper_stt_handler.py:55-85](file://src/speech_to_speech/STT/whisper_stt_handler.py#L55-L85)
@@ -458,3 +519,5 @@ STT 子系统通过统一的 BaseSTTHandler 与可扩展的后端处理器，实
 - [streaming_handler.py:73-216](file://src/speech_to_speech/STT/streaming_handler.py#L73-L216)
 - [parakeet_tdt_handler.py:133-151](file://src/speech_to_speech/STT/parakeet_tdt_handler.py#L133-L151)
 - [smart_progressive_streaming.py:40-58](file://src/speech_to_speech/STT/smart_progressive_streaming.py#L40-L58)
+- [model_monitor.py:49-52](file://src/speech_to_speech/utils/model_monitor.py#L49-L52)
+- [turn_latency.py:75-371](file://src/speech_to_speech/pipeline/turn_latency.py#L75-L371)

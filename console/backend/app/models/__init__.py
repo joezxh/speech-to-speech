@@ -1,4 +1,5 @@
 from .param_audit import ParamAudit
+from .param_cluster import ParamCluster
 from .param_draft import ParamDraft
 from .param_instance import ParamInstance
 from .param_instance_metric import ParamInstanceMetric
@@ -9,6 +10,7 @@ from .voice import Voice
 
 __all__ = [
     "ParamAudit",
+    "ParamCluster",
     "ParamDraft",
     "ParamInstance",
     "ParamInstanceMetric",

@@ -1,5 +1,10 @@
 export default {
   brand: 'S2S 控制台',
+  brandName: '语音智能体控制台',
+  brandSub: '负载均衡 · 统一入口',
+  cluster: '集群',
+  healthOk: '机器全部在线',
+  sideFoot: '以负载均衡为总架构底座\n对话前台与运维台共用同一控制台。',
   signIn: '登录',
   signOut: '退出',
   language: '语言',

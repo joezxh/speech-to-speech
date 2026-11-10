@@ -7,5 +7,7 @@ body,
   margin: 0;
   background: @color-bg;
   color: @color-text;
-  font-family: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  // demo `body`：字体栈与 14px 基准字号都取自 token（与 demo `:root --font` 同值）。
+  font-family: var(--s2s-font);
+  font-size: 14px;
 }

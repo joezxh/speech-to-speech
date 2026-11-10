@@ -70,6 +70,11 @@ services:
       - TRANSFORMERS_OFFLINE=1
       - TOKENIZERS_PARALLELISM=false
     ports:
+      # ── 暴露 ASR / TTS 模型（OpenAI 兼容 REST 端点，均在 pipeline :8765）──
+      #   ASR: POST /v1/audio/transcriptions   (模型: Qwen3-ASR /root/.cache/qwen3-asr-model-hf)
+      #   TTS: POST /v1/audio/speech           (模型: Qwen3-TTS /root/.cache/qwen3-tts-model)
+      #   已固化进镜像：构建期由 Dockerfile.ttsfix 应用 scripts/patch_pipeline_rest.py 注入，
+      #   无需运行时手动打补丁，容器重建/镜像重做后 ASR/TTS 接口依然存在。
       - "${PIPELINE_PORT:-8765}:8765/tcp"
     volumes:
       - ./cache/:/root/.cache/

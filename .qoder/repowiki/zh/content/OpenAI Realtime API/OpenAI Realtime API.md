@@ -1,17 +1,33 @@
+基于我对代码的分析，我现在可以更新 OpenAI Realtime API 文档。根据变更说明，主要改进包括：
+
+1. **新增 `/internal/sessions/update` 端点** - 用于热更新会话配置
+2. **增强的 voice controls 功能** - 支持终端箭头控制语音选择
+3. **改进的错误处理机制** - 更健壮的连接管理和错误恢复
+
+让我更新文档：
+
 # OpenAI Realtime API
 
 <cite>
 **本文引用的文件**   
-- [server.py](file://src/speech_to_speech/api/openai_realtime/server.py)
 - [websocket_router.py](file://src/speech_to_speech/api/openai_realtime/websocket_router.py)
+- [voice_controls.py](file://src/speech_to_speech/api/openai_realtime/voice_controls.py)
+- [audio_client.py](file://src/speech_to_speech/api/openai_realtime/audio_client.py)
+- [service.py](file://src/speech_to_speech/api/openai_realtime/service.py)
 - [transports.py](file://src/speech_to_speech/api/openai_realtime/transports.py)
 - [webrtc_session.py](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py)
-- [service.py](file://src/speech_to_speech/api/openai_realtime/service.py)
 - [handlers/base.py](file://src/speech_to_speech/api/openai_realtime/handlers/base.py)
 - [handlers/conversation.py](file://src/speech_to_speech/api/openai_realtime/handlers/conversation.py)
 - [handlers/response.py](file://src/speech_to_speech/api/openai_realtime/handlers/response.py)
 - [README.md](file://src/speech_to_speech/api/openai_realtime/README.md)
 </cite>
+
+## 更新摘要
+**所做更改**   
+- 新增了 `/internal/sessions/update` 热更新端点的详细说明
+- 增强了 voice controls 功能的文档，包括终端箭头控制和语音选择机制
+- 改进了音频客户端连接管理的错误处理说明
+- 更新了架构图以反映新的热更新和语音控制组件
 
 ## 目录
 1. [简介](#简介)
@@ -34,14 +50,17 @@
 - 支持中断（barge-in）、取消、推测性轮次、工具调用自动跟进等高级特性。
 - 可选唇形（viseme）输出扩展。
 - 兼容官方 `@openai/agents` SDK 的 WebSocket 与 WebRTC 传输。
+- **增强功能**：热更新会话配置、终端箭头语音控制、改进的连接管理和错误恢复机制。
 
 ## 项目结构
 OpenAI Realtime API 的核心位于 `src/speech_to_speech/api/openai_realtime`，关键目录与职责如下：
 - `server.py`：FastAPI/uvicorn 进程封装，持有 PipelineUnit 池并启动服务。
-- `websocket_router.py`：WebSocket/WebRTC 路由、会话生命周期、发送循环、客户端事件分发。
+- `websocket_router.py`：WebSocket/WebRTC 路由、会话生命周期、发送循环、客户端事件分发，包含热更新端点。
 - `transports.py`：传输抽象层，定义 WebSocket 与 WebRTC 的统一发送接口。
 - `webrtc_session.py`：WebRTC 媒体通道、RTP 帧调度、ICE/RTCP 适配。
 - `service.py`：RealtimeService，协议与内部管道消息的转换器，维护 ConnState 与全局指标。
+- `audio_client.py`：原生 Python 麦克风/扬声器客户端，包含增强的连接管理和错误处理。
+- `voice_controls.py`：终端箭头语音控制，支持交互式语音切换。
 - `handlers/`：按领域拆分的处理器（会话、对话、响应、音频等），共享基础能力。
 - `README.md`：协议事件、WebRTC、工具调用、中断处理、测试说明。
 
@@ -55,26 +74,31 @@ Router --> Service["RealtimeService"]
 Service --> Handlers["领域处理器<br/>session/conversation/response/audio"]
 Service --> Pipeline["管道线程<br/>VAD/STT/LLM/TTS"]
 Pipeline --> Router
+AudioClient["增强音频客户端<br/>连接管理 + 错误处理"] --> Router
+VoiceControls["语音控制<br/>终端箭头交互"] --> AudioClient
+InternalUpdate["热更新端点<br/>/internal/sessions/update"] --> Router
 ```
 
 图表来源
-- [websocket_router.py:531-634](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L531-L634)
-- [transports.py:29-57](file://src/speech_to_speech/api/openai_realtime/transports.py#L29-L57)
-- [webrtc_session.py:265-301](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L265-L301)
-- [service.py:355-391](file://src/speech_to_speech/api/openai_realtime/service.py#L355-L391)
+- [websocket_router.py:727-774](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L774)
+- [voice_controls.py:93-163](file://src/speech_to_speech/api/openai_realtime/voice_controls.py#L93-L163)
+- [audio_client.py:1151-1238](file://src/speech_to_speech/api/openai_realtime/audio_client.py#L1151-L1238)
 
 章节来源
-- [server.py:14-70](file://src/speech_to_speech/api/openai_realtime/server.py#L14-L70)
-- [websocket_router.py:531-634](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L531-L634)
-- [README.md:12-72](file://src/speech_to_speech/api/openai_realtime/README.md#L12-L72)
+- [websocket_router.py:727-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L871)
+- [voice_controls.py:1-163](file://src/speech_to_speech/api/openai_realtime/voice_controls.py#L1-L163)
+- [audio_client.py:1151-1238](file://src/speech_to_speech/api/openai_realtime/audio_client.py#L1151-L1238)
 
 ## 核心组件
 - RealtimeServer：封装 uvicorn，维护 PipelineUnit 池，连接数受池大小限制。
-- WebSocketRouter：创建 FastAPI 应用，注册 `/v1/realtime`、`/v1/realtime/calls` 等端点，维护每个 unit 的发送循环。
+- WebSocketRouter：创建 FastAPI 应用，注册 `/v1/realtime`、`/v1/realtime/calls`、`/internal/sessions/update`、`/admin/sessions/update` 等端点，维护每个 unit 的发送循环。
 - SessionTransport：传输抽象，统一 `send_events`、`send_audio_chunk`、`discard_pending_audio`、`close`。
 - WebSocketTransport：JSON over WebSocket，音频以 base64 delta 事件发送。
 - WebRTCSession：SDP 握手、RTP 音频轨道、`oai-events` 数据通道承载 JSON 事件。
 - RealtimeService：协议解析、ConnState 状态机、管道事件路由、使用量统计、延迟追踪。
+- **增强音频客户端**：改进的连接管理、自动重连、错误恢复、工具调用协调器。
+- **语音控制系统**：终端箭头控制、语音选择、交互式语音切换。
+- **热更新系统**：内部会话热更新端点，支持运行时配置修改。
 - 领域处理器：
   - ConversationHandler：对话项注入、增量转录稳定化、最终转录完成。
   - ResponseHandler：响应生命周期、输出项顺序、工具调用事件、终端状态。
@@ -82,27 +106,23 @@ Pipeline --> Router
   - BaseHandler：共享 conn_id 访问器、错误构造。
 
 章节来源
-- [server.py:14-70](file://src/speech_to_speech/api/openai_realtime/server.py#L14-L70)
-- [websocket_router.py:531-634](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L531-L634)
-- [transports.py:29-116](file://src/speech_to_speech/api/openai_realtime/transports.py#L29-L116)
-- [webrtc_session.py:265-441](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L265-L441)
-- [service.py:355-391](file://src/speech_to_speech/api/openai_realtime/service.py#L355-L391)
-- [handlers/base.py:18-59](file://src/speech_to_speech/api/openai_realtime/handlers/base.py#L18-L59)
-- [handlers/conversation.py:80-152](file://src/speech_to_speech/api/openai_realtime/handlers/conversation.py#L80-L152)
-- [handlers/response.py:75-183](file://src/speech_to_speech/api/openai_realtime/handlers/response.py#L75-L183)
+- [websocket_router.py:727-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L871)
+- [voice_controls.py:93-163](file://src/speech_to_speech/api/openai_realtime/voice_controls.py#L93-L163)
+- [audio_client.py:1151-1238](file://src/speech_to_speech/api/openai_realtime/audio_client.py#L1151-L1238)
 
 ## 架构总览
-整体流程遵循“入站音频 → VAD → STT → LLM → LMOutputProcessor → TTS → 出站音频”的管道模型，同时通过 `RuntimeConfig` 共享会话配置（指令、工具、音色、VAD 阈值、音频格式等）。
+整体流程遵循"入站音频 → VAD → STT → LLM → LMOutputProcessor → TTS → 出站音频"的管道模型，同时通过 `RuntimeConfig` 共享会话配置（指令、工具、音色、VAD 阈值、音频格式等）。
 
 ```mermaid
 flowchart LR
 subgraph "客户端"
-Local["内置本地音频客户端"]
+Local["内置本地音频客户端<br/>增强连接管理"]
 WSClient["外部 WebSocket 客户端"]
 RTCClient["WebRTC 客户端"]
+Terminal["终端用户<br/>箭头控制"]
 end
 subgraph "实时服务器"
-Router["传输路由<br/>WebSocket/WebRTC"]
+Router["传输路由<br/>WebSocket/WebRTC/热更新"]
 Service["RealtimeService"]
 Config["RuntimeConfig"]
 end
@@ -118,6 +138,8 @@ end
 Local --> WSClient
 WSClient --> Router
 RTCClient --> Router
+Terminal --> VoiceControls["语音控制"]
+VoiceControls --> Local
 Router --> Service
 Service --> Config
 Service --> VAD
@@ -131,15 +153,154 @@ TTS --> Router
 TTS -.-> STV
 STV -.-> Router
 VAD --> Router
+InternalUpdate["热更新端点"] --> Router
 ```
 
 图表来源
-- [README.md:18-72](file://src/speech_to_speech/api/openai_realtime/README.md#L18-L72)
-
-章节来源
-- [README.md:18-72](file://src/speech_to_speech/api/openai_realtime/README.md#L18-L72)
+- [websocket_router.py:727-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L871)
+- [voice_controls.py:93-163](file://src/speech_to_speech/api/openai_realtime/voice_controls.py#L93-L163)
 
 ## 详细组件分析
+
+### 热更新会话端点
+**新增** `/internal/sessions/update` 端点用于热更新活跃会话的配置：
+
+- **安全认证**：
+  - 需要 `S2S_INTERNAL_TOKEN` 环境变量配置。
+  - 使用 HMAC 比较进行 Bearer Token 验证。
+  - 未配置时返回 `503 internal_token_missing`。
+  - 无效 token 返回 `401 unauthorized`。
+
+- **作用域支持**：
+  - `all`：更新所有活跃会话。
+  - `pipeline`：更新指定 pipeline 索引的所有会话。
+  - `session`：更新特定 session_id 的会话。
+
+- **请求格式**：
+  ```json
+  {
+    "scope": "all|pipeline|session",
+    "target": <index>|<session_id>|null,
+    "session": {
+      "type": "realtime",
+      "instructions": "...",
+      "audio": {...}
+    }
+  }
+  ```
+
+- **响应格式**：
+  ```json
+  {
+    "updated": ["session_id_1", "session_id_2"],
+    "failed": [
+      {"session_id": "session_id_3", "error": "invalid_request_error"}
+    ]
+  }
+  ```
+
+```mermaid
+sequenceDiagram
+participant Console as "控制台"
+participant Router as "路由器"
+participant Pool as "连接池"
+participant Service as "服务"
+Console->>Router : "POST /internal/sessions/update"
+Router->>Router : "验证 S2S_INTERNAL_TOKEN"
+Router->>Pool : "查找目标会话"
+loop 遍历目标会话
+Pool->>Service : "handle_session_update()"
+Service-->>Pool : "成功/失败"
+end
+Router-->>Console : "{updated[], failed[]}"
+```
+
+图表来源
+- [websocket_router.py:727-774](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L774)
+
+章节来源
+- [websocket_router.py:727-774](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L774)
+
+### 增强的语音控制系统
+**新增** 终端箭头语音控制功能，支持交互式语音切换：
+
+- **终端检测**：
+  - 仅在 POSIX TTY 上启用箭头键支持。
+  - 自动检测终端是否支持 ANSI 箭头序列。
+  - 非 TTY 环境自动禁用键盘控制。
+
+- **箭头解码**：
+  - 支持 ANSI 和应用模式下的箭头键序列。
+  - 正确处理分割的按键序列。
+  - 忽略普通文本输入中的箭头字符。
+
+- **语音选择逻辑**：
+  - 维护当前响应状态，避免在响应进行中切换。
+  - 支持循环导航（首尾相连）。
+  - 合并连续的语音选择请求。
+  - 在当前响应完成后才发送实际的语音切换。
+
+- **错误处理**：
+  - 捕获语音切换失败的错误。
+  - 自动回滚到之前的语音设置。
+  - 显示详细的用户反馈信息。
+
+```mermaid
+stateDiagram-v2
+[*] --> Idle
+Idle --> Selecting : "箭头键按下"
+Selecting --> Pending : "记录新语音"
+Pending --> Active : "response.created"
+Active --> Pending : "response.done"
+Pending --> Active : "发送语音切换"
+Active --> Idle : "等待下一个响应"
+Idle --> Error : "切换失败"
+Error --> Idle : "恢复到之前语音"
+```
+
+图表来源
+- [voice_controls.py:93-163](file://src/speech_to_speech/api/openai_realtime/voice_controls.py#L93-L163)
+
+章节来源
+- [voice_controls.py:1-163](file://src/speech_to_speech/api/openai_realtime/voice_controls.py#L1-L163)
+
+### 增强的音频客户端连接管理
+**增强** 音频客户端现在具备更强的连接管理和错误处理能力：
+
+- **自动重连机制**：
+  - 连接失败时自动重试，支持配置的重试超时时间。
+  - 区分已连接和未连接状态，避免不必要的重试。
+  - 优雅处理连接中断和恢复。
+
+- **增强的错误处理**：
+  - 捕获并记录所有连接相关异常。
+  - 区分临时错误和永久错误。
+  - 提供详细的错误信息和调试日志。
+
+- **资源管理改进**：
+  - 确保音频流正确关闭和清理。
+  - 防止资源泄漏和内存问题。
+  - 支持信号处理（SIGINT/SIGTERM）优雅退出。
+
+```mermaid
+stateDiagram-v2
+[*] --> Disconnected
+Disconnected --> Connecting : "尝试连接"
+Connecting --> Connected : "连接成功"
+Connecting --> Disconnected : "连接失败"
+Connected --> Processing : "开始处理音频"
+Processing --> Connected : "正常结束"
+Processing --> Disconnected : "错误/中断"
+Disconnected --> [*] : "停止"
+```
+
+图表来源
+- [audio_client.py:1151-1190](file://src/speech_to_speech/api/openai_realtime/audio_client.py#L1151-L1190)
+- [audio_client.py:1193-1238](file://src/speech_to_speech/api/openai_realtime/audio_client.py#L1193-L1238)
+
+章节来源
+- [audio_client.py:1151-1190](file://src/speech_to_speech/api/openai_realtime/audio_client.py#L1151-L1190)
+- [audio_client.py:1193-1238](file://src/speech_to_speech/api/openai_realtime/audio_client.py#L1193-L1238)
 
 ### 传输层：WebSocket 与 WebRTC
 - WebSocket 传输：
@@ -171,15 +332,14 @@ R->>T : "send_audio_chunk(PCM)"
 ```
 
 图表来源
-- [websocket_router.py:794-800](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L794-L800)
-- [webrtc_session.py:354-380](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L354-L380)
+- [websocket_router.py:873-919](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L873-L919)
 - [transports.py:83-116](file://src/speech_to_speech/api/openai_realtime/transports.py#L83-L116)
 
 章节来源
 - [transports.py:29-116](file://src/speech_to_speech/api/openai_realtime/transports.py#L29-L116)
 - [webrtc_session.py:59-77](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L59-L77)
 - [webrtc_session.py:265-441](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L265-L441)
-- [websocket_router.py:794-800](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L794-L800)
+- [websocket_router.py:873-919](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L873-L919)
 
 ### 会话管理与连接建立
 - 连接建立：
@@ -202,12 +362,10 @@ Released --> Idle
 ```
 
 图表来源
-- [websocket_router.py:574-634](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L574-L634)
-- [websocket_router.py:294-339](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L294-L339)
+- [websocket_router.py:796-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L796-L871)
 
 章节来源
-- [websocket_router.py:574-634](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L574-L634)
-- [websocket_router.py:294-339](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L294-L339)
+- [websocket_router.py:796-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L796-L871)
 
 ### 请求/响应与事件协议
 - 客户端 → 服务端事件：
@@ -295,7 +453,7 @@ Events --> Router["路由到客户端"]
 - 工具结果流：
   - 客户端执行工具后发送 `conversation.item.create` 带 `function_call_output`。
   - 如需对结果说话，再发送 `response.create` 触发后续生成。
-  - 对于“fire-and-forget”机器人动作，可在 `conversation.item.created` 后停止。
+  - 对于"fire-and-forget"机器人动作，可在 `conversation.item.created` 后停止。
 - 自动跟进优化：
   - 服务端在工具完成后发起推测性 follow-up 预取，减少用户显式 `response.create` 的延迟。
   - 客户端与服务端通过元数据标记自动 create，避免重复回复。
@@ -364,6 +522,8 @@ L->>L : "is_stale(gen) → abort"
   - `websocket_router.py` 依赖 `service.py`、`transports.py`、`webrtc_session.py`、`handlers/*`。
   - `service.py` 聚合各处理器（session/conversation/response/audio/history）。
   - `webrtc_session.py` 依赖 aiortc、aioice、av，实现 WebRTC 媒体与信令。
+  - **新增**：`voice_controls.py` 依赖 `audio_client.py` 实现语音控制功能。
+  - **新增**：热更新端点依赖 `pool` 和 `service.session.handle_session_update`。
 - 外部依赖：
   - OpenAI Realtime 类型定义（`openai.types.realtime`）。
   - aiortc（可选 extra `webrtc`）。
@@ -379,17 +539,18 @@ Router --> Transports["transports.py"]
 Router --> WebRTC["webrtc_session.py"]
 Service --> Handlers["handlers/*"]
 WebRTC --> AV["av/aiortc/aioice"]
+VoiceControls["voice_controls.py"] --> AudioClient["audio_client.py"]
+InternalUpdate["热更新端点"] --> Pool["连接池"]
+InternalUpdate --> Service
 ```
 
 图表来源
-- [websocket_router.py:1-59](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L1-L59)
-- [service.py:54-91](file://src/speech_to_speech/api/openai_realtime/service.py#L54-L91)
-- [webrtc_session.py:26-37](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L26-L37)
+- [websocket_router.py:727-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L871)
+- [voice_controls.py:93-163](file://src/speech_to_speech/api/openai_realtime/voice_controls.py#L93-L163)
 
 章节来源
-- [websocket_router.py:1-59](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L1-L59)
-- [service.py:54-91](file://src/speech_to_speech/api/openai_realtime/service.py#L54-L91)
-- [webrtc_session.py:26-37](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L26-L37)
+- [websocket_router.py:727-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L871)
+- [voice_controls.py:93-163](file://src/speech_to_speech/api/openai_realtime/voice_controls.py#L93-L163)
 
 ## 性能与生产部署建议
 - 性能优化：
@@ -402,13 +563,19 @@ WebRTC --> AV["av/aiortc/aioice"]
   - WebRTC 需开放 UDP 端口或使用 TURN 中继。
 - 安全考虑：
   - 管理员接口 `/admin/sessions/update` 需要 `S2S_ADMIN_TOKEN` Bearer 认证。
+  - **新增**：内部接口 `/internal/sessions/update` 需要 `S2S_INTERNAL_TOKEN` Bearer 认证。
   - 限制连接池大小，防止资源耗尽。
   - 审计日志与错误分类（`errors_by_type`）便于监控异常。
 - 监控与度量：
   - `/v1/usage` 聚合连接数、错误类型、token 用量、音频时长。
   - `/v1/pool` 查看单元状态（idle/active/draining/stuck）。
+- 热更新最佳实践：
+  - 在生产环境中谨慎使用热更新功能。
+  - 建议在测试环境充分验证后再应用到生产。
+  - 监控热更新的成功率和失败率。
 
 章节来源
+- [websocket_router.py:727-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L871)
 - [websocket_router.py:636-695](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L636-L695)
 - [websocket_router.py:717-792](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L717-L792)
 - [README.md:405-436](file://src/speech_to_speech/api/openai_realtime/README.md#L405-L436)
@@ -420,18 +587,29 @@ WebRTC --> AV["av/aiortc/aioice"]
   - WebRTC 模式误用 `input_audio_buffer.append`：返回 `invalid_event_for_transport`。
   - 转录失败：返回 `conversation.item.input_audio_transcription.failed`。
   - 响应失败：`response.done(status=failed)`，附带 `error` 事件。
+  - **新增**：热更新端点未配置：返回 `503 internal_token_missing`。
+  - **新增**：热更新端点认证失败：返回 `401 unauthorized`。
+  - **新增**：语音控制不可用：检查终端是否支持 ANSI 箭头序列。
+  - **新增**：音频客户端连接失败：检查网络连接和服务端可用性。
 - 调试建议：
   - 检查 `/v1/pool` 是否有 stuck 单元，可能因处理器线程卡死。
   - 查看 `/v1/usage` 的错误类型分布。
   - 启用详细日志，关注 `Skipped event: ws disconnected mid-send` 等异步关闭警告。
+  - **新增**：检查热更新端点的 `S2S_INTERNAL_TOKEN` 配置。
+  - **新增**：验证终端是否正确支持箭头键输入。
+  - **新增**：监控音频客户端的重连日志和错误信息。
 
 章节来源
+- [websocket_router.py:727-774](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L774)
 - [websocket_router.py:583-594](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L583-L594)
 - [websocket_router.py:425-435](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L425-L435)
 - [handlers/conversation.py:451-484](file://src/speech_to_speech/api/openai_realtime/handlers/conversation.py#L451-L484)
+- [audio_client.py:1151-1190](file://src/speech_to_speech/api/openai_realtime/audio_client.py#L1151-L1190)
 
 ## 结论
 本实现提供了完整的 OpenAI Realtime API 服务端，涵盖 WebSocket 与 WebRTC 双传输、会话管理、实时音频流、文本流、工具调用、中断处理与生产级监控。其模块化设计（router/service/handlers/transports）便于扩展与维护，同时兼容官方 SDK，适合构建低延迟、高可用的语音助手或机器人后端。
+
+**最新更新**：通过新增的热更新会话端点、增强的语音控制系统和改进的音频客户端连接管理，进一步提升了系统的灵活性、用户体验和稳定性。这些改进使得系统能够更好地支持动态配置更新、交互式语音选择和可靠的连接管理。
 
 ## 附录：协议与端点参考
 
@@ -440,11 +618,12 @@ WebRTC --> AV["av/aiortc/aioice"]
 - WebRTC SDP 握手：`POST /v1/realtime/calls`
 - 使用量查询：`GET /v1/usage`
 - 池状态查询：`GET /v1/pool`
-- 管理员会话热更新：`POST /admin/sessions/update`
+- **新增**：内部会话热更新：`POST /internal/sessions/update`
+- **新增**：管理员会话热更新：`POST /admin/sessions/update`
 
 章节来源
-- [websocket_router.py:574-634](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L574-L634)
-- [websocket_router.py:794-800](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L794-L800)
+- [websocket_router.py:727-871](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L871)
+- [websocket_router.py:873-919](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L873-L919)
 - [websocket_router.py:636-695](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L636-L695)
 - [websocket_router.py:717-792](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L717-L792)
 
@@ -452,6 +631,8 @@ WebRTC --> AV["av/aiortc/aioice"]
 - HTTP 状态码：
   - 201：WebRTC SDP 握手成功。
   - 400/401/503：管理员接口错误（无效请求、未授权、禁用）。
+  - **新增**：401：内部接口认证失败。
+  - **新增**：503：内部接口令牌缺失。
 - 协议错误类型：
   - `session_limit_reached`：会话槽位已满。
   - `unknown_or_invalid_event`：未知或非法事件。
@@ -462,8 +643,11 @@ WebRTC --> AV["av/aiortc/aioice"]
   - `conversation_item_not_found`：对话项不存在。
   - `transcription_failed`：转录失败。
   - `tool_followup_already_answered`：工具结果已被使用。
+  - **新增**：`internal_token_missing`：内部接口令牌未配置。
+  - **新增**：`unauthorized`：内部接口认证失败。
 
 章节来源
+- [websocket_router.py:727-774](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L727-L774)
 - [websocket_router.py:583-594](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L583-L594)
 - [websocket_router.py:425-435](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L425-L435)
 - [handlers/response.py:781-793](file://src/speech_to_speech/api/openai_realtime/handlers/response.py#L781-L793)

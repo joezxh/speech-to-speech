@@ -14,6 +14,7 @@ from speech_to_speech.pipeline.console import console
 from speech_to_speech.pipeline.handler_types import STTIn, STTOut
 from speech_to_speech.pipeline.messages import PartialTranscription, Transcription
 from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
+from speech_to_speech.utils.model_monitor import _truncate, audio_summary
 from speech_to_speech.utils.utils import TORCH_DEVICES, resolve_device
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ class Qwen3ASRSTTHandler(BaseSTTHandler):
         gen_kwargs: Optional[dict[str, Any]] = None,
     ) -> None:
         logger.info("Loading Qwen3-ASR STT model: %s", model_name)
+        self.model_name = model_name
         self.device = resolve_device(device, TORCH_DEVICES, "Qwen3-ASR")
         self.torch_dtype = resolve_torch_dtype(torch_dtype, self.device)
         self.prompt = prompt or None
@@ -154,7 +156,20 @@ class Qwen3ASRSTTHandler(BaseSTTHandler):
         audio = np.asarray(vad_audio.audio, dtype=np.float32)
 
         start = perf_counter()
-        text, detected = self._transcribe(audio, request_language)
+        # Record the call so the console runtime card can show the model name and
+        # latency for the deployed Qwen3-ASR path, which previously emitted no
+        # MODEL_CALL_METRICS at all.
+        with self.monitor.trace(
+            "STT",
+            self.model_name,
+            input={
+                "mode": vad_audio.mode,
+                "language": request_language,
+                "audio": audio_summary(audio),
+            },
+        ) as rec:
+            text, detected = self._transcribe(audio, request_language)
+            rec.set_output(text=_truncate(text), text_length=len(text))
         logger.debug(
             "Qwen3-ASR %s transcription took %.3f s for %.2f s of audio",
             vad_audio.mode,

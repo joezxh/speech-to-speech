@@ -46,9 +46,9 @@ dependencies = [
     "soundfile>=0.13.0; platform_system == 'Darwin'",
     "soxr>=0.3.2",
     "torch==2.11.0; platform_system == 'Darwin'",
-    "torch>=2.4.0; platform_system != 'Darwin'",
+    "torch==2.11.0+cu128; platform_system != 'Darwin'",
     "torchaudio==2.11.0; platform_system == 'Darwin'",
-    "torchaudio>=2.4.0; platform_system != 'Darwin'",
+    "torchaudio==2.11.0+cu128; platform_system != 'Darwin'",
     "transformers==5.18.0; platform_system == 'Darwin'",
     "transformers>=5.18.0,<6; platform_system != 'Darwin'",
     "uvicorn>=0.30.0",
@@ -142,6 +142,23 @@ asyncio_mode = "auto"
 [tool.uv]
 package = true
 prerelease = "allow"
+
+# Pull CUDA wheels for torch/torchaudio from the PyTorch cu128 index on
+# non-Darwin platforms (Windows/Linux). PyPI default wheels are CPU-only on
+# these platforms, so without this `uv sync` keeps reinstalling the CPU build.
+# The `marker` keeps macOS on the default PyPI source (its native wheels).
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" },
+]
+torchaudio = [
+    { index = "pytorch-cu128", marker = "sys_platform != 'darwin'" },
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

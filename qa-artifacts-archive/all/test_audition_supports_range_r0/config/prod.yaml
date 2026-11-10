@@ -1,0 +1,7 @@
+schema_version: 1
+blocks:
+  tts-main: {kind: tts, backend: qwen3, settings: {model_name: Qwen3-TTS}}
+pipelines:
+  prod:
+    stages: {tts: tts-main}
+    num_pipelines: 1

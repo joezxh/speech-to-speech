@@ -1,0 +1,5 @@
+schema_version: 1
+pipelines:
+  prod:
+    num_pipelines: 1
+    seed: 1

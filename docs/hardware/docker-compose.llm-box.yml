@@ -32,6 +32,8 @@ services:
       - --port
       - "8080"
     ports:
+      # 本盒仅提供 LLM（:8080），不含 ASR/TTS；语音模型的 REST 端点由 pipeline-box
+      # 暴露（见同目录 docker-compose.pipeline-box.yml 的 pipeline :8765）。
       - 8080:8080/tcp
     volumes:
       - ./cache/:/root/.cache/

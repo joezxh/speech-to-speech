@@ -3,6 +3,12 @@
 #
 # File mode accepts only -f/--name (cli.py:_run_file_command), so anything not
 # written here cannot be passed at run time.
+#
+# NOTE: edited for local Windows runs — model/cache paths point at the repo's
+# `cache/` directory instead of the container's `/root/.cache`. The Silero VAD
+# repo path is resolved in code (vad_handler.py) and falls back to the in-repo
+# `silero-vad/` directory on Windows. Container deploys (docker-compose.*.yml)
+# use CLI flags, NOT this file, so this change does not affect them.
 schema_version: 1
 
 blocks:
@@ -12,12 +18,16 @@ blocks:
     # the file self-describing.
     backend: silero
     settings:
-      min_silence_ms: 700
+      # 700 ms of trailing silence before the turn closes; the STT cannot start
+      # until it elapses, so it is charged to every single reply. 450 ms keeps
+      # the margin above the iterator defaults (300 ms) and matches the 500 ms
+      # that OpenAI's server_vad uses, while cutting ~0.25 s per turn.
+      min_silence_ms: 450
       # --no_smart_turn: pure silence detection, no Smart Turn
       smart_turn: false
       # Kept even though smart_turn is off: a missing path makes the backend
       # download v3.2 at startup, which stalls an offline container.
-      smart_turn_model_path: /root/.cache/smart-turn-v3.2-cpu.onnx
+      smart_turn_model_path: cache/smart-turn-v3.2-cpu.onnx
       speculative_reopen_ms: 0
       unanswered_reopen_ms: 0
 
@@ -25,9 +35,20 @@ blocks:
     kind: stt
     backend: qwen3-asr
     settings:
-      qwen3_asr_model_name: /root/.cache/qwen3-asr-model-hf
-      qwen3_asr_device: auto
-      qwen3_asr_language: auto
+      # 0.6B instead of the 1.7B checkpoint: on this box the 1.7B measured
+      # RTF 0.57 (median over 312 final calls), i.e. ~2.9 s of STT for a 5 s
+      # utterance. Both checkpoints sit in `cache/`, so this needs no download.
+      qwen3_asr_model_name: cache/qwen3-asr-0.6b-hf
+      # Spelled out rather than `auto`: a silent fallback to CPU or fp32 is the
+      # difference between sub-second and multi-second transcription.
+      qwen3_asr_device: cuda
+      qwen3_asr_torch_dtype: bfloat16
+      # Forced Chinese: `auto` makes the model spend extra tokens on language ID
+      # and run a second `decode(parsed)` pass per turn.
+      qwen3_asr_language: zh
+      # 256 (the default) let two calls in the metrics log run 47 s and 53 s for
+      # 12 characters. 128 still covers the p50 (30-60 chars) with headroom.
+      qwen3_asr_gen_max_new_tokens: 128
 
   llm:
     kind: llm
@@ -49,7 +70,7 @@ blocks:
     kind: tts
     backend: qwen3
     settings:
-      qwen3_tts_model_name: /root/.cache/qwen3-tts-model
+      qwen3_tts_model_name: cache/qwen3-tts-model
       qwen3_tts_backend: torch
       qwen3_tts_device: cuda
       qwen3_tts_non_streaming_mode: false

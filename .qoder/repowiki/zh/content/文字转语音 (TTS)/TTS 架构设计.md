@@ -11,7 +11,15 @@
 - [messages.py](file://src/speech_to_speech/pipeline/messages.py)
 - [events.py](file://src/speech_to_speech/pipeline/events.py)
 - [s2s_pipeline.py](file://src/speech_to_speech/s2s_pipeline.py)
+- [console-refactor-demo.html](file://console/design/console-refactor-demo.html)
 </cite>
+
+## 更新摘要
+**变更内容**   
+- 新增音色制作流程向导章节，详细说明五步制作流程（来源 → 素材 → 试听裁剪 → 预计算 → 命名保存）
+- 更新 qwen3 参数下拉集成说明，展示音色派生下拉的实现机制
+- 扩展 VOICES 数据结构说明，包含 src 和 art 字段定义
+- 新增音色生产流水线与推理链路闭环的完整流程说明
 
 ## 目录
 1. [引言](#引言)
@@ -19,17 +27,18 @@
 3. [核心组件](#核心组件)
 4. [架构总览](#架构总览)
 5. [详细组件分析](#详细组件分析)
-6. [依赖关系分析](#依赖关系分析)
-7. [性能与流式处理特性](#性能与流式处理特性)
-8. [故障排查指南](#故障排查指南)
-9. [扩展新 TTS 后端的开发指南](#扩展新-tts-后端的开发指南)
-10. [结论](#结论)
+6. [音色制作流程向导](#音色制作流程向导)
+7. [依赖关系分析](#依赖关系分析)
+8. [性能与流式处理特性](#性能与流式处理特性)
+9. [故障排查指南](#故障排查指南)
+10. [扩展新 TTS 后端的开发指南](#扩展新-tts-后端的开发指南)
+11. [结论](#结论)
 
 ## 引言
-本文面向语音到语音系统的 TTS 子系统，系统化说明统一后端接口、处理器基类抽象、配置注册机制、音频流处理与采样率标准化、以及事件驱动的管道集成方式。文档同时给出扩展新 TTS 后端的实践建议，帮助开发者以最小成本接入新的语音合成模型或远程服务。
+本文面向语音到语音系统的 TTS 子系统，系统化说明统一后端接口、处理器基类抽象、配置注册机制、音频流处理与采样率标准化、以及事件驱动的管道集成方式。文档同时涵盖新增的音色制作流程向导和 qwen3 参数下拉集成，给出扩展新 TTS 后端的实践建议，帮助开发者以最小成本接入新的语音合成模型或远程服务。
 
 ## 项目结构
-TTS 子系统位于 `speech_to_speech/TTS` 目录下，包含多个具体后端实现；统一的运行时装配由 `backend_registry.py` 完成；所有处理器继承自 `BaseHandler`；管道消息类型定义在 `pipeline/messages.py` 和 `pipeline/handler_types.py`；端到端管线组装在 `s2s_pipeline.py`。
+TTS 子系统位于 `speech_to_speech/TTS` 目录下，包含多个具体后端实现；统一的运行时装配由 `backend_registry.py` 完成；所有处理器继承自 `BaseHandler`；管道消息类型定义在 `pipeline/messages.py` 和 `pipeline/handler_types.py`；端到端管线组装在 `s2s_pipeline.py`。控制台界面中的音色制作功能通过 `console/design/console-refactor-demo.html` 实现。
 
 ```mermaid
 graph TB
@@ -45,6 +54,10 @@ MSG["TTSInput / AudioOutput / EndOfResponse<br/>messages.py"]
 REG["后端注册表<br/>backend_registry.py"]
 PIPE["S2S 管线组装<br/>s2s_pipeline.py"]
 EVT["管道事件<br/>events.py"]
+end
+subgraph "控制台界面"
+WIZARD["音色制作向导<br/>console-refactor-demo.html"]
+VOICES["VOICES 数据层<br/>console-refactor-demo.html"]
 end
 OAI --> BASE
 QWEN --> BASE
@@ -63,6 +76,8 @@ TYPES --> OAI
 TYPES --> QWEN
 TYPES --> KOKORO
 EVT --> PIPE
+WIZARD --> VOICES
+VOICES --> QWEN
 ```
 
 **图表来源**
@@ -70,14 +85,15 @@ EVT --> PIPE
 - [qwen3_tts_handler.py:96-800](file://src/speech_to_speech/TTS/qwen3_tts_handler.py#L96-L800)
 - [kokoro_handler.py:82-506](file://src/speech_to_speech/TTS/kokoro_handler.py#L82-L506)
 - [baseHandler.py:32-242](file://src/speech_to_speech/baseHandler.py#L32-L242)
-- [backend_registry.py:555-693](file://src/speech_to_speech/backend_registry.py#L555-L693)
+- [backend_registry.py:555-708](file://src/speech_to_speech/backend_registry.py#L555-L708)
 - [s2s_pipeline.py:516-574](file://src/speech_to_speech/s2s_pipeline.py#L516-L574)
 - [handler_types.py:43-46](file://src/speech_to_speech/pipeline/handler_types.py#L43-L46)
 - [messages.py:222-267](file://src/speech_to_speech/pipeline/messages.py#L222-L267)
 - [events.py:26-194](file://src/speech_to_speech/pipeline/events.py#L26-L194)
+- [console-refactor-demo.html:1779-1791](file://console/design/console-refactor-demo.html#L1779-L1791)
 
 **章节来源**
-- [backend_registry.py:555-693](file://src/speech_to_speech/backend_registry.py#L555-L693)
+- [backend_registry.py:555-708](file://src/speech_to_speech/backend_registry.py#L555-L708)
 - [s2s_pipeline.py:516-574](file://src/speech_to_speech/s2s_pipeline.py#L516-L574)
 
 ## 核心组件
@@ -86,6 +102,7 @@ EVT --> PIPE
 - TTSInput / AudioOutput / EndOfResponse：管道消息，承载文本、语言信息、响应上下文、取消标记、可视化音素等。
 - BackendRegistry：集中声明 TTS 后端名称、参数数据类、工厂函数、可选依赖、能力标志，并负责构造处理器实例。
 - S2S Pipeline：将 VAD、STT、LLM、LMOutputProcessor、TTS 串联为可并行运行的 Handler 链，并通过队列传递消息。
+- VOICES 数据层：内存中的音色库，支持 builtin/clone/design 三种来源，包含 src 和 art 字段用于区分音色类型和存储相关产物。
 
 **章节来源**
 - [baseHandler.py:32-242](file://src/speech_to_speech/baseHandler.py#L32-L242)
@@ -93,13 +110,15 @@ EVT --> PIPE
 - [messages.py:222-267](file://src/speech_to_speech/pipeline/messages.py#L222-L267)
 - [backend_registry.py:102-163](file://src/speech_to_speech/backend_registry.py#L102-L163)
 - [s2s_pipeline.py:516-574](file://src/speech_to_speech/s2s_pipeline.py#L516-L574)
+- [console-refactor-demo.html:1779-1791](file://console/design/console-refactor-demo.html#L1779-L1791)
 
 ## 架构总览
-TTS 子系统采用“统一接口 + 多后端实现”的架构：
+TTS 子系统采用"统一接口 + 多后端实现"的架构：
 - 统一接口：所有 TTS 处理器继承 `BaseHandler[TTSIn, TTSOut]`，实现 `process` 方法，按输入消息生成音频块。
 - 后端注册：通过 `TTS_BACKENDS` 注册表声明每个后端名称、参数类、创建工厂、可选依赖、配置前缀等。
 - 管道集成：`s2s_pipeline.py` 根据配置选择 TTS 后端，注入 `cancel_scope`、`speculative_turns`、`detect_llm_output_language` 等上下文，并将 TTS 输出连接到发送队列或可选 STV（视素）处理阶段。
 - 事件驱动：TTS 与 LLM 输出处理器共享有序消息流，工具调用就绪事件可提前暴露，而音频最终化顺序仍由 TTS 队列保证。
+- 音色管理：通过 VOICES 数据层统一管理音色资源，支持五种制作来源（builtin/clone/design），并与 qwen3 参数下拉形成完整闭环。
 
 ```mermaid
 sequenceDiagram
@@ -108,10 +127,14 @@ participant LLM as "LLM 阶段"
 participant PROC as "LMOutputProcessor"
 participant TTS as "TTS 后端"
 participant OUT as "下游发送/可视"
+participant WIZARD as "音色制作向导"
+participant VOICES as "VOICES 数据层"
 STT->>LLM : "Transcription / PartialTranscription"
 LLM->>PROC : "LLMResponseChunk / TokenUsage / EndOfResponse"
 PROC->>TTS : "TTSInput / AssistantOutputEvent / EndOfResponse"
 TTS-->>OUT : "AudioOutput / bytes / np.ndarray"
+WIZARD->>VOICES : "新建音色 (source → material → audition → precompute → name)"
+VOICES->>TTS : "qwen3_tts_* 参数下拉选项"
 Note over TTS,OUT : "音频按 blocksize 分块，采样率标准化到管道目标频率"
 ```
 
@@ -120,6 +143,7 @@ Note over TTS,OUT : "音频按 blocksize 分块，采样率标准化到管道目
 - [messages.py:146-217](file://src/speech_to_speech/pipeline/messages.py#L146-L217)
 - [messages.py:222-267](file://src/speech_to_speech/pipeline/messages.py#L222-L267)
 - [events.py:144-163](file://src/speech_to_speech/pipeline/events.py#L144-L163)
+- [console-refactor-demo.html:3250-3500](file://console/design/console-refactor-demo.html#L3250-L3500)
 
 **章节来源**
 - [s2s_pipeline.py:516-574](file://src/speech_to_speech/s2s_pipeline.py#L516-L574)
@@ -310,12 +334,119 @@ class EndOfResponse {
 - [messages.py:222-267](file://src/speech_to_speech/pipeline/messages.py#L222-L267)
 - [handler_types.py:43-46](file://src/speech_to_speech/pipeline/handler_types.py#L43-L46)
 
+## 音色制作流程向导
+
+### 概述
+音色制作流程向导是 TTS 架构的重要组成部分，提供了完整的音色创建和管理功能。该向导实现了五步制作流程：**来源选择 → 素材上传 → 试听裁剪 → 预计算 → 命名保存**，并将制作结果写入内存 VOICES 数据层，同时与 qwen3 参数下拉形成完整闭环。
+
+### 数据层扩展
+VOICES 数据结构进行了重要扩展，新增 `src` 和 `art` 字段：
+
+```mermaid
+classDiagram
+class VoiceEntry {
++id string
++backend string
++model string
++lang object
++status string
++usage number
++src string
++dur number?
++art object?
+}
+class VoiceArtifacts {
++ulid string?
++spk string?
++rvq string?
++refText object?
++instruct object?
++base string?
+}
+VoiceEntry --> VoiceArtifacts : "art"
+```
+
+**图表来源**
+- [console-refactor-demo.html:1779-1791](file://console/design/console-refactor-demo.html#L1779-L1791)
+
+**章节来源**
+- [console-refactor-demo.html:1779-1791](file://console/design/console-refactor-demo.html#L1779-L1791)
+
+### 五步制作流程
+
+#### 步骤 1：来源选择
+用户选择音色来源类型：
+- **builtin**：内置音色，只需登记名字
+- **clone**：克隆参考音频，需要音频 + 逐字转写
+- **design**：指令式设计，只需要 VoiceDesign 描述
+
+```mermaid
+flowchart TD
+A["开始"] --> B{"选择来源类型"}
+B --> |builtin| C["登记内置音色"]
+B --> |clone| D["上传参考音频 + 转写"]
+B --> |design| E["输入 VoiceDesign 指令"]
+C --> F["跳过素材/试听/预计算"]
+D --> G["进入素材步骤"]
+E --> H["进入素材步骤"]
+```
+
+**图表来源**
+- [console-refactor-demo.html:3273-3284](file://console/design/console-refactor-demo.html#L3273-L3284)
+
+#### 步骤 2：素材处理
+根据来源类型显示不同界面：
+- **design**：显示 VoiceDesign 指令输入框
+- **clone/builtin**：显示音频上传、模拟录制、逐字转写、x-vector 选项
+
+#### 步骤 3：试听与裁剪
+提供波形可视化界面，支持：
+- 整段播放预览
+- 精确裁剪（trimStart/trimEnd）
+- 预设裁剪模板（去头 250ms · 尾 300ms）
+- 实时显示保留时长
+
+#### 步骤 4：预计算
+模拟后端预计算过程：
+- 排队中 → 计算中 → 完成
+- 支持失败分支（voice_precompute_failed）
+- 重试机制
+- 产物验证（spk.npy + rvq.npy + ref.wav）
+
+#### 步骤 5：命名保存
+最终确认并保存音色：
+- 唯一性检查（大小写不敏感）
+- 参数映射（qwen3_tts_speaker/ref_spk/ref_rvq/instruct）
+- 写入 VOICES 数据层
+- Toast 提示成功
+
+**章节来源**
+- [console-refactor-demo.html:3250-3500](file://console/design/console-refactor-demo.html#L3250-L3500)
+
+### qwen3 参数下拉集成
+音色制作完成后，自动集成到 qwen3 参数下拉中：
+
+```mermaid
+flowchart LR
+VOICE["新建音色"] --> VOICES["VOICES 数据层"]
+VOICES --> DROPDOWN["qwen3_tts_* 参数下拉"]
+DROPDOWN --> INFERENCE["推理链路选用"]
+INFERENCE --> RESULT["生成语音"]
+```
+
+**图表来源**
+- [console-refactor-demo.html:2329-2345](file://console/design/console-refactor-demo.html#L2329-L2345)
+
+**章节来源**
+- [console-refactor-demo.html:2329-2345](file://console/design/console-refactor-demo.html#L2329-L2345)
+
 ## 依赖关系分析
 - BaseHandler 是所有 TTS 后端的共同基类，提供线程、队列、控制消息、事件转发、生命周期管理。
 - TTS 后端通过 backend_registry.py 的 `TTS_BACKENDS` 注册，使用 `_simple_handler_factory` 或自定义工厂创建实例。
 - s2s_pipeline.py 构建 HandlerContext，注入 cancel_scope、speculative_turns、sample_rate、detect_llm_output_language 等上下文。
 - TTS 后端消费 messages.py 中的 TTSInput、EndOfResponse，产出 AudioOutput 或原始音频。
 - events.py 定义管道事件，如 assistant_tool_call_ready，允许工具调用结果早于 TTS 音频暴露。
+- console-refactor-demo.html 中的音色制作向导与 VOICES 数据层交互，为 qwen3 后端提供音色资源。
 
 ```mermaid
 graph LR
@@ -333,16 +464,19 @@ MSG["messages.TTSInput/AudioOutput/EndOfResponse"] --> OAI
 MSG --> QWEN
 MSG --> KOKORO
 EVT["events.PipelineEvent"] --> PIPE
+WIZARD["console-refactor-demo.html 音色向导"] --> VOICES["VOICES 数据层"]
+VOICES --> QWEN
 ```
 
 **图表来源**
-- [backend_registry.py:555-693](file://src/speech_to_speech/backend_registry.py#L555-L693)
+- [backend_registry.py:555-708](file://src/speech_to_speech/backend_registry.py#L555-L708)
 - [s2s_pipeline.py:516-574](file://src/speech_to_speech/s2s_pipeline.py#L516-L574)
 - [messages.py:222-267](file://src/speech_to_speech/pipeline/messages.py#L222-L267)
 - [events.py:144-163](file://src/speech_to_speech/pipeline/events.py#L144-L163)
+- [console-refactor-demo.html:1779-1791](file://console/design/console-refactor-demo.html#L1779-L1791)
 
 **章节来源**
-- [backend_registry.py:555-693](file://src/speech_to_speech/backend_registry.py#L555-L693)
+- [backend_registry.py:555-708](file://src/speech_to_speech/backend_registry.py#L555-L708)
 - [s2s_pipeline.py:516-574](file://src/speech_to_speech/s2s_pipeline.py#L516-L574)
 
 ## 性能与流式处理特性
@@ -352,6 +486,7 @@ EVT["events.PipelineEvent"] --> PIPE
 - 分块输出：所有 TTS 后端按 blocksize 输出固定长度音频块，便于下游播放与缓冲。
 - 取消与门控：基于 cancel_scope 与 speculative_turns 的门控机制，丢弃陈旧或已撤销的请求。
 - 语言与音色动态切换：Kokoro 与 Qwen3 支持运行时语言/音色切换，减少重复加载开销。
+- 音色预计算优化：通过预计算说话人向量（spk.npy）和声学码（rvq.npy），加速推理过程。
 
 **章节来源**
 - [openai_compatible_handler.py:249-333](file://src/speech_to_speech/TTS/openai_compatible_handler.py#L249-L333)
@@ -366,12 +501,15 @@ EVT["events.PipelineEvent"] --> PIPE
 - 请求超时：HttpSpeechOperation 在超时后设置 deadline_exceeded 并取消请求。
 - 响应失败去重：通过 response_identity 记录失败响应，避免重复处理。
 - 会话结束状态恢复：KokoroTTSHandler.on_session_end 恢复初始 voice/lang。
+- 音色预计算失败：检查参考音频质量，确保不是 80% 静音样本，说话人向量可分辨。
+- 音色名称冲突：检查 VOICES 中是否存在同名音色（大小写不敏感）。
 
 **章节来源**
 - [openai_compatible_handler.py:423-449](file://src/speech_to_speech/TTS/openai_compatible_handler.py#L423-L449)
 - [openai_compatible_handler.py:190-224](file://src/speech_to_speech/TTS/openai_compatible_handler.py#L190-L224)
 - [openai_compatible_handler.py:716-758](file://src/speech_to_speech/TTS/openai_compatible_handler.py#L716-L758)
 - [kokoro_handler.py:492-506](file://src/speech_to_speech/TTS/kokoro_handler.py#L492-L506)
+- [console-refactor-demo.html:3483-3500](file://console/design/console-refactor-demo.html#L3483-L3500)
 
 ## 扩展新 TTS 后端的开发指南
 步骤与建议如下：
@@ -400,7 +538,12 @@ EVT["events.PipelineEvent"] --> PIPE
    - 使用 `cancel_scope` 与 `speculative_turns` 进行门控与去重。
    - 在 `on_session_end` 中恢复初始状态，如 voice/lang。
 
-6. 测试与验证
+6. 音色制作支持（可选）
+   - 如需支持音色制作，需在 VOICES 数据层添加对应字段。
+   - 实现相应的音色来源类型（builtin/clone/design）。
+   - 与 qwen3 参数下拉集成，提供音色选择功能。
+
+7. 测试与验证
    - 编写单元测试覆盖 warmup、process、错误路径、取消路径。
    - 验证 TTFA、RTF、端到端延迟指标。
    - 验证语言/音色切换与回退逻辑。
@@ -411,12 +554,14 @@ EVT["events.PipelineEvent"] --> PIPE
 - 对远程服务增加超时、重试、降级策略。
 - 对本地模型增加设备检测、量化选择、预热流程。
 - 对音频格式进行严格校验，避免下游播放异常。
+- 对音色制作流程增加完善的错误处理和用户反馈。
 
 **章节来源**
 - [baseHandler.py:32-242](file://src/speech_to_speech/baseHandler.py#L32-L242)
 - [backend_registry.py:102-163](file://src/speech_to_speech/backend_registry.py#L102-L163)
-- [backend_registry.py:555-693](file://src/speech_to_speech/backend_registry.py#L555-L693)
+- [backend_registry.py:555-708](file://src/speech_to_speech/backend_registry.py#L555-L708)
 - [messages.py:222-267](file://src/speech_to_speech/pipeline/messages.py#L222-L267)
+- [console-refactor-demo.html:1779-1791](file://console/design/console-refactor-demo.html#L1779-L1791)
 
 ## 结论
-TTS 子系统通过 BaseHandler 抽象、BackendRegistry 注册、Pipeline 消息与事件驱动，实现了统一、可扩展、高性能的语音合成框架。OpenAICompatibleTTSHandler、Qwen3TTSHandler、KokoroTTSHandler 分别覆盖了远程 HTTP 流式、本地高性能、多语言高质量三类典型场景。开发者可依据本文档快速扩展新后端，并确保与现有管道无缝集成。
+TTS 子系统通过 BaseHandler 抽象、BackendRegistry 注册、Pipeline 消息与事件驱动，实现了统一、可扩展、高性能的语音合成框架。OpenAICompatibleTTSHandler、Qwen3TTSHandler、KokoroTTSHandler 分别覆盖了远程 HTTP 流式、本地高性能、多语言高质量三类典型场景。新增的音色制作流程向导和 qwen3 参数下拉集成为系统提供了完整的音色管理能力，形成了从音色制作到推理选用的完整闭环。开发者可依据本文档快速扩展新后端，并确保与现有管道无缝集成。

@@ -28,3 +28,5 @@ class ParamInstance(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
     updated_by: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    # 集群归属（spec §2.2）：软关联 param_cluster.name，存量经 server_default 落 default。
+    cluster_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default", index=True)

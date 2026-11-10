@@ -57,11 +57,19 @@ def test_the_sqlite_file_provisions_a_fresh_database_at_head(tmp_path):
 @pytest.mark.parametrize("dialect", DIALECTS)
 def test_every_model_column_appears_in_both_dialects(dialect):
     sql = _sql(dialect)
+    # A column is covered either inside its CREATE TABLE block or by a later
+    # `ALTER TABLE … ADD COLUMN` in the chain — migrations are allowed to widen
+    # an existing table, and the provisioning test above proves the end state.
     missing = [
         f"{table.name}.{column.name}"
         for table in Base.metadata.sorted_tables
         for column in table.columns
         if not re.search(rf"^\s+{re.escape(column.name)} ", _table_block(sql, table.name), re.MULTILINE)
+        and not re.search(
+            rf"^ALTER TABLE {re.escape(table.name)} ADD COLUMN {re.escape(column.name)} ",
+            sql,
+            re.MULTILINE,
+        )
     ]
     assert missing == [], f"{dialect} is missing {missing}; re-run scripts/dump_schema_sql.py"
 

@@ -310,6 +310,8 @@ class ChatCompletionsApiModelHandler(BaseOpenAICompatibleHandler):
     which already emits OpenAI chat messages including ``tool_calls``/``tool`` roles.
     """
 
+    provider_backend = "chat-completions"
+
     def warmup(self) -> None:
         logger.info(f"Warming up {self.__class__.__name__}")
         start = time.time()

@@ -1,0 +1,11 @@
+schema_version: 1
+module_path: demo_app/node_runtime
+title: 语音对话演示应用（Node/浏览器运行时）
+scope:
+    - demo/main.js
+    - demo/s2s-realtime-client.js
+    - demo/turn-latency.js
+source_files: []
+depends_on: []
+related_to:
+    - path: demo_app/python_backend

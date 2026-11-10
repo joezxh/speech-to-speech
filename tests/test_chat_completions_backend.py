@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import queue
 import threading
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import httpx
@@ -1122,6 +1123,74 @@ def test_chat_backend_keeps_injected_context_with_session_instructions():
         assert prompt.count("CURRENT CHAT SNAPSHOT") == 1
         assert chat.init_chat_message is snapshot
         assert snapshot.content[0].text == "CURRENT CHAT SNAPSHOT"
+
+
+# ── model metrics instrumentation ──────────────────────────────────
+
+
+class _TraceRecord:
+    def __init__(self, category, model_name, input):
+        self.category = category
+        self.model_name = model_name
+        self.input = input
+        self.output = {}
+        self.first_byte = False
+
+    def set_output(self, **kwargs):
+        self.output.update(kwargs)
+
+    def mark_first_byte(self):
+        self.first_byte = True
+        self.output.setdefault("first_byte_s", 0.0)
+
+
+class _TraceMonitor:
+    """Captures ``trace`` calls so the test can assert the console's data feed."""
+
+    def __init__(self):
+        self.records = []
+
+    @contextmanager
+    def trace(self, category, model_name, input=None):
+        rec = _TraceRecord(category, str(model_name), dict(input or {}))
+        self.records.append(rec)
+        yield rec
+
+
+def test_openai_llm_generation_records_call_metrics():
+    """The OpenAI-compatible path must emit MODEL_CALL_METRICS so the runtime
+    card shows the real model name, latency and first-byte time for the
+    deployed remote LLM instead of 'not loaded'."""
+    handler = _make_handler(stream=False)
+    handler.client.chat.completions.next_result = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content="Bonjour le monde", refusal=None, tool_calls=[]))],
+        usage=SimpleNamespace(prompt_tokens=7, completion_tokens=3),
+    )
+    handler.monitor = _TraceMonitor()
+    chat = Chat(10)
+    chat.add_item(make_user_message("Hallo"))
+    request = GenerateResponseRequest(
+        runtime_config=RuntimeConfig(
+            chat=chat,
+            session=RealtimeSessionCreateRequest(type="realtime", instructions="You are a robot."),
+        ),
+        language_code="de",
+        turn_id="turn_1",
+        turn_revision=0,
+    )
+
+    outputs = list(drive_llm(handler, request))
+
+    assert any(isinstance(o, LLMResponseChunk) and o.text for o in outputs)
+    assert len(handler.monitor.records) == 1
+    rec = handler.monitor.records[0]
+    assert rec.category == "LLM"
+    assert rec.model_name == "test-model"
+    assert rec.input["backend"] == "chat-completions"
+    assert rec.first_byte is True
+    assert rec.output["generated_text_length"] == len("Bonjour le monde")
+    assert rec.output["input_tokens"] == 7
+    assert rec.output["output_tokens"] == 3
 
 
 if __name__ == "__main__":

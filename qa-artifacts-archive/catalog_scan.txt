@@ -1,0 +1,304 @@
+schema=s2s-parameter-catalog-v1 generated_from=speech-to-speech-src@f2267d8 at=2026-10-23
+total=196
+
+== (stage, backend) ==
+client    -               18  api_key,block_mic_during_playback,chunk_size,connection_retry_timeout_s,input_device,instructions,log_transcripts,model,output_device,playback_buffer_ms,print_json,recv_rate,send_rate,tool_executor,tool_response_create,tools,url,voice
+deploy    -               16  base_image,cache_volume,dockerfile,env_reference,gpu_reservation,healthcheck,llama_parallel_slots,max_config_bytes,max_config_depth,path_field_resolution,pipeline_gpu_id,pipeline_port,restart_policy,schema_version,silero_vad_volume,top_level_keys
+env       -               18  AUTH_DEBUG,GPUSTACK_API_KEY,GPUSTACK_BASE_URL,GPUSTACK_MODEL,HF_ENDPOINT,HF_HUB_ENABLE_PROGRESS_BARS,HF_HUB_OFFLINE,MODELSCOPE_ENDPOINT,MODEL_METRICS_LOG,MODEL_METRICS_LOG_BACKUPS,MODEL_METRICS_LOG_MAX_BYTES,OPENAI_API_KEY,RTC_ICE_SERVERS,SERPER_API_KEY,TOKENIZERS_PARALLELISM,TRANSFORMERS_OFFLINE,UNLIMITED_ORGS,USAGE_HASH_SECRET
+llm       -               10  chat_size,compact_history,enable_lang_prompt,http_retry_policy,init_chat_prompt,init_chat_role,model_name,request_timeout_s,stream_batch_sentences,user_role
+llm       chat-completions   1  responses_api_reasoning_effort
+llm       responses-api   10  model_name,responses_api_api_key,responses_api_audio_content_type,responses_api_audio_history_turns,responses_api_audio_max_tokens,responses_api_audio_temperature,responses_api_base_url,responses_api_disable_thinking,responses_api_reasoning_effort,responses_api_stream
+llm       transformers     9  llm_device,llm_gen_do_sample,llm_gen_max_new_tokens,llm_gen_min_new_tokens,llm_gen_temperature,llm_is_vlm,llm_load_in_4bit,llm_load_in_8bit,llm_torch_dtype
+runtime   -               33  chunk_samples,cors_policy,detect_llm_output_language,device,diarization,diarization_device,diarization_dtype,diarization_model_name,diarization_revision,diarization_streaming_mode,diarization_threshold,enable_live_transcription,enable_llm_proxy,live_transcription_update_interval,llm_backend,llm_proxy_connect_timeout_s,log_level,log_transcripts,mac_optimal_settings,monitoring_endpoints,num_pipelines,pipeline_sample_rate,pool_reject_when_full,realtime_api_auth,session.audio.input.transcription.language,session.audio.input.turn_detection.create_response,session.audio.input.turn_detection.interrupt_response,session.extensions,session.instructions,stt,torch_num_threads,tts,vad
+server    -                2  host,port
+stt       openai_compatible   7  openai_stt_api_key,openai_stt_base_url,openai_stt_language,openai_stt_max_window_s,openai_stt_model,openai_stt_response_format,openai_stt_timeout
+stt       parakeet-tdt     3  parakeet_tdt_device,parakeet_tdt_language,parakeet_tdt_model_name
+stt       qwen3-asr        6  qwen3_asr_device,qwen3_asr_gen_max_new_tokens,qwen3_asr_language,qwen3_asr_model_name,qwen3_asr_prompt,qwen3_asr_torch_dtype
+tts       kokoro           6  kokoro_blocksize,kokoro_device,kokoro_lang_code,kokoro_model_name,kokoro_speed,kokoro_voice
+tts       openai_compatible  13  openai_tts_api_key,openai_tts_base_url,openai_tts_blocksize,openai_tts_instructions,openai_tts_language,openai_tts_model,openai_tts_response_format,openai_tts_sample_rate,openai_tts_speed,openai_tts_stream,openai_tts_task_type,openai_tts_timeout,openai_tts_voice
+tts       qwen3           23  qwen3_tts_attn_implementation,qwen3_tts_backend,qwen3_tts_blocksize,qwen3_tts_device,qwen3_tts_dtype,qwen3_tts_ggml_quantization,qwen3_tts_gguf_codec_path,qwen3_tts_gguf_talker_path,qwen3_tts_instruct,qwen3_tts_language,qwen3_tts_max_new_tokens,qwen3_tts_mlx_quantization,qwen3_tts_model_name,qwen3_tts_non_streaming_mode,qwen3_tts_parity_mode,qwen3_tts_ref_audio,qwen3_tts_ref_cache_dir,qwen3_tts_ref_rvq,qwen3_tts_ref_spk,qwen3_tts_ref_text,qwen3_tts_speaker,qwen3_tts_streaming_chunk_size,qwen3_tts_xvec_only
+vad       -               19  audio_enhancement,enable_realtime_transcription,max_speech_ms,min_silence_ms,min_speech_continuation_ms,min_speech_ms,realtime_processing_pause,sample_rate,short_segment_merge_ms,smart_turn,smart_turn_cpu_count,smart_turn_incomplete_delay_ms,smart_turn_max_wait_ms,smart_turn_model_path,smart_turn_threshold,speculative_reopen_ms,speech_pad_ms,thresh,unanswered_reopen_ms
+vad       firered          2  vad_firered_model_dir,vad_firered_use_gpu
+groups=17
+
+== type=fixed (17) ==
+deploy/-/cache_volume  exp=ops imp=container src=docker-compose.yml:services.pipeline.volumes
+deploy/-/env_reference  exp=advanced imp=container src=config.py:_expand_env
+deploy/-/gpu_reservation  exp=ops imp=container src=docker-compose.yml:services.pipeline.deploy
+deploy/-/healthcheck  exp=advanced imp=container src=docker-compose.yml (no healthcheck defined)
+deploy/-/max_config_bytes  exp=ops imp=container src=_config_yaml.py:13 _MAX_BYTES
+deploy/-/max_config_depth  exp=ops imp=container src=_config_yaml.py:14 _MAX_DEPTH
+deploy/-/path_field_resolution  exp=advanced imp=container src=config.py:_PATH_FIELDS
+deploy/-/silero_vad_volume  exp=ops imp=container src=docker-compose.yml:services.pipeline.volumes
+deploy/-/top_level_keys  exp=ops imp=container src=config.py:374
+llm/-/http_retry_policy  exp=ops imp=pipeline src=LLM/base_openai_compatible_language_model.py
+llm/-/request_timeout_s  exp=expert imp=pipeline src=LLM/base_openai_compatible_language_model.py:196
+runtime/-/chunk_samples  exp=ops imp=pipeline src=api/openai_realtime/service.py:111 CHUNK_SAMPLES
+runtime/-/cors_policy  exp=ops imp=process src=demo/server.py
+runtime/-/monitoring_endpoints  exp=advanced imp=process src=api/openai_realtime/websocket_router.py:615,639
+runtime/-/pipeline_sample_rate  exp=ops imp=pipeline src=api/openai_realtime/service.py:110 PIPELINE_SAMPLE_RATE
+runtime/-/pool_reject_when_full  exp=ops imp=pipeline src=api/openai_realtime/websocket_router.py
+runtime/-/realtime_api_auth  exp=ops imp=process src=api/openai_realtime/websocket_router.py
+
+== effect in (hot, both) ==
+client    -        instructions                     effect=hot   impact=session cost=seconds
+client    -        model                            effect=both  impact=session cost=seconds
+client    -        voice                            effect=hot   impact=session cost=seconds
+llm       -        init_chat_prompt                 effect=both  impact=session cost=seconds
+runtime   -        session.audio.input.transcription.language effect=hot   impact=session cost=seconds
+runtime   -        session.audio.input.turn_detection.create_response effect=hot   impact=session cost=seconds
+runtime   -        session.audio.input.turn_detection.interrupt_response effect=hot   impact=session cost=seconds
+runtime   -        session.extensions               effect=hot   impact=session cost=seconds
+runtime   -        session.instructions             effect=hot   impact=session cost=seconds
+stt       qwen3-asr qwen3_asr_language               effect=both  impact=session cost=seconds
+tts       kokoro   kokoro_voice                     effect=both  impact=session cost=seconds
+tts       openai_compatible openai_tts_voice                 effect=both  impact=session cost=seconds
+tts       qwen3    qwen3_tts_language               effect=both  impact=session cost=seconds
+tts       qwen3    qwen3_tts_speaker                effect=both  impact=session cost=seconds
+
+== impact=container (22) ==
+deploy/-/base_image cost=minutes exp=ops
+deploy/-/cache_volume cost=minutes exp=ops
+deploy/-/dockerfile cost=minutes exp=ops
+deploy/-/env_reference cost=restart exp=advanced
+deploy/-/gpu_reservation cost=minutes exp=ops
+deploy/-/healthcheck cost=minutes exp=advanced
+deploy/-/llama_parallel_slots cost=minutes exp=ops
+deploy/-/max_config_bytes cost=minutes exp=ops
+deploy/-/max_config_depth cost=minutes exp=ops
+deploy/-/path_field_resolution cost=restart exp=advanced
+deploy/-/pipeline_gpu_id cost=minutes exp=ops
+deploy/-/pipeline_port cost=minutes exp=ops
+deploy/-/restart_policy cost=minutes exp=ops
+deploy/-/schema_version cost=minutes exp=ops
+deploy/-/silero_vad_volume cost=minutes exp=ops
+deploy/-/top_level_keys cost=minutes exp=ops
+env/-/HF_ENDPOINT cost=minutes exp=ops
+env/-/HF_HUB_ENABLE_PROGRESS_BARS cost=minutes exp=ops
+env/-/HF_HUB_OFFLINE cost=minutes exp=ops
+env/-/MODELSCOPE_ENDPOINT cost=minutes exp=ops
+env/-/TOKENIZERS_PARALLELISM cost=minutes exp=ops
+env/-/TRANSFORMERS_OFFLINE cost=minutes exp=ops
+
+== duplicate names ==
+log_transcripts                    client/- | runtime/-
+model_name                         llm/- | llm/responses-api
+responses_api_reasoning_effort     llm/chat-completions | llm/responses-api
+distinct names=193
+
+== ops risk 前缀 ==
+Counter({'环境绑定': 35, '安全': 14, '隐私': 3})
+ops_without_risk=[]
+
+== voice-ish ==
+llm       -            enable_lang_prompt             boolean  exp=basic    effect=startup
+llm       -            init_chat_prompt               string   exp=basic    effect=both
+runtime   -            session.instructions           string   exp=basic    effect=hot
+tts       kokoro       kokoro_voice                   string   exp=basic    effect=both
+tts       openai_compatible openai_tts_instructions        string   exp=basic    effect=startup
+tts       openai_compatible openai_tts_voice               string   exp=basic    effect=both
+tts       qwen3        qwen3_tts_instruct             string   exp=basic    effect=startup
+tts       qwen3        qwen3_tts_ref_audio            string   exp=expert   effect=startup
+tts       qwen3        qwen3_tts_ref_cache_dir        string   exp=ops      effect=startup
+tts       qwen3        qwen3_tts_ref_rvq              string   exp=expert   effect=startup
+tts       qwen3        qwen3_tts_ref_spk              string   exp=expert   effect=startup
+tts       qwen3        qwen3_tts_ref_text             string   exp=advanced effect=startup
+tts       qwen3        qwen3_tts_speaker              string   exp=basic    effect=both
+
+== ALL 196 ==
+client|-|api_key|string|ops|startup|session|restart
+client|-|block_mic_during_playback|boolean|advanced|startup|session|restart
+client|-|chunk_size|integer|advanced|startup|session|restart
+client|-|connection_retry_timeout_s|float|advanced|startup|session|restart
+client|-|input_device|integer|advanced|startup|session|restart
+client|-|instructions|string|basic|hot|session|seconds
+client|-|log_transcripts|boolean|ops|startup|session|restart
+client|-|model|string|basic|both|session|seconds
+client|-|output_device|integer|advanced|startup|session|restart
+client|-|playback_buffer_ms|float|advanced|startup|session|restart
+client|-|print_json|boolean|expert|startup|session|restart
+client|-|recv_rate|integer|advanced|startup|session|restart
+client|-|send_rate|integer|advanced|startup|session|restart
+client|-|tool_executor|object|ops|startup|session|restart
+client|-|tool_response_create|boolean|advanced|startup|session|restart
+client|-|tools|array|expert|startup|session|restart
+client|-|url|string|advanced|startup|session|restart
+client|-|voice|string|basic|hot|session|seconds
+deploy|-|base_image|string|ops|startup|container|minutes
+deploy|-|cache_volume|fixed|ops|startup|container|minutes
+deploy|-|dockerfile|string|ops|startup|container|minutes
+deploy|-|env_reference|fixed|advanced|startup|container|restart
+deploy|-|gpu_reservation|fixed|ops|startup|container|minutes
+deploy|-|healthcheck|fixed|advanced|startup|container|minutes
+deploy|-|llama_parallel_slots|integer|ops|startup|container|minutes
+deploy|-|max_config_bytes|fixed|ops|startup|container|minutes
+deploy|-|max_config_depth|fixed|ops|startup|container|minutes
+deploy|-|path_field_resolution|fixed|advanced|startup|container|restart
+deploy|-|pipeline_gpu_id|string|ops|startup|container|minutes
+deploy|-|pipeline_port|integer|ops|startup|container|minutes
+deploy|-|restart_policy|string|ops|startup|container|minutes
+deploy|-|schema_version|integer|ops|startup|container|minutes
+deploy|-|silero_vad_volume|fixed|ops|startup|container|minutes
+deploy|-|top_level_keys|fixed|ops|startup|container|minutes
+env|-|AUTH_DEBUG|boolean|ops|startup|process|restart
+env|-|GPUSTACK_API_KEY|string|ops|startup|pipeline|restart
+env|-|GPUSTACK_BASE_URL|string|ops|startup|pipeline|restart
+env|-|GPUSTACK_MODEL|string|expert|startup|pipeline|restart
+env|-|HF_ENDPOINT|string|ops|startup|container|minutes
+env|-|HF_HUB_ENABLE_PROGRESS_BARS|boolean|ops|startup|container|minutes
+env|-|HF_HUB_OFFLINE|boolean|ops|startup|container|minutes
+env|-|MODELSCOPE_ENDPOINT|string|ops|startup|container|minutes
+env|-|MODEL_METRICS_LOG|string|ops|startup|process|restart
+env|-|MODEL_METRICS_LOG_BACKUPS|integer|ops|startup|process|restart
+env|-|MODEL_METRICS_LOG_MAX_BYTES|integer|ops|startup|process|restart
+env|-|OPENAI_API_KEY|string|ops|startup|pipeline|restart
+env|-|RTC_ICE_SERVERS|string|ops|startup|process|restart
+env|-|SERPER_API_KEY|string|ops|startup|process|restart
+env|-|TOKENIZERS_PARALLELISM|boolean|ops|startup|container|minutes
+env|-|TRANSFORMERS_OFFLINE|boolean|ops|startup|container|minutes
+env|-|UNLIMITED_ORGS|string|ops|startup|process|restart
+env|-|USAGE_HASH_SECRET|string|ops|startup|process|restart
+llm|-|chat_size|integer|basic|startup|session|restart
+llm|-|compact_history|boolean|advanced|startup|session|restart
+llm|-|enable_lang_prompt|boolean|basic|startup|session|restart
+llm|-|http_retry_policy|fixed|ops|startup|pipeline|restart
+llm|-|init_chat_prompt|string|basic|both|session|seconds
+llm|-|init_chat_role|string|advanced|startup|pipeline|restart
+llm|-|model_name|string|expert|startup|pipeline|minutes
+llm|-|request_timeout_s|fixed|expert|startup|pipeline|restart
+llm|-|stream_batch_sentences|integer|basic|startup|session|restart
+llm|-|user_role|string|advanced|startup|pipeline|restart
+llm|chat-completions|responses_api_reasoning_effort|string|advanced|startup|pipeline|restart
+llm|responses-api|model_name|string|expert|startup|pipeline|minutes
+llm|responses-api|responses_api_api_key|string|ops|startup|pipeline|restart
+llm|responses-api|responses_api_audio_content_type|string|expert|startup|pipeline|restart
+llm|responses-api|responses_api_audio_history_turns|integer|advanced|startup|session|restart
+llm|responses-api|responses_api_audio_max_tokens|integer|advanced|startup|session|restart
+llm|responses-api|responses_api_audio_temperature|float|advanced|startup|session|restart
+llm|responses-api|responses_api_base_url|string|advanced|startup|pipeline|restart
+llm|responses-api|responses_api_disable_thinking|boolean|advanced|startup|pipeline|restart
+llm|responses-api|responses_api_reasoning_effort|string|advanced|startup|pipeline|restart
+llm|responses-api|responses_api_stream|boolean|advanced|startup|session|restart
+llm|transformers|llm_device|string|expert|startup|pipeline|restart
+llm|transformers|llm_gen_do_sample|boolean|basic|startup|session|restart
+llm|transformers|llm_gen_max_new_tokens|integer|advanced|startup|session|restart
+llm|transformers|llm_gen_min_new_tokens|integer|advanced|startup|session|restart
+llm|transformers|llm_gen_temperature|float|basic|startup|session|restart
+llm|transformers|llm_is_vlm|boolean|expert|startup|pipeline|minutes
+llm|transformers|llm_load_in_4bit|boolean|expert|startup|pipeline|minutes
+llm|transformers|llm_load_in_8bit|boolean|expert|startup|pipeline|minutes
+llm|transformers|llm_torch_dtype|string|expert|startup|pipeline|restart
+runtime|-|chunk_samples|fixed|ops|startup|pipeline|restart
+runtime|-|cors_policy|fixed|ops|startup|process|restart
+runtime|-|detect_llm_output_language|boolean|advanced|startup|pipeline|restart
+runtime|-|device|string|ops|startup|process|restart
+runtime|-|diarization|boolean|advanced|startup|pipeline|minutes
+runtime|-|diarization_device|string|expert|startup|pipeline|restart
+runtime|-|diarization_dtype|string|expert|startup|pipeline|restart
+runtime|-|diarization_model_name|string|expert|startup|pipeline|minutes
+runtime|-|diarization_revision|string|expert|startup|pipeline|minutes
+runtime|-|diarization_streaming_mode|string|expert|startup|pipeline|restart
+runtime|-|diarization_threshold|float|expert|startup|pipeline|restart
+runtime|-|enable_live_transcription|boolean|basic|startup|pipeline|restart
+runtime|-|enable_llm_proxy|boolean|ops|startup|process|restart
+runtime|-|live_transcription_update_interval|float|advanced|startup|pipeline|restart
+runtime|-|llm_backend|string|expert|startup|pipeline|minutes
+runtime|-|llm_proxy_connect_timeout_s|float|expert|startup|process|restart
+runtime|-|log_level|string|advanced|startup|process|restart
+runtime|-|log_transcripts|boolean|ops|startup|process|restart
+runtime|-|mac_optimal_settings|boolean|expert|startup|process|restart
+runtime|-|monitoring_endpoints|fixed|advanced|startup|process|restart
+runtime|-|num_pipelines|integer|expert|startup|pipeline|minutes
+runtime|-|pipeline_sample_rate|fixed|ops|startup|pipeline|restart
+runtime|-|pool_reject_when_full|fixed|ops|startup|pipeline|restart
+runtime|-|realtime_api_auth|fixed|ops|startup|process|restart
+runtime|-|session.audio.input.transcription.language|string|advanced|hot|session|seconds
+runtime|-|session.audio.input.turn_detection.create_response|boolean|advanced|hot|session|seconds
+runtime|-|session.audio.input.turn_detection.interrupt_response|boolean|basic|hot|session|seconds
+runtime|-|session.extensions|list|expert|hot|session|seconds
+runtime|-|session.instructions|string|basic|hot|session|seconds
+runtime|-|stt|string|expert|startup|pipeline|minutes
+runtime|-|torch_num_threads|integer|advanced|startup|process|restart
+runtime|-|tts|string|expert|startup|pipeline|minutes
+runtime|-|vad|string|expert|startup|pipeline|restart
+server|-|host|string|ops|startup|process|restart
+server|-|port|integer|ops|startup|process|restart
+stt|openai_compatible|openai_stt_api_key|string|ops|startup|pipeline|restart
+stt|openai_compatible|openai_stt_base_url|string|advanced|startup|pipeline|restart
+stt|openai_compatible|openai_stt_language|string|basic|startup|session|restart
+stt|openai_compatible|openai_stt_max_window_s|float|advanced|startup|pipeline|restart
+stt|openai_compatible|openai_stt_model|string|expert|startup|pipeline|restart
+stt|openai_compatible|openai_stt_response_format|string|expert|startup|pipeline|restart
+stt|openai_compatible|openai_stt_timeout|float|expert|startup|pipeline|restart
+stt|parakeet-tdt|parakeet_tdt_device|string|expert|startup|pipeline|restart
+stt|parakeet-tdt|parakeet_tdt_language|string|advanced|startup|pipeline|restart
+stt|parakeet-tdt|parakeet_tdt_model_name|string|expert|startup|pipeline|minutes
+stt|qwen3-asr|qwen3_asr_device|string|expert|startup|pipeline|restart
+stt|qwen3-asr|qwen3_asr_gen_max_new_tokens|integer|advanced|startup|pipeline|restart
+stt|qwen3-asr|qwen3_asr_language|string|basic|both|session|seconds
+stt|qwen3-asr|qwen3_asr_model_name|string|expert|startup|pipeline|minutes
+stt|qwen3-asr|qwen3_asr_prompt|string|advanced|startup|pipeline|restart
+stt|qwen3-asr|qwen3_asr_torch_dtype|string|expert|startup|pipeline|restart
+tts|kokoro|kokoro_blocksize|integer|expert|startup|pipeline|restart
+tts|kokoro|kokoro_device|string|expert|startup|pipeline|restart
+tts|kokoro|kokoro_lang_code|string|advanced|startup|pipeline|restart
+tts|kokoro|kokoro_model_name|string|expert|startup|pipeline|minutes
+tts|kokoro|kokoro_speed|float|basic|startup|session|restart
+tts|kokoro|kokoro_voice|string|basic|both|session|seconds
+tts|openai_compatible|openai_tts_api_key|string|ops|startup|pipeline|restart
+tts|openai_compatible|openai_tts_base_url|string|advanced|startup|pipeline|restart
+tts|openai_compatible|openai_tts_blocksize|integer|expert|startup|pipeline|restart
+tts|openai_compatible|openai_tts_instructions|string|basic|startup|pipeline|restart
+tts|openai_compatible|openai_tts_language|string|basic|startup|session|restart
+tts|openai_compatible|openai_tts_model|string|expert|startup|pipeline|restart
+tts|openai_compatible|openai_tts_response_format|string|expert|startup|pipeline|restart
+tts|openai_compatible|openai_tts_sample_rate|integer|expert|startup|pipeline|restart
+tts|openai_compatible|openai_tts_speed|float|basic|startup|session|restart
+tts|openai_compatible|openai_tts_stream|boolean|advanced|startup|session|restart
+tts|openai_compatible|openai_tts_task_type|string|expert|startup|pipeline|restart
+tts|openai_compatible|openai_tts_timeout|float|expert|startup|pipeline|restart
+tts|openai_compatible|openai_tts_voice|string|basic|both|session|seconds
+tts|qwen3|qwen3_tts_attn_implementation|string|expert|startup|pipeline|restart
+tts|qwen3|qwen3_tts_backend|string|expert|startup|pipeline|minutes
+tts|qwen3|qwen3_tts_blocksize|integer|expert|startup|pipeline|restart
+tts|qwen3|qwen3_tts_device|string|expert|startup|pipeline|restart
+tts|qwen3|qwen3_tts_dtype|string|expert|startup|pipeline|restart
+tts|qwen3|qwen3_tts_ggml_quantization|string|expert|startup|pipeline|minutes
+tts|qwen3|qwen3_tts_gguf_codec_path|string|ops|startup|pipeline|restart
+tts|qwen3|qwen3_tts_gguf_talker_path|string|ops|startup|pipeline|restart
+tts|qwen3|qwen3_tts_instruct|string|basic|startup|pipeline|restart
+tts|qwen3|qwen3_tts_language|string|basic|both|session|seconds
+tts|qwen3|qwen3_tts_max_new_tokens|integer|advanced|startup|pipeline|restart
+tts|qwen3|qwen3_tts_mlx_quantization|string|expert|startup|pipeline|minutes
+tts|qwen3|qwen3_tts_model_name|string|expert|startup|pipeline|minutes
+tts|qwen3|qwen3_tts_non_streaming_mode|boolean|advanced|startup|pipeline|restart
+tts|qwen3|qwen3_tts_parity_mode|boolean|expert|startup|pipeline|restart
+tts|qwen3|qwen3_tts_ref_audio|string|expert|startup|pipeline|minutes
+tts|qwen3|qwen3_tts_ref_cache_dir|string|ops|startup|pipeline|restart
+tts|qwen3|qwen3_tts_ref_rvq|string|expert|startup|pipeline|restart
+tts|qwen3|qwen3_tts_ref_spk|string|expert|startup|pipeline|restart
+tts|qwen3|qwen3_tts_ref_text|string|advanced|startup|pipeline|restart
+tts|qwen3|qwen3_tts_speaker|string|basic|both|session|seconds
+tts|qwen3|qwen3_tts_streaming_chunk_size|integer|advanced|startup|pipeline|restart
+tts|qwen3|qwen3_tts_xvec_only|boolean|advanced|startup|pipeline|restart
+vad|-|audio_enhancement|boolean|advanced|startup|pipeline|restart
+vad|-|enable_realtime_transcription|boolean|advanced|startup|pipeline|restart
+vad|-|max_speech_ms|float|advanced|startup|session|restart
+vad|-|min_silence_ms|integer|basic|startup|session|restart
+vad|-|min_speech_continuation_ms|integer|advanced|startup|session|restart
+vad|-|min_speech_ms|integer|basic|startup|session|restart
+vad|-|realtime_processing_pause|float|advanced|startup|pipeline|restart
+vad|-|sample_rate|integer|advanced|startup|pipeline|restart
+vad|-|short_segment_merge_ms|integer|advanced|startup|session|restart
+vad|-|smart_turn|boolean|basic|startup|session|restart
+vad|-|smart_turn_cpu_count|integer|advanced|startup|pipeline|restart
+vad|-|smart_turn_incomplete_delay_ms|integer|advanced|startup|session|restart
+vad|-|smart_turn_max_wait_ms|integer|advanced|startup|session|restart
+vad|-|smart_turn_model_path|string|ops|startup|pipeline|restart
+vad|-|smart_turn_threshold|float|expert|startup|session|restart
+vad|-|speculative_reopen_ms|integer|advanced|startup|session|restart
+vad|-|speech_pad_ms|integer|advanced|startup|session|restart
+vad|-|thresh|float|advanced|startup|pipeline|restart
+vad|-|unanswered_reopen_ms|integer|advanced|startup|session|restart
+vad|firered|vad_firered_model_dir|string|ops|startup|pipeline|restart
+vad|firered|vad_firered_use_gpu|boolean|expert|startup|pipeline|restart

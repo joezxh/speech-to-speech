@@ -46,6 +46,43 @@ from speech_to_speech.utils.utils import resolve_device
 
 logger = logging.getLogger(__name__)
 
+
+def _patch_qwen_tts_rope_compat() -> None:
+    """Make Qwen3-TTS's RoPE registry patch compatible with transformers 5.15+.
+
+    ``qwen_tts`` registers ``ROPE_INIT_FUNCTIONS["default"]`` with a helper that
+    reads ``config.rope_theta``, but transformers 5.15+ removed that attribute
+    from ``MimiConfig``. Without this, TTS construction fails with
+    ``AttributeError: 'MimiConfig' object has no attribute 'rope_theta'``.
+    Override the initializer to fall back to the standard default (10000.0).
+    """
+    try:
+        import qwen_tts._transformers_compat as _compat
+        import torch
+        from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
+
+        def _safe_default_rope_parameters(config, device=None, seq_len=None, layer_type=None):
+            del seq_len, layer_type
+            base = getattr(config, "rope_theta", 10000.0)
+            partial_rotary_factor = getattr(config, "partial_rotary_factor", 1.0)
+            head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
+            dim = int(head_dim * partial_rotary_factor)
+            inv_freq = 1.0 / (
+                base
+                ** (
+                    torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float)
+                    / dim
+                )
+            )
+            return inv_freq, 1.0
+
+        _compat._default_rope_parameters = _safe_default_rope_parameters
+        ROPE_INIT_FUNCTIONS["default"] = _safe_default_rope_parameters
+    except Exception:
+        # Non-fatal: a future qwen_tts/transformers version may fix this upstream.
+        pass
+
+
 DEFAULT_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 DEFAULT_MLX_MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit"
 DEFAULT_REF_TEXT = "I'm confused why some people have super short timelines, yet at the same time are bullish on scaling up reinforcement learning atop LLMs. If we're actually close to a human-like learner, then this whole approach of training on verifiable outcomes."
@@ -186,6 +223,9 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
                 )
             self._setup_mlx(self.model_name)
         else:
+            # qwen_tts registers a RoPE initializer that breaks on transformers
+            # 5.15+ (MimiConfig has no rope_theta). Patch it before loading.
+            _patch_qwen_tts_rope_compat()
             # Only the torch backend places the model itself; qwentts.cpp (GGML) picks its own device.
             if self.faster_backend == "torch":
                 self.device = resolve_device(device, ("cuda",), "Qwen3-TTS torch backend")

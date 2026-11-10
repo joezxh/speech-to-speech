@@ -1,0 +1,213 @@
+### client / None  (18)
+  api_key                            string    startup ops       session   restart  
+  block_mic_during_playback          boolean   startup advanced  session   restart  
+  chunk_size                         integer   startup advanced  session   restart  
+  connection_retry_timeout_s         float     startup advanced  session   restart  
+  input_device                       integer   startup advanced  session   restart  
+  instructions                       string    hot    basic     session   seconds  
+  log_transcripts                    boolean   startup ops       session   restart  
+  model                              string    both   basic     session   seconds  
+  output_device                      integer   startup advanced  session   restart  
+  playback_buffer_ms                 float     startup advanced  session   restart  
+  print_json                         boolean   startup expert    session   restart  
+  recv_rate                          integer   startup advanced  session   restart  
+  send_rate                          integer   startup advanced  session   restart  
+  tool_executor                      object    startup ops       session   restart  
+  tool_response_create               boolean   startup advanced  session   restart  
+  tools                              array     startup expert    session   restart  
+  url                                string    startup advanced  session   restart  
+  voice                              string    hot    basic     session   seconds  
+### deploy / None  (16)
+  base_image                         string    startup ops       container minutes  
+  cache_volume                       fixed     startup ops       container minutes  fixed
+  dockerfile                         string    startup ops       container minutes  
+  env_reference                      fixed     startup advanced  container restart  fixed
+  gpu_reservation                    fixed     startup ops       container minutes  fixed
+  healthcheck                        fixed     startup advanced  container minutes  fixed
+  llama_parallel_slots               integer   startup ops       container minutes  
+  max_config_bytes                   fixed     startup ops       container minutes  fixed
+  max_config_depth                   fixed     startup ops       container minutes  fixed
+  path_field_resolution              fixed     startup advanced  container restart  fixed
+  pipeline_gpu_id                    string    startup ops       container minutes  
+  pipeline_port                      integer   startup ops       container minutes  
+  restart_policy                     string    startup ops       container minutes  
+  schema_version                     integer   startup ops       container minutes  
+  silero_vad_volume                  fixed     startup ops       container minutes  fixed
+  top_level_keys                     fixed     startup ops       container minutes  fixed
+### env / None  (18)
+  AUTH_DEBUG                         boolean   startup ops       process   restart  
+  GPUSTACK_API_KEY                   string    startup ops       pipeline  restart  
+  GPUSTACK_BASE_URL                  string    startup ops       pipeline  restart  
+  GPUSTACK_MODEL                     string    startup expert    pipeline  restart  
+  HF_ENDPOINT                        string    startup ops       container minutes  
+  HF_HUB_ENABLE_PROGRESS_BARS        boolean   startup ops       container minutes  
+  HF_HUB_OFFLINE                     boolean   startup ops       container minutes  
+  MODELSCOPE_ENDPOINT                string    startup ops       container minutes  
+  MODEL_METRICS_LOG                  string    startup ops       process   restart  
+  MODEL_METRICS_LOG_BACKUPS          integer   startup ops       process   restart  
+  MODEL_METRICS_LOG_MAX_BYTES        integer   startup ops       process   restart  
+  OPENAI_API_KEY                     string    startup ops       pipeline  restart  
+  RTC_ICE_SERVERS                    string    startup ops       process   restart  
+  SERPER_API_KEY                     string    startup ops       process   restart  
+  TOKENIZERS_PARALLELISM             boolean   startup ops       container minutes  
+  TRANSFORMERS_OFFLINE               boolean   startup ops       container minutes  
+  UNLIMITED_ORGS                     string    startup ops       process   restart  
+  USAGE_HASH_SECRET                  string    startup ops       process   restart  
+### llm / None  (10)
+  chat_size                          integer   startup basic     session   restart  
+  compact_history                    boolean   startup advanced  session   restart  
+  enable_lang_prompt                 boolean   startup basic     session   restart  
+  http_retry_policy                  fixed     startup ops       pipeline  restart  fixed
+  init_chat_prompt                   string    both   basic     session   seconds  
+  init_chat_role                     string    startup advanced  pipeline  restart  
+  model_name                         string    startup expert    pipeline  minutes  
+  request_timeout_s                  fixed     startup expert    pipeline  restart  fixed
+  stream_batch_sentences             integer   startup basic     session   restart  
+  user_role                          string    startup advanced  pipeline  restart  
+### llm / chat-completions  (1)
+  responses_api_reasoning_effort     string    startup advanced  pipeline  restart  
+### llm / responses-api  (10)
+  model_name                         string    startup expert    pipeline  minutes  
+  responses_api_api_key              string    startup ops       pipeline  restart  
+  responses_api_audio_content_type   string    startup expert    pipeline  restart  
+  responses_api_audio_history_turns  integer   startup advanced  session   restart  
+  responses_api_audio_max_tokens     integer   startup advanced  session   restart  
+  responses_api_audio_temperature    float     startup advanced  session   restart  
+  responses_api_base_url             string    startup advanced  pipeline  restart  
+  responses_api_disable_thinking     boolean   startup advanced  pipeline  restart  
+  responses_api_reasoning_effort     string    startup advanced  pipeline  restart  
+  responses_api_stream               boolean   startup advanced  session   restart  
+### llm / transformers  (9)
+  llm_device                         string    startup expert    pipeline  restart  
+  llm_gen_do_sample                  boolean   startup basic     session   restart  
+  llm_gen_max_new_tokens             integer   startup advanced  session   restart  
+  llm_gen_min_new_tokens             integer   startup advanced  session   restart  
+  llm_gen_temperature                float     startup basic     session   restart  
+  llm_is_vlm                         boolean   startup expert    pipeline  minutes  
+  llm_load_in_4bit                   boolean   startup expert    pipeline  minutes  
+  llm_load_in_8bit                   boolean   startup expert    pipeline  minutes  
+  llm_torch_dtype                    string    startup expert    pipeline  restart  
+### runtime / None  (33)
+  chunk_samples                      fixed     startup ops       pipeline  restart  fixed
+  cors_policy                        fixed     startup ops       process   restart  fixed
+  detect_llm_output_language         boolean   startup advanced  pipeline  restart  
+  device                             string    startup ops       process   restart  
+  diarization                        boolean   startup advanced  pipeline  minutes  
+  diarization_device                 string    startup expert    pipeline  restart  
+  diarization_dtype                  string    startup expert    pipeline  restart  
+  diarization_model_name             string    startup expert    pipeline  minutes  
+  diarization_revision               string    startup expert    pipeline  minutes  
+  diarization_streaming_mode         string    startup expert    pipeline  restart  
+  diarization_threshold              float     startup expert    pipeline  restart  
+  enable_live_transcription          boolean   startup basic     pipeline  restart  
+  enable_llm_proxy                   boolean   startup ops       process   restart  
+  live_transcription_update_interval float     startup advanced  pipeline  restart  
+  llm_backend                        string    startup expert    pipeline  minutes  
+  llm_proxy_connect_timeout_s        float     startup expert    process   restart  
+  log_level                          string    startup advanced  process   restart  
+  log_transcripts                    boolean   startup ops       process   restart  
+  mac_optimal_settings               boolean   startup expert    process   restart  
+  monitoring_endpoints               fixed     startup advanced  process   restart  fixed
+  num_pipelines                      integer   startup expert    pipeline  minutes  
+  pipeline_sample_rate               fixed     startup ops       pipeline  restart  fixed
+  pool_reject_when_full              fixed     startup ops       pipeline  restart  fixed
+  realtime_api_auth                  fixed     startup ops       process   restart  fixed
+  session.audio.input.transcription.language string    hot    advanced  session   seconds  
+  session.audio.input.turn_detection.create_response boolean   hot    advanced  session   seconds  
+  session.audio.input.turn_detection.interrupt_response boolean   hot    basic     session   seconds  
+  session.extensions                 list      hot    expert    session   seconds  
+  session.instructions               string    hot    basic     session   seconds  
+  stt                                string    startup expert    pipeline  minutes  
+  torch_num_threads                  integer   startup advanced  process   restart  
+  tts                                string    startup expert    pipeline  minutes  
+  vad                                string    startup expert    pipeline  restart  
+### server / None  (2)
+  host                               string    startup ops       process   restart  
+  port                               integer   startup ops       process   restart  
+### stt / openai_compatible  (7)
+  openai_stt_api_key                 string    startup ops       pipeline  restart  
+  openai_stt_base_url                string    startup advanced  pipeline  restart  
+  openai_stt_language                string    startup basic     session   restart  
+  openai_stt_max_window_s            float     startup advanced  pipeline  restart  
+  openai_stt_model                   string    startup expert    pipeline  restart  
+  openai_stt_response_format         string    startup expert    pipeline  restart  
+  openai_stt_timeout                 float     startup expert    pipeline  restart  
+### stt / parakeet-tdt  (3)
+  parakeet_tdt_device                string    startup expert    pipeline  restart  
+  parakeet_tdt_language              string    startup advanced  pipeline  restart  
+  parakeet_tdt_model_name            string    startup expert    pipeline  minutes  
+### stt / qwen3-asr  (6)
+  qwen3_asr_device                   string    startup expert    pipeline  restart  
+  qwen3_asr_gen_max_new_tokens       integer   startup advanced  pipeline  restart  
+  qwen3_asr_language                 string    both   basic     session   seconds  
+  qwen3_asr_model_name               string    startup expert    pipeline  minutes  
+  qwen3_asr_prompt                   string    startup advanced  pipeline  restart  
+  qwen3_asr_torch_dtype              string    startup expert    pipeline  restart  
+### tts / kokoro  (6)
+  kokoro_blocksize                   integer   startup expert    pipeline  restart  
+  kokoro_device                      string    startup expert    pipeline  restart  
+  kokoro_lang_code                   string    startup advanced  pipeline  restart  
+  kokoro_model_name                  string    startup expert    pipeline  minutes  
+  kokoro_speed                       float     startup basic     session   restart  
+  kokoro_voice                       string    both   basic     session   seconds  
+### tts / openai_compatible  (13)
+  openai_tts_api_key                 string    startup ops       pipeline  restart  
+  openai_tts_base_url                string    startup advanced  pipeline  restart  
+  openai_tts_blocksize               integer   startup expert    pipeline  restart  
+  openai_tts_instructions            string    startup basic     pipeline  restart  
+  openai_tts_language                string    startup basic     session   restart  
+  openai_tts_model                   string    startup expert    pipeline  restart  
+  openai_tts_response_format         string    startup expert    pipeline  restart  
+  openai_tts_sample_rate             integer   startup expert    pipeline  restart  
+  openai_tts_speed                   float     startup basic     session   restart  
+  openai_tts_stream                  boolean   startup advanced  session   restart  
+  openai_tts_task_type               string    startup expert    pipeline  restart  
+  openai_tts_timeout                 float     startup expert    pipeline  restart  
+  openai_tts_voice                   string    both   basic     session   seconds  
+### tts / qwen3  (23)
+  qwen3_tts_attn_implementation      string    startup expert    pipeline  restart  
+  qwen3_tts_backend                  string    startup expert    pipeline  minutes  
+  qwen3_tts_blocksize                integer   startup expert    pipeline  restart  
+  qwen3_tts_device                   string    startup expert    pipeline  restart  
+  qwen3_tts_dtype                    string    startup expert    pipeline  restart  
+  qwen3_tts_ggml_quantization        string    startup expert    pipeline  minutes  
+  qwen3_tts_gguf_codec_path          string    startup ops       pipeline  restart  
+  qwen3_tts_gguf_talker_path         string    startup ops       pipeline  restart  
+  qwen3_tts_instruct                 string    startup basic     pipeline  restart  
+  qwen3_tts_language                 string    both   basic     session   seconds  
+  qwen3_tts_max_new_tokens           integer   startup advanced  pipeline  restart  
+  qwen3_tts_mlx_quantization         string    startup expert    pipeline  minutes  
+  qwen3_tts_model_name               string    startup expert    pipeline  minutes  
+  qwen3_tts_non_streaming_mode       boolean   startup advanced  pipeline  restart  
+  qwen3_tts_parity_mode              boolean   startup expert    pipeline  restart  
+  qwen3_tts_ref_audio                string    startup expert    pipeline  minutes  
+  qwen3_tts_ref_cache_dir            string    startup ops       pipeline  restart  
+  qwen3_tts_ref_rvq                  string    startup expert    pipeline  restart  
+  qwen3_tts_ref_spk                  string    startup expert    pipeline  restart  
+  qwen3_tts_ref_text                 string    startup advanced  pipeline  restart  
+  qwen3_tts_speaker                  string    both   basic     session   seconds  
+  qwen3_tts_streaming_chunk_size     integer   startup advanced  pipeline  restart  
+  qwen3_tts_xvec_only                boolean   startup advanced  pipeline  restart  
+### vad / None  (19)
+  audio_enhancement                  boolean   startup advanced  pipeline  restart  
+  enable_realtime_transcription      boolean   startup advanced  pipeline  restart  
+  max_speech_ms                      float     startup advanced  session   restart  
+  min_silence_ms                     integer   startup basic     session   restart  
+  min_speech_continuation_ms         integer   startup advanced  session   restart  
+  min_speech_ms                      integer   startup basic     session   restart  
+  realtime_processing_pause          float     startup advanced  pipeline  restart  
+  sample_rate                        integer   startup advanced  pipeline  restart  
+  short_segment_merge_ms             integer   startup advanced  session   restart  
+  smart_turn                         boolean   startup basic     session   restart  
+  smart_turn_cpu_count               integer   startup advanced  pipeline  restart  
+  smart_turn_incomplete_delay_ms     integer   startup advanced  session   restart  
+  smart_turn_max_wait_ms             integer   startup advanced  session   restart  
+  smart_turn_model_path              string    startup ops       pipeline  restart  
+  smart_turn_threshold               float     startup expert    session   restart  
+  speculative_reopen_ms              integer   startup advanced  session   restart  
+  speech_pad_ms                      integer   startup advanced  session   restart  
+  thresh                             float     startup advanced  pipeline  restart  
+  unanswered_reopen_ms               integer   startup advanced  session   restart  
+### vad / firered  (2)
+  vad_firered_model_dir              string    startup ops       pipeline  restart  
+  vad_firered_use_gpu                boolean   startup expert    pipeline  restart  

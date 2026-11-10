@@ -76,11 +76,14 @@ for _nltk_dir in (
     if _nltk_dir and os.path.isdir(_nltk_dir) and _nltk_dir not in nltk.data.path:
         nltk.data.path.insert(0, _nltk_dir)
 
-# Ensure that the necessary NLTK resources are available
+# Ensure that the necessary NLTK resources are available. The paths mirror
+# nltk.download's own layout: tokenizers live under tokenizers/, the tagger under
+# taggers/. A wrong path never matches the bundled copy, so every start would
+# re-download through the proxy and stall behind the egress guard.
 for _pkg, _path in (
     ("punkt", "tokenizers/punkt"),
     ("punkt_tab", "tokenizers/punkt_tab"),
-    ("averaged_perceptron_tagger_eng", "tokenizers/averaged_perceptron_tagger_eng"),
+    ("averaged_perceptron_tagger_eng", "taggers/averaged_perceptron_tagger_eng"),
 ):
     try:
         nltk.data.find(_path)

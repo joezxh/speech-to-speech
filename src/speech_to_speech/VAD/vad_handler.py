@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from pathlib import Path
 from queue import Queue
 from threading import Event
 from typing import TYPE_CHECKING, Any
@@ -152,8 +154,16 @@ class VADHandler(BaseHandler[VADIn, VADOut]):
             # torch.hub 去 github 拉取 zipball 会 Connection refused），故构建期已将仓库
             # 预置到 /opt/silero-vad，使用 source="local" 从本地目录加载，权重随仓库自带、
             # 无需联网。
+            # Windows 本机没有 /opt 挂载，因此支持通过环境变量 SILERO_VAD_REPO_PATH 显式
+            # 覆盖；未设置且 /opt/silero-vad 不存在时，回退到仓库根自带的 silero-vad 目录。
+            silero_repo = os.environ.get("SILERO_VAD_REPO_PATH") or "/opt/silero-vad"
+            if not os.path.isdir(silero_repo):
+                _repo_local = Path(__file__).resolve().parents[3] / "silero-vad"
+                if _repo_local.is_dir():
+                    silero_repo = str(_repo_local)
+            logger.info("Loading Silero VAD from local repo: %s", silero_repo)
             self.model, _ = torch.hub.load(
-                "/opt/silero-vad",
+                silero_repo,
                 "silero_vad",
                 source="local",
                 trust_repo=True,

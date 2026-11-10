@@ -252,3 +252,10 @@ demo/s2s-params.sqlite3*
 # console backend local dev database
 console/backend/dev.db
 console/backend/*.sqlite3
+# console backend local dev file dirs (LOG_DIR / DATA_DIR in console/backend/.env)
+console/backend/logs/
+console/backend/data/
+
+# 本地部署 env（含第三方 LLM API Key，禁止入库）
+.env.thirdparty
+.env.thirdparty.tmp

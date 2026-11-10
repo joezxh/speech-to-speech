@@ -7,8 +7,16 @@
 - [websocket_router.py](file://src/speech_to_speech/api/openai_realtime/websocket_router.py)
 - [service.py](file://src/speech_to_speech/api/openai_realtime/service.py)
 - [test_webrtc.py](file://tests/openai_realtime/test_webrtc.py)
+- [test_webrtc_hangup_auth.py](file://tests/openai_realtime/test_webrtc_hangup_auth.py)
 - [demo README-CN.md](file://demo/README-CN.md)
 </cite>
+
+## 更新摘要
+**变更内容**   
+- 新增 WebRTC 挂断端点安全认证机制，通过 S2S_ADMIN_TOKEN 进行 Bearer Token 验证
+- 为 `/v1/realtime/calls/{call_id}` DELETE 端点添加 HMAC 比较的安全防护
+- 新增跨机器调用终止的认证要求，防止未授权的会话终止
+- 更新了测试用例以覆盖新的安全功能
 
 ## 目录
 1. [简介](#简介)
@@ -34,6 +42,7 @@ WebRTC 实现的关键点包括：
 - 数据通道承载与 WebSocket 相同的 Realtime 协议事件，但音频不走 `input_audio_buffer.append`。
 - 通过环境变量配置 STUN/TURN 服务器，支持跨网络 NAT 穿透。
 - 提供连接超时、ICE 清理、中断刷新、RTP/RTCP 时间戳对齐等生产级健壮性机制。
+- **新增**：WebRTC 挂断端点需要 S2S_ADMIN_TOKEN 认证，确保跨机器调用终止的安全性。
 
 ## 项目结构
 WebRTC 相关代码集中在 OpenAI Realtime API 层：
@@ -48,6 +57,7 @@ WebRTC["webrtc_session.py<br/>WebRTCSession、PipelineAudioTrack、PcmResampler"
 end
 subgraph "测试"
 TestWebrtc["test_webrtc.py<br/>单元、调度、回环集成测试"]
+TestHangupAuth["test_webrtc_hangup_auth.py<br/>挂断端点安全测试"]
 end
 subgraph "演示应用"
 DemoReadme["demo/README-CN.md<br/>WebRTC 传输说明、NAT 注意事项"]
@@ -57,6 +67,7 @@ WSRouter --> Transports
 WSRouter --> WebRTC
 TestWebrtc --> WebRTC
 TestWebrtc --> WSRouter
+TestHangupAuth --> WSRouter
 DemoReadme --> WSRouter
 DemoReadme --> WebRTC
 ```
@@ -67,6 +78,7 @@ DemoReadme --> WebRTC
 - [transports.py:1-116](file://src/speech_to_speech/api/openai_realtime/transports.py#L1-L116)
 - [webrtc_session.py:1-541](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L1-L541)
 - [test_webrtc.py:1-80](file://tests/openai_realtime/test_webrtc.py#L1-L80)
+- [test_webrtc_hangup_auth.py:1-54](file://tests/openai_realtime/test_webrtc_hangup_auth.py#L1-L54)
 - [demo README-CN.md:87-103](file://demo/README-CN.md#L87-L103)
 
 **章节来源**  
@@ -81,15 +93,17 @@ DemoReadme --> WebRTC
 - **PCM 重采样器**：`PcmResampler` 使用 libswresample 做状态化重采样和多声道下混，避免分块边界伪影。
 - **传输抽象**：`SessionTransport` 定义事件发送、音频发送、丢弃待播音频、关闭等接口；WebSocket 和 WebRTC 分别实现。
 - **路由与服务**：`websocket_router.py` 暴露 `/v1/realtime` 和 `/v1/realtime/calls`；`service.py` 管理会话状态、事件解析、管线事件分发。
+- **安全认证**：新增的挂断端点使用 `_admin_bearer` 和 `_admin_error` 函数进行 Bearer Token 验证。
 
 **章节来源**  
 - [webrtc_session.py:79-106](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L79-L106)
 - [webrtc_session.py:108-204](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L108-L204)
 - [transports.py:29-57](file://src/speech_to_speech/api/openai_realtime/transports.py#L29-L57)
 - [service.py:355-540](file://src/speech_to_speech/api/openai_realtime/service.py#L355-L540)
+- [websocket_router.py:517-531](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L517-L531)
 
 ## 架构总览
-WebRTC 在整体系统中的角色是“实时音频传输 + 同协议信令”的替代通道。WebSocket 路径用 JSON 帧携带音频增量；WebRTC 路径用 RTP 轨道传音频，用数据通道传 JSON 事件。
+WebRTC 在整体系统中的角色是"实时音频传输 + 同协议信令"的替代通道。WebSocket 路径用 JSON 帧携带音频增量；WebRTC 路径用 RTP 轨道传音频，用数据通道传 JSON 事件。
 
 ```mermaid
 sequenceDiagram
@@ -190,6 +204,35 @@ WebRTCSession --> PcmResampler : "入站/出站重采样"
 - [webrtc_session.py:265-418](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L265-L418)
 - [webrtc_session.py:108-204](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L108-L204)
 - [webrtc_session.py:79-106](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L79-L106)
+
+### 安全认证与挂断端点
+**新增**：WebRTC 挂断端点现在需要 S2S_ADMIN_TOKEN 认证，以防止未授权的会话终止。
+
+```mermaid
+flowchart TD
+Start(["DELETE /v1/realtime/calls/{call_id}"]) --> CheckToken{"检查 S2S_ADMIN_TOKEN"}
+CheckToken --> |未配置| Error503["返回 503 admin_disabled"]
+CheckToken --> |已配置| ExtractBearer["提取 Authorization Bearer Token"]
+ExtractBearer --> CompareHMAC{"HMAC 比较"}
+CompareHMAC --> |不匹配| Error401["返回 401 unauthorized"]
+CompareHMAC --> |匹配| FindCall{"查找对应 call_id"}
+FindCall --> |未找到| Error404["返回 404 Unknown call"]
+FindCall --> |找到| Hangup["执行挂断操作"]
+Hangup --> Success["返回 200 成功"]
+Error503 --> End(["结束"])
+Error401 --> End
+Error404 --> End
+Success --> End
+```
+
+**图表来源**  
+- [websocket_router.py:996-1024](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L996-L1024)
+- [websocket_router.py:517-531](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L517-L531)
+
+**章节来源**  
+- [websocket_router.py:996-1024](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L996-L1024)
+- [websocket_router.py:517-531](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L517-L531)
+- [test_webrtc_hangup_auth.py:32-54](file://tests/openai_realtime/test_webrtc_hangup_auth.py#L32-L54)
 
 ### 信令交换与事件路由
 WebSocket 和 WebRTC 共用 `_dispatch_client_event`，根据 `transport_kind` 限制某些事件：
@@ -296,6 +339,7 @@ Encode --> RTP["发送 RTP 帧"]
 - `transports.py` 定义传输抽象，WebSocket 和 WebRTC 实现不同音频/事件投递方式。
 - `webrtc_session.py` 依赖 aiortc、aioice、av、numpy，实现 WebRTC 专用逻辑。
 - `test_webrtc.py` 覆盖重采样、轨道 pacing、RTP/RTCP 行为、事件分发、回环集成。
+- **新增**：`test_webrtc_hangup_auth.py` 专门测试挂断端点的安全认证功能。
 
 ```mermaid
 graph LR
@@ -307,17 +351,20 @@ WebRTC --> AV["libav/av"]
 WebRTC --> Numpy["numpy"]
 Tests["test_webrtc.py"] --> WebRTC
 Tests --> Router
+HangupTests["test_webrtc_hangup_auth.py"] --> Router
 ```
 
 **图表来源**  
 - [websocket_router.py:1-76](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L1-L76)
 - [webrtc_session.py:16-37](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L16-L37)
 - [test_webrtc.py:30-54](file://tests/openai_realtime/test_webrtc.py#L30-L54)
+- [test_webrtc_hangup_auth.py:1-54](file://tests/openai_realtime/test_webrtc_hangup_auth.py#L1-L54)
 
 **章节来源**  
 - [websocket_router.py:1-76](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L1-L76)
 - [webrtc_session.py:16-37](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L16-L37)
 - [test_webrtc.py:30-54](file://tests/openai_realtime/test_webrtc.py#L30-L54)
+- [test_webrtc_hangup_auth.py:1-54](file://tests/openai_realtime/test_webrtc_hangup_auth.py#L1-L54)
 
 ## 性能与延迟优化
 - **20 ms 帧与 48 kHz 采样率**：平衡编码延迟与播放平滑度。
@@ -393,25 +440,30 @@ Config --> Peer["RTCPeerConnection 使用"]
 - **打断无效**：确认 `output_audio_buffer.clear` 仅在 WebRTC 模式有效；检查 `discard_pending_audio` 是否执行。
 - **连接泄漏**：查看 30 秒连接看门狗是否触发；检查 ICE 清理逻辑。
 - **事件乱序**：数据通道消息通过队列串行消费，避免 `session.update` 与 `response.create` 乱序。
+- **挂断失败**：检查是否正确配置了 `S2S_ADMIN_TOKEN` 环境变量；确认请求头包含正确的 `Authorization: Bearer <token>`。
 
 **章节来源**  
 - [webrtc_session.py:354-380](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L354-L380)
 - [webrtc_session.py:506-513](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L506-L513)
 - [webrtc_session.py:444-504](file://src/speech_to_speech/api/openai_realtime/webrtc_session.py#L444-L504)
 - [websocket_router.py:425-461](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L425-L461)
+- [websocket_router.py:996-1024](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L996-L1024)
 
 ## 生产部署要点
 - **启用 webrtc 扩展**：`pip install "speech-to-speech[webrtc]"`，否则 WebRTC 端点不可用。
 - **配置 ICE 服务器**：在生产环境设置 `SPEECH_TO_SPEECH_ICE_SERVERS`，包含 STUN/TURN。
+- **配置管理员令牌**：**新增**：必须设置 `S2S_ADMIN_TOKEN` 环境变量以启用安全的 WebRTC 挂断功能。
 - **监控会话池**：通过 `/v1/pool` 观察活跃、draining、stuck 状态，及时处理卡住的处理器。
 - **用量统计**：`/v1/usage` 聚合每单元用量，包括 token、音频时长、错误类型。
 - **安全**：demo 代理只转发固定 URL，避免开放代理；生产应限制 CORS 和认证。
 - **负载均衡**：当前仅 WebSocket 支持负载均衡模式；WebRTC 直连后端。
+- **跨机器调用**：确保所有机器的 `S2S_ADMIN_TOKEN` 保持一致，以支持跨机器调用终止。
 
 **章节来源**  
 - [demo README-CN.md:95](file://demo/README-CN.md#L95)
 - [websocket_router.py:636-695](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L636-L695)
 - [demo README-CN.md:113-118](file://demo/README-CN.md#L113-L118)
+- [websocket_router.py:996-1024](file://src/speech_to_speech/api/openai_realtime/websocket_router.py#L996-L1024)
 
 ## 结论
-该项目的 WebRTC 实现以 OpenAI Realtime GA 事件集为基础，将音频与信令分离：音频走 RTP 媒体轨道，信令走 `oai-events` 数据通道。它提供了完整的 SDP 协商、ICE 候选收集、PCM 重采样、播放节奏控制、RTCP 时间戳对齐、连接看门狗和 ICE 清理机制。配合 demo 应用的浏览器集成和测试用例，可作为生产级低延迟语音交互的基础设施。部署时需重点关注 STUN/TURN 配置、NAT 穿透、CORS 与安全策略，并通过监控端点观察会话状态与用量。
+该项目的 WebRTC 实现以 OpenAI Realtime GA 事件集为基础，将音频与信令分离：音频走 RTP 媒体轨道，信令走 `oai-events` 数据通道。它提供了完整的 SDP 协商、ICE 候选收集、PCM 重采样、播放节奏控制、RTCP 时间戳对齐、连接看门狗和 ICE 清理机制。**新增的安全增强功能**通过 S2S_ADMIN_TOKEN 认证确保了跨机器调用终止的安全性，防止未授权的会话终止攻击。配合 demo 应用的浏览器集成和测试用例，可作为生产级低延迟语音交互的基础设施。部署时需重点关注 STUN/TURN 配置、NAT 穿透、CORS 与安全策略，并通过监控端点观察会话状态与用量。

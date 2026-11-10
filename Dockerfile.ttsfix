@@ -1,0 +1,29 @@
+FROM ccr.ccs.tencentyun.com/llm-basic/speech-to-speech:cu130-1.0
+
+# Fixes applied on top of the published cu130-1.0 image:
+#
+# 1. python3.12-dev: the published image was built without python3-dev, so
+#    triton could not JIT-compile its nvidia backend (missing Python.h) and
+#    every Qwen3-TTS generation died with CalledProcessError -> the pipeline
+#    never produced any audio.
+# 2. sox: silences the audio post-processing warning raised at TTS init.
+# 3. nltk bootstrap patch: the published image looks for the tagger resource
+#    under tokenizers/ (it lives under taggers/), so nltk.data.find always
+#    failed and nltk.download() blocked forever on an unreachable mirror,
+#    which kept the container from ever finishing startup.
+# 4. ASR/TTS REST endpoints: scripts/patch_pipeline_rest.py injects
+#    POST /v1/audio/transcriptions and POST /v1/audio/speech into the
+#    openai_realtime websocket_router. Baked in at BUILD time so the two
+#    interfaces survive container recreation / image rebuild -- no runtime
+#    "docker exec" patching required.
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3.12-dev sox \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY scripts/patch_nltk_bootstrap.py /tmp/patch_nltk_bootstrap.py
+RUN python3 /tmp/patch_nltk_bootstrap.py /usr/src/app/src/speech_to_speech/s2s_pipeline.py \
+    && rm /tmp/patch_nltk_bootstrap.py
+
+COPY scripts/patch_pipeline_rest.py /tmp/patch_pipeline_rest.py
+RUN python3 /tmp/patch_pipeline_rest.py && rm /tmp/patch_pipeline_rest.py

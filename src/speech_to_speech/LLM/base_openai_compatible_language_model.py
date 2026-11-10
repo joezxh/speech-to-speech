@@ -183,6 +183,11 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
     usage, out-of-band handling and error termination.
     """
 
+    # Human-readable provider protocol surfaced on the console runtime card via
+    # the MODEL_CALL_METRICS ``input.backend`` field. Subclasses override it so
+    # the card can tell ``/v1/responses`` apart from ``/v1/chat/completions``.
+    provider_backend: str = "openai-compatible"
+
     # ── setup ─────────────────────────────────────────────────────────────────
 
     def setup(
@@ -960,6 +965,65 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 except Exception:
                     pass
 
+    def _generate_traced(
+        self,
+        active_chat: Chat,
+        original_chat: Chat,
+        turn: _Turn,
+        optional_kwargs: dict[str, Any],
+        **kwargs: Any,
+    ) -> Generator[LLMOut, None, bool]:
+        """Wrap one provider generation in a MODEL_CALL_METRICS trace.
+
+        The console runtime card reads the model name, latency and first-byte
+        time from this record, so the OpenAI-compatible path reports the same
+        fields the transformers path already does. Every yielded output is
+        forwarded untouched and ``_generate``'s ``proposal_allowed`` return
+        value is preserved, so callers keep using ``yield from``.
+        """
+        with self.monitor.trace(
+            "LLM",
+            self.model_name,
+            input={
+                "turn_id": turn.turn_id,
+                "turn_revision": turn.turn_revision,
+                "language_code": turn.language_code,
+                "backend": self.provider_backend,
+                "stream": self.stream,
+            },
+        ) as rec:
+            generated_text_length = 0
+            tool_calls = 0
+            input_tokens = 0
+            output_tokens = 0
+            proposal_allowed = False
+            inner = self._generate(active_chat, original_chat, turn, optional_kwargs, **kwargs)
+            while True:
+                try:
+                    out = next(inner)
+                except StopIteration as stop:
+                    if isinstance(stop.value, bool):
+                        proposal_allowed = stop.value
+                    break
+                if isinstance(out, LLMResponseChunk):
+                    if out.text.strip():
+                        # First non-empty chunk is this call's first byte; the
+                        # mark is idempotent, so every chunk may call it.
+                        rec.mark_first_byte()
+                    generated_text_length += len(out.text)
+                    tool_calls += len(out.tools)
+                elif isinstance(out, TokenUsage):
+                    input_tokens = out.input_tokens
+                    output_tokens = out.output_tokens
+                yield out
+            rec.set_output(
+                generated_text_length=generated_text_length,
+                tool_calls=tool_calls,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
+            return proposal_allowed
+
     def _process_audio(self, request: LLMIn) -> Iterator[LLMOut]:
         """Process an audio-input turn through the selected backend protocol."""
         runtime_config = request.runtime_config
@@ -1055,7 +1119,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             prefetch_transaction=request.prefetch_transaction,
             history_anchor_id=history_anchor_id,
         )
-        yield from self._generate(
+        yield from self._generate_traced(
             active_chat,
             original_chat,
             turn,
@@ -1157,7 +1221,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             prefetch_transaction=request.prefetch_transaction,
             history_anchor_id=history_anchor_id,
         )
-        yield from self._generate(active_chat, original_chat, turn, optional_kwargs)
+        yield from self._generate_traced(active_chat, original_chat, turn, optional_kwargs)
 
     @property
     def timing_log_level(self) -> int:
