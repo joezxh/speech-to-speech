@@ -187,14 +187,18 @@ def test_module_level_facades(monkeypatch):
     validate_models()
 
 
-def test_import_does_not_load_backend_handlers():
+def assert_no_handler_modules(module: str) -> None:
     code = (
-        "import sys, speech_to_speech.model_registry; "
+        f"import sys, {module}; "
         "prefixes = ('speech_to_speech.STT.', 'speech_to_speech.TTS.', 'speech_to_speech.LLM.'); "
         "assert not [k for k in sys.modules if k.startswith(prefixes)], "
         "sorted(k for k in sys.modules if k.startswith(prefixes))"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_import_does_not_load_backend_handlers():
+    assert_no_handler_modules("speech_to_speech.model_registry")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -638,13 +642,7 @@ def test_importing_backend_registry_populates_global_catalog():
 
 
 def test_backend_registry_import_keeps_handler_lazy_loading():
-    code = (
-        "import sys, speech_to_speech.backend_registry; "
-        "prefixes = ('speech_to_speech.STT.', 'speech_to_speech.TTS.', 'speech_to_speech.LLM.'); "
-        "assert not [k for k in sys.modules if k.startswith(prefixes)], "
-        "sorted(k for k in sys.modules if k.startswith(prefixes))"
-    )
-    subprocess.run([sys.executable, "-c", code], check=True)
+    assert_no_handler_modules("speech_to_speech.backend_registry")
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
