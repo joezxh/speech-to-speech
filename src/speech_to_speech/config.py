@@ -8,14 +8,18 @@ import re
 import types
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import MISSING, dataclass, field, fields
+from dataclasses import MISSING, dataclass, field, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, Union, get_args, get_origin, get_type_hints
 
+from speech_to_speech.model_registry import get_model, load_param_types
+
 if TYPE_CHECKING:
     from speech_to_speech.backend_registry import BackendSelection
+    from speech_to_speech.model_registry import ModelCard
 
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
+_MODEL_ID = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,63}\Z")
 _ENV = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _INTEGER = re.compile(r"[+-]?[0-9]+\Z")
 _FLOAT = re.compile(r"[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?\Z")
@@ -83,6 +87,7 @@ class ResolvedPipeline:
     num_pipelines: int
     stages: dict[str, ResolvedStage] = field(repr=False)
     options: dict[str, Any] = field(repr=False)
+    model_cards: Mapping[str, ModelCard] = field(default_factory=dict, repr=False)
 
 
 @dataclass
@@ -368,10 +373,59 @@ def _check_composition(
         _error(document, path, "The selected LLM backend does not support the proxy.")
 
 
+def _validate_models_section(document: ConfigDocument) -> None:
+    """Validate the optional top-level models: mapping without reading env values."""
+    if "models" not in document.data:
+        return
+    models = _mapping(document, document.data["models"], ("models",))
+    for model_id, overrides in models.items():
+        if not _MODEL_ID.fullmatch(model_id):
+            _error(document, ("models",), "Use valid model identifiers.")
+        path = ("models", model_id)
+        overrides = _mapping(document, overrides, path, {"repo_id", "default_load_params"})
+        try:
+            card = get_model(model_id)
+        except ValueError:
+            _error(document, ("models",), "Choose a registered model id.")
+        if card.status == "deprecated" and "repo_id" in overrides:
+            # Deprecated cards stay queryable, but never point a deployment at their weights.
+            _error(document, path, "Deprecated non-commercial weights cannot be configured; use spec section 6.4.")
+        params = _mapping(document, overrides.get("default_load_params", {}), (*path, "default_load_params"))
+        allowed = load_param_types(model_id)
+        unknown = sorted(set(params) - set(allowed))
+        if unknown:
+            _error(document, (*path, "default_load_params"), "Unknown load param; use config_type fields.")
+        for key, value in params.items():
+            _value(document, value, allowed[key], (*path, "default_load_params", key), None)
+        if "repo_id" in overrides:
+            _value(document, overrides["repo_id"], str, (*path, "repo_id"), None)
+
+
+def _apply_model_overrides(document: ConfigDocument, environment: Mapping[str, str]) -> dict[str, ModelCard]:
+    """Return per-pipeline card copies; never mutate the global registry."""
+    if "models" not in document.data:
+        return {}
+    resolved: dict[str, ModelCard] = {}
+    for model_id, overrides in document.data["models"].items():
+        path = ("models", model_id)
+        card = get_model(model_id)
+        updates: dict[str, Any] = {}
+        if "repo_id" in overrides:
+            updates["repo_id"] = _value(document, overrides["repo_id"], str, (*path, "repo_id"), environment)
+        if "default_load_params" in overrides:
+            allowed = load_param_types(model_id)
+            updates["default_load_params"] = {
+                key: _value(document, value, allowed[key], (*path, "default_load_params", key), environment)
+                for key, value in overrides["default_load_params"].items()
+            }
+        resolved[model_id] = replace(card, **updates)
+    return resolved
+
+
 def validate_config(document: ConfigDocument) -> None:
     """Validate every definition without reading environment values or starting resources."""
     module, server, vad, registries = _metadata()
-    data = _mapping(document, document.data, (), {"schema_version", "runtime", "blocks", "pipelines"})
+    data = _mapping(document, document.data, (), {"schema_version", "runtime", "blocks", "pipelines", "models"})
     if type(data.get("schema_version")) is not int or data["schema_version"] != 1:
         _error(document, ("schema_version",), "Use integer schema_version: 1.")
     runtime = _mapping(document, data.get("runtime", {}), ("runtime",), _MODULE_PROCESS | {"server", "client"})
@@ -436,6 +490,7 @@ def validate_config(document: ConfigDocument) -> None:
             only=_MODULE_PIPELINE,
         )
         _check_composition(document, name, stage_blocks, options, registries)
+    _validate_models_section(document)
 
 
 def resolve_config(
@@ -534,5 +589,5 @@ def resolve_config(
             else:
                 selection = BackendSelection(spec, spec.normalize(config_type(**deepcopy(settings))))
             stages[kind] = ResolvedStage(block_id, kind, block["backend"], settings, selection)
-        resolved[name] = ResolvedPipeline(count, stages, options)
+        resolved[name] = ResolvedPipeline(count, stages, options, _apply_model_overrides(document, environment))
     return ResolvedConfig(runtime, resolved, client, sources)
