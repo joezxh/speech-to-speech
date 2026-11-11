@@ -339,3 +339,74 @@ pytest tests/ -x -q
 2. 一个带 `models:` 覆盖的示例 YAML 可被 `resolve_config()` 正确解析，且不影响未覆盖的 pipeline。
 3. 全部测试不触网、不下载权重、不加载真实模型、不占用 GPU。
 4. §9.1 四条命令全绿，既有 `test_backend_registry.py` / `test_config.py` / `test_configured_runtime.py` 零回归。
+
+## 本次验收（Spec A）
+
+> 本节记录 Spec A（Task 1–7）在本 checkout 上的实际验收结果。命令均在仓库根目录
+> `speech-to-speech-src` 下执行，工具取自 `.venv/Scripts/`：Python 3.14.0、
+> ruff 0.17.2、mypy 2.4.0、pytest 9.1.1。逐字输出见 `.git/sdd/task-7-report.md`。
+> 验收基线为首个实现提交 `d6d5f55` 的父提交 **`4c4bb4d`**。
+
+### 仓库级四条命令（Global Constraints 同款）
+
+| 命令 | 退出码 | 实际结果 | 归类 |
+| --- | --- | --- | --- |
+| `ruff check src/ tests/` | 0 | `All checks passed!` | 通过（仓库级干净） |
+| `ruff format --check src/ tests/` | 1 | `19 files would be reformatted, 289 files already formatted` | **基线**：19 个文件均为本分支未改动的既有格式问题（含 `cli.py`，见下） |
+| `mypy src/` | 1 | `Found 17 errors in 7 files (checked 162 source files)` | **基线**：7 个文件全部与本分支无关 |
+| `pytest tests/ -x -q` | 1 | 前 220 项通过后，IDE `sitecustomize.py` tmpdir `PermissionError` 中断 | **基线**：既有失败 + IDE 环境问题，非本分支引入 |
+
+**基线明细（未隐藏、未修复、未格式化无关文件）：**
+
+- `ruff format --check` 的 19 个文件：`LLM/provider_errors.py`、`LLM/responses_api_language_model.py`、`STT/sensevoice_handler.py`、`TTS/cosyvoice_handler.py`、`TTS/qwen3_tts_handler.py`、`api/openai_realtime/websocket_router.py`、`arguments_classes/*`(2)、`pipeline/turn_latency.py`、`utils/model_monitor.py`、`cli.py`、`tests/openai_realtime/*`(4)、`tests/test_console_*.py`(3)、`tests/test_qwen3_tts_handler_backend.py`。
+  - 其中 `src/speech_to_speech/cli.py:344` 是本分支修改文件，但该 `if any(...)` 代码块是 `git diff 4c4bb4d -- src/speech_to_speech/cli.py` 中**未改动的上下文行**（无 `+`/`-`）。对基线版本 `4c4bb4d:src/speech_to_speech/cli.py` 单独运行 `ruff format --check`，同样报 `1 file would be reformatted`（基线 `cli.py:268`，同样的 `if any(...)`）。行号从 268 平移到 344 仅因本分支新增 `_run_models_command()`（+76 行）。故归类为**基线**，本分支未引入新的格式问题。
+- `mypy src/` 的 17 个错误分布在 `LLM/utils.py`、`pipeline/console.py`、`utils/model_monitor.py`、`api/openai_realtime/voice_controls.py`、`LLM/language_model.py`、`LLM/responses_api_language_model.py`、`api/openai_realtime/websocket_router.py`，均非本分支 6 个源码文件。
+- `pytest tests/ -x -q`（原样）：`pytest_sessionfinish` 清理 `C:\Users\...\AppData\Local\Temp\pytest-of-joezxh\pytest-current` 时被 IDE 注入的 `D:\devtools\CodeBuddy\...\sitecustomize.py` 拦截，抛 `PermissionError: [WinError 5] 拒绝访问。`。改带仓库内 `--basetemp` 后重跑：`1 failed, 220 passed, 1 skipped, 2 warnings in 57.55s`，首个失败为 `tests/openai_realtime/test_conversation_delete.py::test_generated_assistant_is_deletable_by_wire_id`（`IndexError`），与本分支无关。
+- 不带 `-x`、带仓库内 `--basetemp` 的完整回归：`248 failed, 2975 passed, 12 skipped, 10 warnings, 3 errors in 306.20s`。其中 `tests/test_config.py` 恰有 **4 个 Windows 专有基线失败**：`test_schema_references_paths_and_provider_error_redaction`、`test_collection_environment_and_failed_home_expansion`、`test_config_path_home_expansion_is_safe`、`test_parser_size_and_depth_boundaries`。全量 `FAILED`/`ERROR` 清单中**不含** `test_model_registry.py`、`test_model_config_overrides.py`、`test_backend_registry.py`、`test_configured_runtime.py`。
+
+### 本分支文件聚焦检查（全部通过）
+
+检查范围恰为 6 个源码 + 2 个测试：`src/speech_to_speech/model_registry.py`、`models/__init__.py`、`models/builtin.py`、`backend_registry.py`、`config.py`、`cli.py`、`tests/test_model_registry.py`、`tests/test_model_config_overrides.py`。
+
+| 检查 | 退出码 | 结果 |
+| --- | --- | --- |
+| `ruff check <8 files>` | 0 | `All checks passed!` |
+| `ruff format --check <8 files>` | 1 | `1 file would be reformatted, 7 files already formatted`（仅 `cli.py:344`，已证实为基线平移，见上） |
+| `mypy <8 files>` | 0 | `Success: no issues found in 8 source files` |
+
+> 按 Global Constraints「不得格式化无关文件 / 不得修改计划外既有文件」，未对 `cli.py` 运行 `ruff format`；该唯一失败显式归类为 pre-existing baseline。
+
+聚焦测试（Python 3.14，带仓库内 `--basetemp` 规避 IDE tmpdir 错误）：
+
+| 命令 | 结果 | 退出码 |
+| --- | --- | --- |
+| `pytest tests/test_model_registry.py -q` | **17 passed** | 0 |
+| `pytest tests/test_model_config_overrides.py -q` | **10 passed** | 0 |
+| `pytest tests/test_backend_registry.py -q` | **96 passed**, 1 warning | 0 |
+| `pytest tests/test_configured_runtime.py -q` | **49 passed** | 0 |
+
+> `test_backend_registry.py` 的 1 条 warning 是 Python 3.14 下 torch 的 `torch.jit.script` DeprecationWarning，属环境基线噪声、非测试失败。
+> 原样执行 `pytest tests/test_model_config_overrides.py -q` 时测试本体 10/10 通过，但 `pytest_sessionfinish` 触发同一 IDE tmpdir `PermissionError`（退出码 1）；加 `--basetemp` 后退出码 0、无噪声。
+
+### CLI 验收
+
+```
+python -m speech_to_speech.cli models list
+python -m speech_to_speech.cli models list --kind tts --json
+```
+
+- `models list` 共 **36 行数据**：**3 `available` / 5 `planned` / 1 `deprecated` / 27 `unregistered`**（9 张 card + 27 行 `unregistered`），与 §9.2 一致；退出码 0。
+- stderr 出现许可告警：`Warning: breeze-tts-2 is deprecated: BreezeBlue Research and Non-Commercial License. 商用场景禁止自托管；…`（`--json` 模式同样输出）。
+- `--kind tts --json` 输出经 `ConvertFrom-Json` 解析成功：`PARSE_OK=True ROWS=14`，其中 `available=1 / deprecated=1 / planned=1 / unregistered=11`，全部 `kind=tts`；`null` 语义正确。
+
+### 兼容性红线核对
+
+- `git diff 4c4bb4d -- src/speech_to_speech/backend_registry.py` 仅 3 处 `+`：顶部 `from speech_to_speech.model_registry import ModelCard, bind_model_cards`、`BackendSpec` 类体 `models: tuple[ModelCard, ...] = ()`、文件末尾 `bind_model_cards({"stt": ..., "llm": ..., "tts": ...})`。**没有任何 `BackendSpec(...)` 构造被改写**（31 条逐字不变）。
+- `git diff 4c4bb4d -- config/prod.yaml docker-compose.yml docker-compose.local.yml docker-compose.thirdparty.yml` 输出**为空**（长度 0），退出码 0。
+- `git diff --name-status 4c4bb4d HEAD` 共 11 个文件：新增 `docs/model-integration-guide-CN.md`、`example_configs/models-overrides.yaml`、`src/speech_to_speech/model_registry.py`、`src/speech_to_speech/models/__init__.py`、`src/speech_to_speech/models/builtin.py`、`tests/test_model_config_overrides.py`、`tests/test_model_registry.py`；修改 `docs/superpowers/plans/2026-11-10-s2s-model-registry.md`、`src/speech_to_speech/backend_registry.py`、`src/speech_to_speech/cli.py`、`src/speech_to_speech/config.py`。
+
+### 资源与网络确认
+
+**确认**：本次全部测试与 CLI 验收**未下载任何模型权重**、**未加载任何真实模型**、**未占用 GPU**、**未发起任何网络调用**。模型目录全程为内存中的 `ModelCard` 元数据与注册表绑定；`planned` / `deprecated` card 无权重加载路径；测试使用桩 / mock 与本地临时文件，不触网。
+
+> 结论：本分支 6 个源码 + 2 个测试文件在 `ruff check`、`mypy` 与聚焦测试上全绿；`ruff format --check` 的唯一失败已证实为基线平移。四条仓库级命令的失败全部归类为 pre-existing baseline（未隐藏、未修复、未格式化无关文件）。CLI 验收计数与兼容性红线均符合 §9.2。
