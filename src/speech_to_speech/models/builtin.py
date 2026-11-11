@@ -62,7 +62,8 @@ def builtin_model_cards() -> tuple[ModelCard, ...]:
             license="BreezeBlue Research and Non-Commercial License",
             status="deprecated",
             notes=(
-                "商用场景（D7）禁用自托管：权重与自托管输出仅限研究/非商业。"
+                "项目定位为演示开源项目：权重与自托管输出仅限研究/非商业，商用许可由实际应用方自行申请；"
+                "演示/研究用途可自托管，但不得作为商用推荐路径（D7）。"
                 "--fast-all 快路径 14.4 GiB；两者仅研究用途参考，不进入商用部署预算。"
                 "官方输出 24 kHz mono s16le PCM；本地流式 API 单并发、忙时 409；"
                 "checkpoint 自带 audio_tokenizer；--revision 固定权重版本。"
@@ -95,8 +96,10 @@ def builtin_model_cards() -> tuple[ModelCard, ...]:
             notes=(
                 "MiniCPM-o 4.5 同源组件，非 MiniCPM 品牌独立模型；"
                 "同时承担 spec §6.4 路径 L 的 Breeze 替代位。"
-                "官方代码仓库 LICENSE 为 Apache-2.0；权重许可须在 Spec B 启动前核对，"
-                "通过前不得标 available。本仓 TTS/cosyvoice_handler.py 存在但未注册。"
+                "官方代码仓库 LICENSE 为 Apache-2.0；权重许可已获取。"
+                "项目定位为演示开源项目，商用部署所需的相关许可由实际应用方自行申请。"
+                "status=planned 仅因适配层尚未实现（Spec B），不再是许可 gate。"
+                "本仓 TTS/cosyvoice_handler.py 存在但未注册。"
             ),
         ),
         ModelCard(

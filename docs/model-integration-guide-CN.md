@@ -134,7 +134,9 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 
 ### 4.3 商用路径专项
 
-- **路径 L（本地商用 TTS，默认推荐）**：用 `FunAudioLLM/CosyVoice2-0.5B`（或其权重许可未通过时的 Apache-2.0 `phonon` CPU 兜底）填 Breeze 的 TTS 位。**先核对 CosyVoice2 输出采样率**，不是 16 kHz 就重采样；再切成 512 samples 的 int16 小端块并补 `AUDIO_RESPONSE_DONE`。仓内 `cosyvoice_tts_arguments.py` 已有 `cosyvoice_tts_chunk_size=512`，`TTS/cosyvoice_handler.py` 存在但**尚未注册**。代码仓库 LICENSE 已核实为 Apache-2.0，**权重许可须在标 `available` 前核对**。
+> **项目定位（2026-11-11 用户澄清）**：本工程为演示开源项目，不自行取得模型商用授权；实际商用部署所需的模型许可由应用方/商家自行申请。因此本节的「商用路径」描述的是**下游商用部署的合规建议**，不代表本项目已持有相应商用许可。`breeze-tts-2` 仍为 `deprecated`：演示/研究用途可自托管，商用部署方须自行向 BreezeBlue 申请商业授权，或改用路径 L / R。
+
+- **路径 L（本地 TTS，默认推荐）**：用 `FunAudioLLM/CosyVoice2-0.5B`（或 Apache-2.0 `phonon` CPU 兜底）填 Breeze 的 TTS 位。**先核对 CosyVoice2 输出采样率**，不是 16 kHz 就重采样；再切成 512 samples 的 int16 小端块并补 `AUDIO_RESPONSE_DONE`。仓内 `cosyvoice_tts_arguments.py` 已有 `cosyvoice_tts_chunk_size=512`，`TTS/cosyvoice_handler.py` 存在但**尚未注册**。代码仓库 LICENSE 已核实为 Apache-2.0，**权重许可已获取**；商用部署所需的相关许可仍由实际应用方自行申请。
 - **路径 R（BreezeBlue 付费托管 API，可选）**：基址 `https://api.breeze.blue/v1`，鉴权头 `xi-api-key: $BREEZE_API_KEY`。这是 **BreezeBlue 自有协议，不是 OpenAI 兼容 `/v1/audio/speech`**，因此不能直接复用 `--tts openai` 后端。优先用 Realtime WebSocket TTS（默认 `pcm`，24 kHz mono，面向 voice agent / barge-in）；HTTP 另有 `wav_24000` / `wav_48000` / mp3。Handler 必须完成：mp3/wav 解码 → 24 kHz/48 kHz → 16 kHz 重采样 → 512 samples 块切分 → `AUDIO_RESPONSE_DONE`；同时处理网络超时、重连与打断（打断时取消在途请求、丢弃已排队音频）。单次 HTTP 请求有字符上限、中文非流式会自动分段，须计入端到端延迟。
 - **仅研究用途参考**：Breeze 本地权重的 Voice Clone / Voice Design / Voice Direction 三模式、vocal events 内联标记（`(laugh)` / `[笑]`）、`--revision` 固定权重版本、官方 24 kHz mono s16le 输出、本地流式 API 单并发忙时 `409`、H100 + 预热 fast path 的 TTFA/RTF 指标——**均不作为商用实现或验收依据**（D7 禁止自托管）。
 
@@ -220,14 +222,14 @@ BackendSpec(
         provider="Alibaba / MiniCPM-o 同源", weight_format="safetensors",
         backend_name="cosyvoice2", repo_id="FunAudioLLM/CosyVoice2-0.5B",
         min_vram_gb=None, license=None, status="planned",
-        notes="MiniCPM-o 4.5 同源组件，非品牌独立模型；路径 L 的 Breeze 替代位；权重许可核对通过前不得标 available。",
+        notes="MiniCPM-o 4.5 同源组件，非品牌独立模型；路径 L 的 Breeze 替代位；权重许可已获取，status=planned 仅因适配层未实现（Spec B）；商用许可由实际应用方申请。",
     ),),
 ),
 ```
 
 > **两条注册路径按 id 互斥**：card 既可以在 `models/builtin.py` 的 `builtin_model_cards()` 里登记，也可以放进 `BackendSpec.models`；`bind_model_cards()` 在导入时把两处的 card 一并注册到同一目录。**同一个 `id` 只能走其中一条路径**——两处同时出现相同 `id`（例如内置已登记的 `cosyvoice2`）会由 `register()` 抛 `ModelRegistryError`。因此本示例把 card id 取为 `example-tts`，与内置 card 不冲突，可安全复制。
 
-权重下载命令（核对权重许可后执行）：
+权重下载命令（权重许可已获取；商用部署方仍需自行申请相关许可）：
 
 ```
 huggingface-cli download FunAudioLLM/CosyVoice2-0.5B --local-dir cache/CosyVoice2-0.5B

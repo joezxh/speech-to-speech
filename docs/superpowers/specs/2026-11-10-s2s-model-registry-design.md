@@ -68,7 +68,7 @@
 **路径 L（推荐，默认）：替换为可商用本地 TTS，零新增模型。**
 - `FunAudioLLM/CosyVoice2-0.5B` 本就是 D2「MiniCPM 同源三段」中的 TTS 组件，无需为 Breeze 空位再引入新模型；其官方仓库 `FunAudioLLM/CosyVoice` 的 `LICENSE` 已抓取核实为 **Apache License 2.0**（无额外非商业条款），项目内 `docs/models.md:32` 亦记为 Apache-2.0。模型 0.5B / 25 Hz，官方支持 streaming inference（文本输入流 + 音频输出流），本仓 `TTS/cosyvoice_handler.py` 已存在但未注册。
 - 兜底候选为仓内已注册的轻量后端：`phonon`（`gradium/phonon-31m-en`，仓内 `TTS/README.md` 明确标注 Apache-2.0，纯 CPU、原生流式）；`kokoro`（82M，CPU 可跑）的许可需同样核对后才可作为商用兜底。
-- **待核对项**：CosyVoice 的**代码**许可已核实；**权重**许可需在 Spec B 启动前核对 HF 模型卡 / ModelScope 页面（HF 模型卡未显式展示 license 字段）。核对通过前不得把 `cosyvoice2` card 标为 `available`。
+- **许可口径（2026-11-11 用户澄清）**：CosyVoice 代码许可为 Apache-2.0，**权重许可已获取**；`cosyvoice2` card 的 `planned` 状态仅因适配层尚未实现（Spec B），不再是许可 gate。3 张 `available` 卡片的 `license=None` 保持不核实——本工程为**演示开源项目**，不自行取得商用授权，实际商用部署所需许可由应用方/商家自行申请。
 
 **路径 R（可选）：BreezeBlue 付费托管 API。**
 - 基址 `https://api.breeze.blue/v1`，鉴权头 `xi-api-key: $BREEZE_API_KEY`；`POST /v1/text-to-speech/{voice_id}?output_format=...`（同步）、`?delivery=async`（异步 job + 轮询/下载）、HTTP streaming 接受 `pcm` / `mp3` / `wav`；**Realtime WebSocket TTS** 面向 voice agent 与 barge-in，单连接多轮，默认 `output_format="pcm"`、**24 kHz mono**。输出格式另有 `mp3` / `wav_24000` / `wav_48000` / `mp3_24000_128`。
@@ -90,7 +90,7 @@
 | D4 | 范围拆两层：**Spec A = 框架层**（本文件），Spec B = 5 个适配层 | 本 spec 不实现任何新模型 Handler |
 | D5 | 架构采用**方案 1**：`BackendSpec` 加可选 `models` 字段 + 独立 `ModelCard`/`ModelRegistry`；card 只作元信息声明，不驱动加载 | 31 条既有 `BackendSpec(...)` 构造逐字不改 |
 | D6 | **GitHub 可达性已于 2026-11-10 验证**：官方 `breezeblue-ai/breeze-tts` README 全文已抓取，事实纳入 §1.4 | §9 的 GitHub 风险条目改写为「依赖获取路径」，不再以「无法直连」为前提；Spec B 可在构建期克隆仓库安装 `requirements.txt` |
-| D7 | **用户已确认本工程存在商用场景**：Breeze TTS 2 权重与自托管输出仅限研究/非商业，故**禁止自托管 Breeze TTS 2** | Spec B 按 §6.4 二选一：**路径 L（推荐）** 用 CosyVoice2 等可商用本地 TTS 替代，**路径 R（可选）** 走 BreezeBlue 付费托管 API；`breeze-tts-2` card 标 `deprecated`，`models list` 打印许可告警 |
+| D7 | **下游存在商用场景**：Breeze TTS 2 权重与自托管输出仅限研究/非商业，故**不把自托管 Breeze TTS 2 作为商用推荐路径**；本工程本身为演示开源项目（见 §11） | Spec B 按 §6.4 二选一：**路径 L（推荐）** 用 CosyVoice2 等本地 TTS 替代，**路径 R（可选）** 走 BreezeBlue 付费托管 API；`breeze-tts-2` card 标 `deprecated`，`models list` 打印许可告警；商用许可由实际应用方自行申请 |
 
 **非目标（明确排除，不写进实现计划）**：重写 CLI/YAML 派生逻辑；外置 manifest 与 `entry_points` 插件发现；下载或验证任何权重；改动 9 个 `docker-compose*.yml`、`config/prod.yaml`、`docs/parameter-catalog.yaml`；修改外层 Node 网关 `server/src/voice/providers/` 的任何文件；接入 MiniCPM-o 端到端全双工协议。
 
@@ -227,7 +227,7 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 |---|---|---|---|---|---|---|---|---|---|---|
 | `breeze-tts-2` | Breeze TTS 2 | tts | `2` | BreezeBlue | `BreezeBlue/Breeze-TTS-2` | safetensors | `breeze-tts-2` | 7.7 | `BreezeBlue Research and Non-Commercial License`（权重；推理代码 Apache-2.0） | **`status="deprecated"`（D7 商用场景禁用自托管）**：本列为官方 **eager** 显存 GiB，`--fast-all` 快路径 **14.4 GiB** 需 24 GB 卡，二者**仅研究/非商业用途参考，不进入商用部署预算**。官方输出 24 kHz mono s16le PCM；本地流式 API 单并发、忙时 `409`；checkpoint 自带 `audio_tokenizer`；`--revision` 固定权重版本。**商用须按 §6.4 走路径 L 或 R**；若走路径 R，Spec B 另注册 `breeze-tts-2-hosted`（`weight_format="remote"`）card，本 card 不复用 |
 | `whisper-medium` | Whisper-medium | stt | `medium` | OpenAI / MiniCPM-o 同源 | `openai/whisper-medium` | safetensors | `whisper` | `None`（未申报，待 Spec B 实测） | `None` | **MiniCPM-o 4.5 同源组件，非 MiniCPM 品牌独立模型** |
-| `cosyvoice2` | CosyVoice2 | tts | `2` | Alibaba / MiniCPM-o 同源 | `FunAudioLLM/CosyVoice2-0.5B` | safetensors | `cosyvoice2` | `None`（未申报，待 Spec B 实测） | `None`（权重许可待核对） | **MiniCPM-o 4.5 同源组件，非 MiniCPM 品牌独立模型**，同时承担 §6.4 路径 L 的 Breeze 替代位；官方代码仓库 LICENSE 已核实为 Apache-2.0，**权重许可须在 Spec B 启动前核对，通过前不得标 `available`**；本仓 `cosyvoice_handler.py` 存在但未注册 |
+| `cosyvoice2` | CosyVoice2 | tts | `2` | Alibaba / MiniCPM-o 同源 | `FunAudioLLM/CosyVoice2-0.5B` | safetensors | `cosyvoice2` | `None`（未申报，待 Spec B 实测） | `None`（商用许可由应用方申请，见 §11） | **MiniCPM-o 4.5 同源组件，非 MiniCPM 品牌独立模型**，同时承担 §6.4 路径 L 的 Breeze 替代位；官方代码仓库 LICENSE 已核实为 Apache-2.0，**权重许可已获取**，`planned` 仅因适配层未实现；本仓 `cosyvoice_handler.py` 存在但未注册 |
 | `minicpm-homologous-qwen3-8b` | Qwen3-8B（MiniCPM-o 同源 LLM） | llm | `3-8b` | Alibaba Qwen / MiniCPM-o 同源 | `Qwen/Qwen3-8B` | safetensors | `transformers` | 16.0 | `None` | **MiniCPM-o 4.5 同源组件，非 MiniCPM 品牌独立模型**；本列为默认 FP16；Q8 ≈8.5 GB / Q4 ≈5.0 GB 为可选量化档 |
 | `minicpm-2b` / `minicpm-4b` | MiniCPM-2B / 4B | llm | `2b` / `4b` | OpenBMB | `None` | safetensors | `transformers` | 1.2 | `None` | **可选**；本列为 2B Q4 估值（`docs/models.md:72`）；Spec A 不填具体 repo（`repo_id=None`），Spec B 核实确切 repo id 后再补 |
 
@@ -248,7 +248,7 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 
 | 路径 | 内容 | Spec B 需交付 | 代价 |
 |---|---|---|---|
-| **L（默认推荐）** | 用 `FunAudioLLM/CosyVoice2-0.5B` 填 Breeze 的 TTS 位，与 D2 的 MiniCPM 同源 TTS **合并为同一个适配层**；兜底用仓内 Apache-2.0 的 `phonon` / `kokoro` | `cosyvoice2` 的 Handler + 参数 dataclass + 一条 `BackendSpec`；**Spec B 模型总数不增** | 需在 Spec B 启动前核实权重许可（§1.5）；音质与 Breeze 不同 |
+| **L（默认推荐）** | 用 `FunAudioLLM/CosyVoice2-0.5B` 填 Breeze 的 TTS 位，与 D2 的 MiniCPM 同源 TTS **合并为同一个适配层**；兜底用仓内 Apache-2.0 的 `phonon` | `cosyvoice2` 的 Handler + 参数 dataclass + 一条 `BackendSpec`；**Spec B 模型总数不增** | 权重许可已获取（§1.5）；商用部署所需许可由应用方申请（§11）；音质与 Breeze 不同 |
 | **R（可选）** | BreezeBlue 付费托管 API（`https://api.breeze.blue/v1`），优先用 Realtime WebSocket TTS（24 kHz mono PCM、面向 barge-in） | 新建 `breeze-tts-remote` Handler + 参数 dataclass + `BackendSpec`；注册 `breeze-tts-2-hosted`（`weight_format="remote"`）card | 付费、外网依赖、非 OpenAI 兼容协议需适配、数据出域、商用授权须由用户/法务确认 ToS |
 
 两条路径共同要求：音频统一转成 **16 kHz int16 PCM / 512 samples 块 + `AUDIO_RESPONSE_DONE`**；网络路径须处理超时、打断与 `should_listen` 恢复；不得把官方 H100 + fast path 的 TTFA/RTF 指标直接写进本仓验收线。
@@ -322,7 +322,7 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 | 官方 Docker 默认面向 H100/Hopper(sm90)、A100 需 `FLASH_ATTN_CUDA_ARCHS=80` | 本地权重推理已被 D7 禁止，该风险**对商用路径不适用**；仅保留为研究用途的实施参考 |
 | 官方低延迟指标（TTFA <40 ms / RTF 0.32）来自 H100 + 预热 fast path + streaming API | 商用路径 L（CosyVoice2）与路径 R（托管 API）的延迟**均需 Spec B 实测**，不得把 40 ms 写进本仓延迟验收线；路径 R 另需计入公网 RTT、1000 字符上限与中文自动分段（段间 0.25 s 静音） |
 | **BreezeBlue 托管 API 非 OpenAI 兼容 `/v1/audio/speech`** | 路径 R 不能直接复用现有 `--tts openai` 后端：需新建 `breeze-tts-remote` Handler 或加协议适配层；同时评估付费成本、外网可用性、数据出域与 `xi-api-key` 密钥管理 |
-| CosyVoice **代码**许可已核实为 Apache-2.0，但**权重**许可未在 HF 模型卡显式标注 | Spec B 启动前必须核对 HF / ModelScope 权重许可，通过前不得把 `cosyvoice2` card 标为 `available`；未通过则退回仓内已明确 Apache-2.0 的 `phonon` / `kokoro` 兜底 |
+| CosyVoice **代码**许可已核实为 Apache-2.0；**权重**许可已获取（2026-11-11 用户确认） | `cosyvoice2` 的 `planned` 状态不再由许可 gate 决定，仅因 Spec B 适配层未实现；`phonon` 仍保留为轻量 CPU 兜底。3 张 `available` 卡片的 `license=None` 按 §11 的演示开源项目定位保持不核实 |
 | 外层 Node 网关与 s2s 注册表无共用 | 本 spec 明确不修改 `server/src/voice/providers/`；MiniCPM-o 端到端 Provider 与 Spec B 的「同源组件三段」是不同接入路径，互不冲突 |
 
 ---
@@ -338,3 +338,21 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 | 验证结论 | §8.2 全部命令输出，以及既有测试零回归的证明 |
 
 Spec A 完成并验收后，另开 **Spec B** 设计文档覆盖 5 个适配层（路径 L 的 CosyVoice2 / Whisper-medium / MiniCPM 同源 Qwen3-8B / 可选 MiniCPM-2B·4B，以及路径 R 可选的 `breeze-tts-2-hosted` 远程后端）的 Handler、参数 dataclass、`BackendSpec` 注册与契约测试。**Breeze TTS 2 自托管权重适配层因 D7 不在 Spec B 范围内**。
+
+---
+
+## 11. 用户后续澄清（2026-11-11）
+
+Spec A 交付后，用户就许可与项目定位补充如下决策；本节覆盖上文中与之冲突的措辞。
+
+| 项 | 决策 |
+|---|---|
+| 项目定位 | **演示开源项目**。本项目不自行取得任何模型的商用授权；实际商用部署所需的模型许可由应用方/商家自行申请。 |
+| 3 张 `available` 卡片的 `license=None` | **不统一核实**，保持 `None`。在演示项目中该字段表示「未申报」，不作为商用授权证明。 |
+| CosyVoice2 权重许可 | **已获取**。移除「权重许可核对通过前不得标 `available`」的 gate；`cosyvoice2` 仍为 `planned`，原因仅为 Spec B 适配层尚未实现。 |
+| Breeze TTS 2 | 保持 `status="deprecated"`。官方 `BreezeBlue Research and Non-Commercial License` 仍限研究/非商业，付费订阅亦不授予自托管权重的商用权；演示/研究用途可自托管，商用部署方须自行向 BreezeBlue 申请商业授权或改用路径 L / R。 |
+| D7 | 结论不变——不把自托管 Breeze TTS 2 作为商用推荐路径；措辞由「本工程存在商用场景」修正为「下游存在商用场景」。 |
+
+**受影响章节**：§1.5、§6.2 的 `cosyvoice2` 行、§6.4 路径 L、§9 许可风险行、D7、`src/speech_to_speech/models/builtin.py` 两张 card 的 `notes`、接入规范 §4.3 / §8.1 / 权重下载说明。
+
+**未变**：`models list` 的 deprecated 许可告警（其「商用场景禁止自托管」措辞指**未取得商业授权的默认情形**，与本节「商用部署方自行申请授权」并不矛盾）、`config.py` 对 deprecated card 覆盖 `repo_id` 的拒绝、31 条 `BackendSpec(...)` 构造与全部兼容性红线。
