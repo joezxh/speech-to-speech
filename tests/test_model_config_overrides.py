@@ -107,3 +107,24 @@ def test_models_list_json_contains_status_counts():
 def test_models_list_kind_filter():
     rows = json.loads(_models_list("--json", "--kind", "tts").stdout)
     assert all(row["kind"] == "tts" for row in rows if row["status"] != "unregistered")
+
+
+def test_integration_guide_has_all_nine_sections():
+    text = (
+        Path(__file__).resolve().parents[1] / "docs" / "model-integration-guide-CN.md"
+    ).read_text(encoding="utf-8")
+    assert "## 1." in text and "## 9." in text
+    for keyword in (
+        "ModelCard",
+        "BackendSpec",
+        "BaseHandler",
+        "16 kHz",
+        "512 samples",
+        "AUDIO_RESPONSE_DONE",
+        "ModelWeightsMissingError",
+        "ModelLicenseError",
+        "路径 L",
+        "路径 R",
+        "ruff check",
+    ):
+        assert keyword in text, keyword
