@@ -142,6 +142,10 @@ def bind_model_cards(registries: Mapping[str, Mapping[str, Any]]) -> None:
 
     for card in builtin_model_cards():
         MODEL_REGISTRY.register(card)
+    for registry in registries.values():
+        for spec in registry.values():
+            for card in getattr(spec, "models", ()):
+                MODEL_REGISTRY.register(card)
     MODEL_REGISTRY.bind(registries)
 
 

@@ -216,7 +216,7 @@ BackendSpec(
     config_prefix="cosyvoice_tts",
     required_extra="cosyvoice",
     models=(ModelCard(
-        id="cosyvoice2", name="CosyVoice2", kind="tts", version="2",
+        id="example-tts", name="CosyVoice2", kind="tts", version="2",
         provider="Alibaba / MiniCPM-o 同源", weight_format="safetensors",
         backend_name="cosyvoice2", repo_id="FunAudioLLM/CosyVoice2-0.5B",
         min_vram_gb=None, license=None, status="planned",
@@ -224,6 +224,8 @@ BackendSpec(
     ),),
 ),
 ```
+
+> **两条注册路径按 id 互斥**：card 既可以在 `models/builtin.py` 的 `builtin_model_cards()` 里登记，也可以放进 `BackendSpec.models`；`bind_model_cards()` 在导入时把两处的 card 一并注册到同一目录。**同一个 `id` 只能走其中一条路径**——两处同时出现相同 `id`（例如内置已登记的 `cosyvoice2`）会由 `register()` 抛 `ModelRegistryError`。因此本示例把 card id 取为 `example-tts`，与内置 card 不冲突，可安全复制。
 
 权重下载命令（核对权重许可后执行）：
 

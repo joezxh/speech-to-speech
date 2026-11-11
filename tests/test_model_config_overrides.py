@@ -56,7 +56,7 @@ def test_unknown_load_param_is_rejected(tmp_path):
 def test_missing_env_reference_is_rejected(tmp_path):
     path = tmp_path / "bad.yaml"
     path.write_text(EXAMPLE.read_text(encoding="utf-8").replace("BREEZE_REPO", "UNSET_MODEL_REPO", 1), encoding="utf-8")
-    with pytest.raises(ConfigurationError):
+    with pytest.raises(ConfigurationError, match="Required environment reference is missing"):
         resolve_config(load_config(path), environ={})
 
 

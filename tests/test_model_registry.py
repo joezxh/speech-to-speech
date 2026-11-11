@@ -202,3 +202,33 @@ def test_importing_backend_registry_populates_global_catalog():
 
 def test_backend_registry_import_keeps_handler_lazy_loading():
     assert_no_handler_modules("speech_to_speech.backend_registry")
+
+
+def _inline_registries(spec):
+    return {
+        "stt": {"qwen3-asr": FakeSpec("stt"), "whisper": FakeSpec("stt")},
+        "llm": {"transformers": FakeSpec("llm")},
+        "tts": {"qwen3": spec},
+    }
+
+
+def test_bind_model_cards_registers_inline_cards(monkeypatch):
+    reg = ModelRegistry()
+    monkeypatch.setattr(mr, "MODEL_REGISTRY", reg)
+    inline = card(id="inline-tts", backend_name="qwen3")
+    tts_spec = FakeSpec("tts")
+    tts_spec.models = (inline,)
+    mr.bind_model_cards(_inline_registries(tts_spec))
+    assert "inline-tts" in {c.id for c in reg.list()}
+    assert reg.get("inline-tts") is inline
+    assert len(reg.list()) == 10
+
+
+def test_bind_model_cards_rejects_inline_duplicate_of_builtin(monkeypatch):
+    reg = ModelRegistry()
+    monkeypatch.setattr(mr, "MODEL_REGISTRY", reg)
+    duplicate = card(id="cosyvoice2", backend_name="qwen3")
+    tts_spec = FakeSpec("tts")
+    tts_spec.models = (duplicate,)
+    with pytest.raises(ModelRegistryError, match="Duplicate"):
+        mr.bind_model_cards(_inline_registries(tts_spec))

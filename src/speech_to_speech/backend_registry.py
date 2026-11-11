@@ -113,6 +113,7 @@ class BackendSpec:
     normalize_config: ConfigNormalizer | None = None
     required_extra: str | None = None
     capabilities: BackendCapabilities = field(default_factory=BackendCapabilities)
+    # Inline cards are registered by bind_model_cards() at import time; ids must not duplicate builtin card ids.
     models: tuple[ModelCard, ...] = ()
 
     def normalize(self, config: Any) -> BackendConfig:

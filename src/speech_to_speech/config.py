@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from speech_to_speech.model_registry import ModelCard
 
 _ID = re.compile(r"[A-Za-z][A-Za-z0-9_-]{0,63}\Z")
+# Model ids may contain dots (e.g. qwen3-tts-1.7b-customvoice); block/pipeline ids use the stricter _ID above.
 _MODEL_ID = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{0,63}\Z")
 _ENV = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _INTEGER = re.compile(r"[+-]?[0-9]+\Z")
@@ -379,14 +380,14 @@ def _validate_models_section(document: ConfigDocument) -> None:
         return
     models = _mapping(document, document.data["models"], ("models",))
     for model_id, overrides in models.items():
-        if not _MODEL_ID.fullmatch(model_id):
-            _error(document, ("models",), "Use valid model identifiers.")
         path = ("models", model_id)
+        if not _MODEL_ID.fullmatch(model_id):
+            _error(document, path, "Use valid model identifiers.")
         overrides = _mapping(document, overrides, path, {"repo_id", "default_load_params"})
         try:
             card = get_model(model_id)
-        except ValueError:
-            _error(document, ("models",), "Choose a registered model id.")
+        except ValueError as exc:
+            _error(document, path, f"Choose a registered model id. {exc}")
         if card.status == "deprecated" and "repo_id" in overrides:
             # Deprecated cards stay queryable, but never point a deployment at their weights.
             _error(document, path, "Deprecated non-commercial weights cannot be configured; use spec section 6.4.")

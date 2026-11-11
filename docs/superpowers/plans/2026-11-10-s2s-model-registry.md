@@ -259,7 +259,7 @@ class ModelCard:
 class ModelRegistry:
     def __init__(self) -> None:
         self._cards: dict[str, ModelCard] = {}
-        self._backend_index: dict[str, tuple[ModelKind, dict[str, Any]]] = {}
+        self._backend_index: dict[str, tuple[str, dict[str, Any]]] = {}
 
     def register(self, card: ModelCard) -> None:
         if card.id in self._cards:
@@ -292,7 +292,7 @@ class ModelRegistry:
         )
 
     def bind(self, registries: Mapping[str, Mapping[str, Any]]) -> None:
-        index: dict[str, tuple[ModelKind, dict[str, Any]]] = {}
+        index: dict[str, tuple[str, dict[str, Any]]] = {}
         for kind, registry in registries.items():
             for name, spec in registry.items():
                 hints = get_type_hints(spec.config_type)
@@ -870,7 +870,7 @@ def _validate_models_section(document: ConfigDocument) -> None:
         return
     models = _mapping(document, document.data["models"], ("models",))
     for model_id, overrides in models.items():
-        if not _ID.fullmatch(model_id):
+        if not _MODEL_ID.fullmatch(model_id):
             _error(document, ("models",), "Use valid model identifiers.")
         path = ("models", model_id)
         overrides = _mapping(document, overrides, path, {"repo_id", "default_load_params"})
