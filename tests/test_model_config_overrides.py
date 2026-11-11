@@ -1,3 +1,6 @@
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -75,3 +78,32 @@ def test_deprecated_non_commercial_card_cannot_be_configured(tmp_path):
     )
     with pytest.raises(ConfigurationError, match="Deprecated non-commercial"):
         resolve_config(load_config(path), environ={"BREEZE_REPO": "/models/Breeze-TTS-2"})
+
+
+def _models_list(*args):
+    result = subprocess.run(
+        [sys.executable, "-m", "speech_to_speech.cli", "models", "list", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result
+
+
+def test_models_list_json_contains_status_counts():
+    result = _models_list("--json")
+    rows = json.loads(result.stdout)
+    cards = [row for row in rows if row["status"] != "unregistered"]
+    assert sum(row["status"] == "available" for row in cards) == 3
+    assert sum(row["status"] == "planned" for row in cards) == 5
+    assert sum(row["status"] == "deprecated" for row in cards) == 1
+    assert sum(row["status"] == "unregistered" for row in rows) == 27
+    breeze = next(row for row in rows if row["id"] == "breeze-tts-2")
+    assert breeze["status"] == "deprecated"
+    assert "Research and Non-Commercial" in breeze["license"]
+    assert "商用" in result.stderr
+
+
+def test_models_list_kind_filter():
+    rows = json.loads(_models_list("--json", "--kind", "tts").stdout)
+    assert all(row["kind"] == "tts" for row in rows if row["status"] != "unregistered")

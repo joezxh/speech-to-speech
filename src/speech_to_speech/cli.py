@@ -22,7 +22,7 @@ from speech_to_speech.pipeline.transcript_logging import (
     warn_if_log_transcripts_enabled,
 )
 
-Command = Literal["serve", "talk", "local"]
+Command = Literal["serve", "talk", "local", "models"]
 
 _LEGACY_MODE_COMMANDS: dict[str, Command] = {
     "realtime": "serve",
@@ -54,6 +54,7 @@ def _command_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("serve", add_help=False, help="Run the Realtime pipeline server.")
     subparsers.add_parser("talk", add_help=False, help="Connect microphone and speakers to a Realtime URL.")
     subparsers.add_parser("local", add_help=False, help="Run the server and audio client together over loopback.")
+    subparsers.add_parser("models", add_help=False, help="List registered model cards.")
     return parser
 
 
@@ -92,11 +93,11 @@ def parse_command(argv: Sequence[str] | None = None) -> tuple[Command, list[str]
     command_args = list(sys.argv[1:] if argv is None else argv)
     parser = _command_parser()
     if not command_args:
-        parser.error("a command is required: serve, talk, or local")
+        parser.error("a command is required: serve, talk, local, or models")
     if command_args[0] in {"-h", "--help"}:
         parser.print_help()
         raise SystemExit(0)
-    if command_args[0] not in {"serve", "talk", "local"}:
+    if command_args[0] not in {"serve", "talk", "local", "models"}:
         legacy_mode, remaining = _extract_legacy_mode(command_args, parser)
         if legacy_mode is not None:
             legacy_command = _LEGACY_MODE_COMMANDS.get(legacy_mode)
@@ -112,8 +113,8 @@ def parse_command(argv: Sequence[str] | None = None) -> tuple[Command, list[str]
             )
             return legacy_command, remaining
     command = command_args[0]
-    if command not in {"serve", "talk", "local"}:
-        parser.error(f"unknown command {command!r}; choose serve, talk, or local")
+    if command not in {"serve", "talk", "local", "models"}:
+        parser.error(f"unknown command {command!r}; choose serve, talk, local, or models")
     return command, command_args[1:]  # type: ignore[return-value]
 
 
@@ -252,7 +253,8 @@ def _run_file_command(command: Command, command_args: list[str], console_options
     try:
         from speech_to_speech.configured_runtime import run_configured_command
 
-        run_configured_command(command, config, console_options=console_options)
+        # "models" is short-circuited before _run_file_command; Command is wider than this runtime command set.
+        run_configured_command(command, config, console_options=console_options)  # type: ignore[arg-type]
     except ConsoleIntegrationError as exc:
         parser.exit(2, f"Configuration error: {exc}\n")
     except ConfigurationError:
@@ -263,7 +265,81 @@ def _run_file_command(command: Command, command_args: list[str], console_options
         parser.exit(1, "Configured startup failed; check the selected backends and runtime resources.\n")
 
 
+def _run_models_command(command_args: list[str]) -> None:
+    import json
+
+    from speech_to_speech.backend_registry import LLM_BACKENDS, STT_BACKENDS, TTS_BACKENDS
+    from speech_to_speech.model_registry import list_models
+
+    parser = argparse.ArgumentParser(prog="speech-to-speech models", allow_abbrev=False)
+    parser.add_argument("action", choices=("list",))
+    parser.add_argument("--kind", choices=("stt", "llm", "tts"), default=None)
+    parser.add_argument("--json", action="store_true", dest="as_json")
+    args = parser.parse_args(command_args)
+
+    cards = list_models(kind=args.kind)
+    rows = [
+        {
+            "id": card.id,
+            "name": card.name,
+            "kind": card.kind,
+            "version": card.version,
+            "provider": card.provider,
+            "backend": card.backend_name,
+            "status": card.status,
+            "weight_format": card.weight_format,
+            "min_vram_gb": card.min_vram_gb,
+            "license": card.license,
+        }
+        for card in cards
+    ]
+    for card in cards:
+        if card.status == "deprecated":
+            print(
+                f"Warning: {card.id} is deprecated: {card.license}. 商用场景禁止自托管；"
+                "见 docs/superpowers/specs/2026-11-10-s2s-model-registry-design.md §6.4 路径 L / R。",
+                file=sys.stderr,
+            )
+
+    known = {card.backend_name for card in list_models()}
+    registries = (("stt", STT_BACKENDS), ("llm", LLM_BACKENDS), ("tts", TTS_BACKENDS))
+    for kind, registry in registries:
+        if args.kind is not None and args.kind != kind:
+            continue
+        for name in sorted(registry):
+            if name in known:
+                continue
+            rows.append(
+                {
+                    "id": name,
+                    "name": name,
+                    "kind": kind,
+                    "version": None,
+                    "provider": None,
+                    "backend": name,
+                    "status": "unregistered",
+                    "weight_format": None,
+                    "min_vram_gb": None,
+                    "license": None,
+                }
+            )
+
+    if args.as_json:
+        print(json.dumps(rows, ensure_ascii=False))
+        return
+    print("ID\tKIND\tVERSION\tBACKEND\tSTATUS\tVRAM\tLICENSE")
+    for row in rows:
+        print(
+            f"{row['id']}\t{row['kind']}\t{row['version'] or '-'}\t{row['backend']}\t"
+            f"{row['status']}\t{row['min_vram_gb'] if row['min_vram_gb'] is not None else '-'}\t"
+            f"{row['license'] or '-'}"
+        )
+
+
 def _dispatch(command: Command, command_args: list[str], console_options: ConsoleOptions) -> None:
+    if command == "models":
+        _run_models_command(command_args)
+        return
     if any(
         argument.startswith("-f") or argument == "--file" or argument.startswith("--file=")
         for argument in command_args
@@ -286,6 +362,9 @@ def _dispatch(command: Command, command_args: list[str], console_options: Consol
 
 def main() -> None:
     argv = list(sys.argv[1:])
+    if argv and argv[0] == "models":
+        _run_models_command(argv[1:])
+        return
     try:
         console_options, argv = parse_console_arguments(argv)
     except ConsoleIntegrationError as exc:
