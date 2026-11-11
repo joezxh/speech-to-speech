@@ -1,4 +1,5 @@
 """A console app mounted at "/" must not disturb any s2s route (spec §4.4)."""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager

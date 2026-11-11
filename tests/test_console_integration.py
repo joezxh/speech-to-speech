@@ -1,4 +1,5 @@
 """The console switches are read in exactly one place (spec §3)."""
+
 from __future__ import annotations
 
 import logging
@@ -178,7 +179,9 @@ def test_load_console_returns_a_usable_attachment(tmp_path):
     options = _prepared(tmp_path)
     marker = lambda _app: None  # noqa: E731 - identity matters, not style
     attachment = load_console(
-        options, pipeline_base_url="http://127.0.0.1:8765", loader=lambda home: _fake_module(home, lifespan_marker=marker)
+        options,
+        pipeline_base_url="http://127.0.0.1:8765",
+        loader=lambda home: _fake_module(home, lifespan_marker=marker),
     )
 
     assert isinstance(attachment, ConsoleAttachment)
@@ -189,7 +192,9 @@ def test_load_console_returns_a_usable_attachment(tmp_path):
 
 def test_load_console_rejects_a_shadowing_app_package(tmp_path):
     options = _prepared(tmp_path)
-    stray = SimpleNamespace(__file__="/usr/lib/python3/site-packages/app/main.py", app=object(), lifespan=lambda a: None)
+    stray = SimpleNamespace(
+        __file__="/usr/lib/python3/site-packages/app/main.py", app=object(), lifespan=lambda a: None
+    )
 
     with pytest.raises(ConsoleIntegrationError, match="shadowing"):
         load_console(options, pipeline_base_url="http://127.0.0.1:8765", loader=lambda home: stray)

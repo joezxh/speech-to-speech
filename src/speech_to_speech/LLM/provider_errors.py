@@ -7,6 +7,7 @@ failed" and the operator has no clue why. These helpers extract the status code
 and the response body, and classify the failure into a small set of kinds the
 pipeline can act on (different spoken fallback, different log wording).
 """
+
 from __future__ import annotations
 
 import httpx

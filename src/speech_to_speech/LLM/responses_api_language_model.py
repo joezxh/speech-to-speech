@@ -266,7 +266,12 @@ class ResponsesApiModelHandler(BaseOpenAICompatibleHandler):
 
             with open("/tmp/last_llm_request.json", "w", encoding="utf-8") as _f:
                 _json.dump(
-                    {"model": self.model_name, "input": api_input, "kwargs": optional_kwargs, "extra": self._extra_body},
+                    {
+                        "model": self.model_name,
+                        "input": api_input,
+                        "kwargs": optional_kwargs,
+                        "extra": self._extra_body,
+                    },
                     _f,
                     ensure_ascii=False,
                     default=str,

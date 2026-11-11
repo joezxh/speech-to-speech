@@ -1,4 +1,5 @@
 """Both runtime paths must hand the attachment to the server, and fail loudly (spec §5.1-5.3)."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -204,7 +205,11 @@ def _patch_configured_command(monkeypatch, server, wait_error=None):
 
     monkeypatch.setattr(runtime_module, "attachment_for_runtime", lambda options, runtime, **kw: ("resolved", options))
     monkeypatch.setattr(runtime_module, "build_configured_server", fake_build)
-    monkeypatch.setattr(runtime_module, "signal", SimpleNamespace(SIGINT=2, SIGTERM=15, signal=lambda *_: None, getsignal=lambda _s: None))
+    monkeypatch.setattr(
+        runtime_module,
+        "signal",
+        SimpleNamespace(SIGINT=2, SIGTERM=15, signal=lambda *_: None, getsignal=lambda _s: None),
+    )
     return seen
 
 
@@ -214,9 +219,7 @@ def test_configured_command_resolves_the_attachment_from_the_runtime_block(monke
     seen = _patch_configured_command(monkeypatch, SimpleNamespace(startup_failed=False))
     options = ConsoleOptions(autostart=True, home=None, static_dir=None)
 
-    runtime_module._run_configured_command(
-        "serve", SimpleNamespace(runtime={}, client=None), console_options=options
-    )
+    runtime_module._run_configured_command("serve", SimpleNamespace(runtime={}, client=None), console_options=options)
 
     assert seen["console_attachment"] == ("resolved", options)
 

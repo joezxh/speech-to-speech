@@ -17,8 +17,7 @@ class SenseVoiceSTTHandlerArguments:
     sensevoice_stt_language: str = field(
         default="auto",
         metadata={
-            "help": "Language hint for SenseVoice. 'auto' detects among zh/en/yue/ja/ko. "
-            "Set to 'zh' to force Mandarin."
+            "help": "Language hint for SenseVoice. 'auto' detects among zh/en/yue/ja/ko. Set to 'zh' to force Mandarin."
         },
     )
     sensevoice_stt_use_itn: bool = field(

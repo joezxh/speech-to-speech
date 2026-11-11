@@ -68,11 +68,7 @@ def _patch_qwen_tts_rope_compat() -> None:
             head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
             dim = int(head_dim * partial_rotary_factor)
             inv_freq = 1.0 / (
-                base
-                ** (
-                    torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float)
-                    / dim
-                )
+                base ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim)
             )
             return inv_freq, 1.0
 

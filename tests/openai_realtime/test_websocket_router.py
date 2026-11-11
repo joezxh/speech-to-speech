@@ -2034,9 +2034,7 @@ class TestAdminHotUpdate:
         monkeypatch.setenv("S2S_ADMIN_TOKEN", ADMIN_TOKEN)
         app = create_app(pool=[_make_unit(0)], stop_event=ThreadingEvent())
         with TestClient(app) as client:
-            response = _admin_post(
-                client, {"session": {"instructions": "x"}}, token="not-the-token"
-            )
+            response = _admin_post(client, {"session": {"instructions": "x"}}, token="not-the-token")
         assert response.status_code == 401
         assert response.json()["error"]["code"] == "unauthorized"
 

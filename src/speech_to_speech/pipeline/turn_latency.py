@@ -41,6 +41,7 @@ def encode_machine_line(payload: Mapping[str, object]) -> str:
     ordered = {key: payload.get(key) for key in MACHINE_KEYS}
     return TURN_LATENCY_MACHINE_PREFIX + json.dumps(ordered, separators=(",", ":"), ensure_ascii=False)
 
+
 _active_tracker: ContextVar[TurnLatencyTracker | None] = ContextVar(
     "active_turn_latency_tracker",
     default=None,

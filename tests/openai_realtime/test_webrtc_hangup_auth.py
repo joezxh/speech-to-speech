@@ -1,4 +1,5 @@
 """P1.6 强制项：挂断端点的 fail-closed Bearer 校验（spec §9.2/§16）。"""
+
 from __future__ import annotations
 
 from threading import Event

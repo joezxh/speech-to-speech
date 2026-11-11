@@ -743,9 +743,7 @@ def create_app(
             # `type` is the union's only discriminator, so a partial session has
             # to be labelled before it can be parsed (same shape the console
             # sends through `/admin/sessions/update`).
-            event = SessionUpdateEvent(
-                type="session.update", session={"type": "realtime", **payload.session}
-            )
+            event = SessionUpdateEvent(type="session.update", session={"type": "realtime", **payload.session})
         except ValidationError as exc:
             detail = exc.errors()[0] if exc.errors() else {}
             return _internal_error(400, "invalid_request_error", str(detail.get("msg", "invalid payload")))

@@ -426,9 +426,7 @@ class ModelMonitor:
         payload = {
             MODEL_AGGREGATE_MARKER: {
                 "window_seconds": self.aggregate_interval_s,
-                "window_start": time.strftime(
-                    "%Y-%m-%dT%H:%M:%S", time.localtime(min(r.start_ts for r in recs))
-                ),
+                "window_start": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(min(r.start_ts for r in recs))),
                 "total_calls": len(recs),
                 "throughput_qps": round(len(recs) / self.aggregate_interval_s, 4),
                 "by_category": cats,

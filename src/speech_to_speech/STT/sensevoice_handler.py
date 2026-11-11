@@ -50,7 +50,7 @@ class SenseVoiceSTTHandler(BaseSTTHandler):
         except ModuleNotFoundError as exc:
             raise ModuleNotFoundError(
                 "SenseVoice STT requires the optional 'sensevoice' extra. "
-                "Install it with `pip install \"speech-to-speech[sensevoice]\"`."
+                'Install it with `pip install "speech-to-speech[sensevoice]"`.'
             ) from exc
         # disable_update avoids phoning home to the FunASR model zoo at startup.
         self.model = AutoModel(model=model_name, device=device, disable_update=True)

@@ -170,18 +170,12 @@ class CosyVoiceTTSHandler(BaseHandler[TTSIn, TTSOut]):
     def _stream(self, gen: Iterator[np.ndarray], cancel_gen: Any) -> Iterator[np.ndarray]:
         leftover = np.array([], dtype=np.int16)
         for audio in gen:
-            if (
-                cancel_gen is not None
-                and self.cancel_scope is not None
-                and self.cancel_scope.is_stale(cancel_gen)
-            ):
+            if cancel_gen is not None and self.cancel_scope is not None and self.cancel_scope.is_stale(cancel_gen):
                 logger.info("TTS generation cancelled (interruption)")
                 return
             if audio is None or audio.size == 0:
                 continue
-            audio_16k = librosa.resample(
-                audio.astype(np.float32), orig_sr=COSYVOICE_SR, target_sr=PIPELINE_SR
-            )
+            audio_16k = librosa.resample(audio.astype(np.float32), orig_sr=COSYVOICE_SR, target_sr=PIPELINE_SR)
             chunk = (audio_16k * 32768).astype(np.int16)
             audio_chunk = np.concatenate([leftover, chunk])
             n = (len(audio_chunk) // self.chunk_size) * self.chunk_size

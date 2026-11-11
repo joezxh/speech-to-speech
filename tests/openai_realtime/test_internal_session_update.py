@@ -1,4 +1,5 @@
 """The console's machine-to-machine fanout endpoint (spec §5.1 / A.12)."""
+
 from __future__ import annotations
 
 from threading import Event
@@ -36,8 +37,7 @@ class _ServiceStub:
 
 
 def _unit(index: int, session_id: str, conn_ids):
-    return SimpleNamespace(index=index, session=SimpleNamespace(session_id=session_id),
-                           service=_ServiceStub(conn_ids))
+    return SimpleNamespace(index=index, session=SimpleNamespace(session_id=session_id), service=_ServiceStub(conn_ids))
 
 
 @pytest.fixture
@@ -92,10 +92,14 @@ def test_scope_all_reports_partial_failures(monkeypatch):
     unit = _unit(0, "s1", ["s1", "s2"])
     unit.service.session.reject.add("s2")
     app = create_app([unit], Event())
-    body = TestClient(app).post(
-        ENDPOINT,
-        json={"scope": "all", "session": {"instructions": "hi"}},
-        headers={"Authorization": "Bearer tok"},
-    ).json()
+    body = (
+        TestClient(app)
+        .post(
+            ENDPOINT,
+            json={"scope": "all", "session": {"instructions": "hi"}},
+            headers={"Authorization": "Bearer tok"},
+        )
+        .json()
+    )
     assert body["updated"] == ["s1"]
     assert body["failed"] == [{"session_id": "s2", "error": "invalid_request_error"}]

@@ -1,4 +1,5 @@
 """A failed bind must not look like a clean shutdown (spec §5.3)."""
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager

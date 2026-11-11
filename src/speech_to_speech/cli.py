@@ -341,8 +341,7 @@ def _dispatch(command: Command, command_args: list[str], console_options: Consol
         _run_models_command(command_args)
         return
     if any(
-        argument.startswith("-f") or argument == "--file" or argument.startswith("--file=")
-        for argument in command_args
+        argument.startswith("-f") or argument == "--file" or argument.startswith("--file=") for argument in command_args
     ):
         _run_file_command(command, command_args, console_options)
         return

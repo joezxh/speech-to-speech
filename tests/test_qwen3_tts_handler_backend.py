@@ -45,9 +45,7 @@ class _NoopTrace:
 # object.__new__, which bypasses both, so the class gets no-op stand-ins: the
 # monitor.trace instrumentation in warmup() and process() stays inert under
 # test, while production instances set the real attributes during construction.
-Qwen3TTSHandler.monitor = SimpleNamespace(
-    trace=lambda category, model_name, input=None: _NoopTrace(_NoopTraceRecord())
-)
+Qwen3TTSHandler.monitor = SimpleNamespace(trace=lambda category, model_name, input=None: _NoopTrace(_NoopTraceRecord()))
 Qwen3TTSHandler.model_name = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 
 

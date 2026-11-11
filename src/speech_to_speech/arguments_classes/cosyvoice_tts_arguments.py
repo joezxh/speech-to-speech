@@ -5,9 +5,7 @@ from dataclasses import dataclass, field
 class CosyVoiceTTSHandlerArguments:
     cosyvoice_tts_model_name: str = field(
         default="iic/CosyVoice2-0.5B",
-        metadata={
-            "help": "CosyVoice2 model id (ModelScope, e.g. 'iic/CosyVoice2-0.5B') or a local model directory."
-        },
+        metadata={"help": "CosyVoice2 model id (ModelScope, e.g. 'iic/CosyVoice2-0.5B') or a local model directory."},
     )
     cosyvoice_tts_device: str = field(
         default="cuda",
@@ -15,9 +13,7 @@ class CosyVoiceTTSHandlerArguments:
     )
     cosyvoice_tts_speaker: str = field(
         default="中文女",
-        metadata={
-            "help": "Preset CosyVoice2 speaker. One of: 中文女, 中文男, 英文女, 英文男, 日语男."
-        },
+        metadata={"help": "Preset CosyVoice2 speaker. One of: 中文女, 中文男, 英文女, 英文男, 日语男."},
     )
     cosyvoice_tts_instruct: str = field(
         default="",
