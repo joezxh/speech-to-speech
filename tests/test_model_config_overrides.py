@@ -110,9 +110,7 @@ def test_models_list_kind_filter():
 
 
 def test_integration_guide_has_all_nine_sections():
-    text = (
-        Path(__file__).resolve().parents[1] / "docs" / "model-integration-guide-CN.md"
-    ).read_text(encoding="utf-8")
+    text = (Path(__file__).resolve().parents[1] / "docs" / "model-integration-guide-CN.md").read_text(encoding="utf-8")
     assert "## 1." in text and "## 9." in text
     for keyword in (
         "ModelCard",
