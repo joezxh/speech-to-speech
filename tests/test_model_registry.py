@@ -11,6 +11,7 @@ from speech_to_speech.model_registry import (
     ModelNotAvailableError,
     ModelRegistry,
     ModelRegistryError,
+    ModelWeightsMissingError,
     list_models,
     resolve_model,
     validate_models,
@@ -119,6 +120,12 @@ def test_resolve_model_planned_raises_and_deprecated_returns(monkeypatch):
 
 def test_license_error_is_registry_error():
     assert issubclass(ModelLicenseError, ModelRegistryError)
+
+
+def test_model_weights_missing_error_is_registry_error():
+    assert issubclass(ModelWeightsMissingError, ModelRegistryError)
+    assert issubclass(ModelWeightsMissingError, ValueError)
+    assert not issubclass(ModelWeightsMissingError, ImportError)
 
 
 def test_module_level_facades(monkeypatch):

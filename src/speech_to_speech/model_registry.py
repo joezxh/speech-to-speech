@@ -26,6 +26,10 @@ class ModelLicenseError(ModelRegistryError):
     """A commercial deployment selected a non-commercial weight."""
 
 
+class ModelWeightsMissingError(ModelRegistryError):
+    """权重目录缺失或缺少必备 checkpoint 组件"""
+
+
 @dataclass(frozen=True)
 class ModelCard:
     id: str
