@@ -70,10 +70,42 @@ def test_models_section_rejects_unknown_key(tmp_path):
         resolve_config(load_config(path), environ={"BREEZE_REPO": "/models/Breeze-TTS-2"})
 
 
-def test_deprecated_non_commercial_card_cannot_be_configured(tmp_path):
-    path = tmp_path / "bad.yaml"
+def test_breeze_tts_2_can_be_configured_after_commercial_licence(tmp_path):
+    path = tmp_path / "licensed.yaml"
     path.write_text(
         EXAMPLE.read_text(encoding="utf-8").replace("minicpm-homologous-qwen3-8b:", "breeze-tts-2:", 1),
+        encoding="utf-8",
+    )
+    config = resolve_config(load_config(path), environ={"BREEZE_REPO": "/models/Breeze-TTS-2"})
+    assert config.pipelines["prod"].model_cards["breeze-tts-2"].repo_id == "/models/Breeze-TTS-2"
+
+
+def test_deprecated_card_cannot_point_at_weights(monkeypatch, tmp_path):
+    from speech_to_speech import model_registry as mr
+    from speech_to_speech.backend_registry import LLM_BACKENDS, STT_BACKENDS, TTS_BACKENDS
+    from speech_to_speech.models.builtin import builtin_model_cards
+
+    reg = mr.ModelRegistry()
+    for item in builtin_model_cards():
+        reg.register(item)
+    reg.register(
+        mr.ModelCard(
+            id="licence-gated-test",
+            name="Licence Gated",
+            kind="tts",
+            version="1",
+            provider="Test",
+            weight_format="safetensors",
+            backend_name="future-tts",
+            status="deprecated",
+        )
+    )
+    reg.bind({"stt": STT_BACKENDS, "llm": LLM_BACKENDS, "tts": TTS_BACKENDS})
+    monkeypatch.setattr(mr, "MODEL_REGISTRY", reg)
+
+    path = tmp_path / "gated.yaml"
+    path.write_text(
+        EXAMPLE.read_text(encoding="utf-8").replace("minicpm-homologous-qwen3-8b:", "licence-gated-test:", 1),
         encoding="utf-8",
     )
     with pytest.raises(ConfigurationError, match="Deprecated non-commercial"):
@@ -95,13 +127,13 @@ def test_models_list_json_contains_status_counts():
     rows = json.loads(result.stdout)
     cards = [row for row in rows if row["status"] != "unregistered"]
     assert sum(row["status"] == "available" for row in cards) == 3
-    assert sum(row["status"] == "planned" for row in cards) == 5
-    assert sum(row["status"] == "deprecated" for row in cards) == 1
+    assert sum(row["status"] == "planned" for row in cards) == 6
+    assert sum(row["status"] == "deprecated" for row in cards) == 0
     assert sum(row["status"] == "unregistered" for row in rows) == 27
     breeze = next(row for row in rows if row["id"] == "breeze-tts-2")
-    assert breeze["status"] == "deprecated"
+    assert breeze["status"] == "planned"
     assert "Research and Non-Commercial" in breeze["license"]
-    assert "商用" in result.stderr
+    assert "breeze-tts-2 is deprecated" not in result.stderr
 
 
 def test_models_list_kind_filter():

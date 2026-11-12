@@ -8,9 +8,9 @@
 **先对齐几个容易写错的事实**：
 
 - `ModelStatus` 只有三个取值：`available | planned | deprecated`。`unregistered` **不是** `ModelStatus`，它只是 `speech-to-speech models list` 为「已注册但没有任何 `ModelCard` 关联的后端」生成的 CLI 行标签。
-- 当前目录共 **9 张 card**：3 `available`、5 `planned`、1 `deprecated`；`models list` 另有 27 行 `unregistered`（31 个后端中只有 4 个有关联 card）。
+- 当前目录共 **9 张 card**：3 `available`、6 `planned`、0 `deprecated`；`models list` 另有 27 行 `unregistered`（31 个后端中只有 4 个有关联 card）。
 - `get_model()` 返回 card **不做任何状态检查**（供 `config.py` 的 `models:` 段校验与覆盖副本使用）；`resolve_model()` 才会拒绝 `planned`。
-- 商用场景（D7）**禁止自托管 Breeze TTS 2 权重**：路径 L 用 CosyVoice2（或 Apache-2.0 的 `phonon` 兜底）作为本地商用 TTS；路径 R 走 BreezeBlue 付费托管 API（`https://api.breeze.blue/v1`、`xi-api-key`、**非 OpenAI 兼容**协议）。
+- **项目已取得 BreezeBlue 商业授权（2026-11-12）**：D7 禁令撤销，`breeze-tts-2` 改回 `planned`，可商用自托管；路径 L（CosyVoice2）/ 路径 R（BreezeBlue 付费托管 API）降级为可选替代。详见 §10。
 - `min_vram_gb` 是**单一 float 基准数值**；其它量化档 / 快路径档一律写入 `card.notes`。Breeze 的 7.7 / 14.4 GiB 只是研究用途参考值，**不进入商用部署预算**。
 
 ---
@@ -114,7 +114,7 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 - 当前 9 张 card（§9 用 `models list` 核对）：
   - `available`（3）：`qwen3-asr-1.7b-hf`、`qwen3-tts-1.7b-customvoice`、`qwen3.5-4b-transformers`。
   - `planned`（5）：`whisper-medium`、`cosyvoice2`、`minicpm-homologous-qwen3-8b`、`minicpm-2b`、`minicpm-4b`。
-  - `deprecated`（1）：`breeze-tts-2`（D7 商用禁用自托管）。
+  - `deprecated`（0）：当前无；`breeze-tts-2` 为 `planned`（商业授权已取得，见 §10）。
 
 ---
 
@@ -134,11 +134,11 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 
 ### 4.3 商用路径专项
 
-> **项目定位（2026-11-11 用户澄清）**：本工程为演示开源项目，不自行取得模型商用授权；实际商用部署所需的模型许可由应用方/商家自行申请。因此本节的「商用路径」描述的是**下游商用部署的合规建议**，不代表本项目已持有相应商用许可。`breeze-tts-2` 仍为 `deprecated`：演示/研究用途可自托管，商用部署方须自行向 BreezeBlue 申请商业授权，或改用路径 L / R。
+> **项目定位与授权状态（2026-11-12 更新）**：本工程为演示开源项目；**商务侧已取得 BreezeBlue 商业授权**，因此 `breeze-tts-2` 改回 `planned`、可商用自托管（§10）。除 Breeze 外的其它模型商用许可仍由实际应用方自行申请。路径 L / R 现为可选替代，不再是合规必需。
 
 - **路径 L（本地 TTS，默认推荐）**：用 `FunAudioLLM/CosyVoice2-0.5B`（或 Apache-2.0 `phonon` CPU 兜底）填 Breeze 的 TTS 位。**先核对 CosyVoice2 输出采样率**，不是 16 kHz 就重采样；再切成 512 samples 的 int16 小端块并补 `AUDIO_RESPONSE_DONE`。仓内 `cosyvoice_tts_arguments.py` 已有 `cosyvoice_tts_chunk_size=512`，`TTS/cosyvoice_handler.py` 存在但**尚未注册**。代码仓库 LICENSE 已核实为 Apache-2.0，**权重许可已获取**；商用部署所需的相关许可仍由实际应用方自行申请。
 - **路径 R（BreezeBlue 付费托管 API，可选）**：基址 `https://api.breeze.blue/v1`，鉴权头 `xi-api-key: $BREEZE_API_KEY`。这是 **BreezeBlue 自有协议，不是 OpenAI 兼容 `/v1/audio/speech`**，因此不能直接复用 `--tts openai` 后端。优先用 Realtime WebSocket TTS（默认 `pcm`，24 kHz mono，面向 voice agent / barge-in）；HTTP 另有 `wav_24000` / `wav_48000` / mp3。Handler 必须完成：mp3/wav 解码 → 24 kHz/48 kHz → 16 kHz 重采样 → 512 samples 块切分 → `AUDIO_RESPONSE_DONE`；同时处理网络超时、重连与打断（打断时取消在途请求、丢弃已排队音频）。单次 HTTP 请求有字符上限、中文非流式会自动分段，须计入端到端延迟。
-- **仅研究用途参考**：Breeze 本地权重的 Voice Clone / Voice Design / Voice Direction 三模式、vocal events 内联标记（`(laugh)` / `[笑]`）、`--revision` 固定权重版本、官方 24 kHz mono s16le 输出、本地流式 API 单并发忙时 `409`、H100 + 预热 fast path 的 TTFA/RTF 指标——**均不作为商用实现或验收依据**（D7 禁止自托管）。
+- **Breeze 本地权重实现要点（商业授权已取得）**：Voice Clone / Voice Design / Voice Direction 三模式、vocal events 内联标记（`(laugh)` / `[笑]`）、`--revision` 固定权重版本、官方 24 kHz mono s16le 输出、本地流式 API 单并发忙时 `409` 均可作为实现依据；惟 H100 + 预热 fast path 的 TTFA/RTF 指标**仍需本仓实测，不得直接写进验收线**。
 
 两条路径的共同出口都是 **16 kHz int16 PCM / 512 samples 块 + `AUDIO_RESPONSE_DONE`**，且不得把官方 H100 低延迟指标直接写进本仓验收线。
 
@@ -149,12 +149,12 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 | 异常 / 场景 | 约定 |
 |---|---|
 | `ModelWeightsMissingError` | Spec A 只约定**接口与消息格式**，异常类由 Spec B 的 Handler 实现。消息必须含 `repo_id`、必备子目录（研究用途下 Breeze checkpoint 自带 `audio_tokenizer/`）、以及下载 / 安装命令；**禁止静默回退到其他模型**。模板：`Weights for <repo_id> missing; required subdirs: <...>; install with: <download command>` |
-| `ModelLicenseError` | 已在 `model_registry.py` 定义（`ModelRegistryError` 子类）。商用场景（D7）选中 `deprecated` 的自托管权重 card 时抛出，消息含许可名称（`BreezeBlue Research and Non-Commercial License`）与 §6.4 的路径 L / 路径 R 指引，**禁止静默回退到自托管权重**；触发点由 Spec B 的 Handler / `BackendSpec` 实现。配置层另有 `ConfigurationError` 拦截 `deprecated` card 的 `repo_id` 覆盖 |
+| `ModelLicenseError` | 已在 `model_registry.py` 定义（`ModelRegistryError` 子类），是**通用机制**：选中 `deprecated` card 时抛出，禁止静默回退；配置层另有 `ConfigurationError` 拦截 `deprecated` card 的 `repo_id` 覆盖。**当前目录无 `deprecated` card**（Breeze 商业授权已取得，见 §10），故两者均不作用于 Breeze；触发点仍由 Spec B 实现 |
 | 远程 API 错误 | `401`（`xi-api-key` 无效 / 订阅失效）、`429` + `Retry-After`（退避重试）、连接 / 读取超时、`5xx`：一律转成可定位的错误并终止当前响应，不得吞掉异常继续播放静音或陈旧音频；打断时取消在途请求 |
 | `required_extra` | `BackendSpec.required_extra` → `create_backend_handler()` 把 `ImportError` 包装为 `pip install "speech-to-speech[<extra>]"` 提示，见 §2.2 |
 | `{env: NAME}` 缺失 | 沿用既有「缺失即报错、不回退默认」 |
 
-**许可告警是硬性要求**：必须同时出现在**部署文档**与 `speech-to-speech models list` 输出中。当前实现由 `cli.py` 对 `status="deprecated"` 的 card 在 stderr 打印告警（含「商用场景禁止自托管」与路径 L / R 指引），`--json` 输出保留 `status=deprecated` 与 `license` 字段。
+**许可告警机制**：`cli.py` 对 `status="deprecated"` 的 card 在 stderr 打印告警并保留 `license` 字段。这是通用机制；**当前目录无 `deprecated` card**，故 `models list` 不再输出 Breeze 告警（§10）。若未来新增 deprecated card，部署文档与 CLI 告警须同步恢复。
 
 ---
 
@@ -168,7 +168,7 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
   ```
 
   本机 RTX 5070 Ti Laptop 12 GB 上，S2S + Qwen3.5-4B Q4 已达 11878 MiB（仅余约 67 MiB），说明底座不可压缩、新增本地模型必须单独申报显存。
-- **Breeze 的数字仅研究用途参考**：官方 eager 约 7.7 GiB、`--fast-all` 约 14.4 GiB，叠加 4.6 GB 管线后约 12.3 GB / 19 GB——**这些值不进入商用部署预算**（D7 禁止自托管 Breeze TTS 2 权重）。
+- **Breeze 的数字为商用部署预算参考**（商业授权已取得，§10）：官方 eager 约 7.7 GiB、`--fast-all` 约 14.4 GiB，叠加 4.6 GB 管线后约 12.3 GB / 19 GB。
 - **商用路径**：路径 L 用 CosyVoice2 的**实测** `min_vram_gb`（Spec B 实测后填写，启动前为 `None`），兜底 Apache-2.0 `phonon` 为纯 CPU、本地显存近 0；路径 R 本地显存为 **0**（代价是付费、外网依赖、数据出域）。
 - Spec B 必须为每个新模型申报 `min_vram_gb`，并在文档中给出「互斥选型 / 量化档 / 多卡」建议；Qwen3-8B FP16（约 16 GB）需 24 GB 卡或 Q4/Q8 量化。Spec A 只负责让这些数字可被注册与查询。
 
@@ -179,7 +179,7 @@ config_type dataclass → spec.normalize() → setup_kwargs → BaseHandler.setu
 1. **card ↔ 参数类默认值一致**：`card.default_load_params` 的每个键都存在于 `load_param_types(card.id)`（即 `config_type` 的类型提示）中，值与 dataclass 默认值一致；`validate()` 会先做键名校验，测试再补值一致性断言。
 2. **音频契约**：STT 输入采样率 16000 + float32；TTS 输出 16000 + int16 小端 `<i2`；每块 **512 samples**；结尾恰有一个 `AUDIO_RESPONSE_DONE`；`should_listen` 只在 `EndOfResponse` 后恢复；`CancelScope` / `SpeculativeTurnTracker` 能丢弃陈旧轮。**必须覆盖 24 kHz → 16 kHz 重采样正确性**（采样数按 2/3 收敛、无削波 / 无越界、尾部不足一块时正确补块），以及 mp3/wav 解码路径。
 3. **权重缺失报错**：构造缺失权重目录，断言抛 `ModelWeightsMissingError` 且消息含 `repo_id`、必备子目录、下载命令；并断言**没有**回退到其它模型。
-4. **许可闸门报错**：商用场景下选中 `deprecated` 自托管 card 断言抛 `ModelLicenseError`（消息含许可名与路径 L / 路径 R）；`models:` 段给它写 `repo_id` 断言抛 `ConfigurationError`；`models list` 的 stderr 含许可告警。
+4. **许可闸门报错**：用临时注册的 `deprecated` card 断言 `models:` 段写 `repo_id` 会抛 `ConfigurationError`（通用机制仍保留）；另断言 `planned` 的 `breeze-tts-2` 可被正常配置（§10）。
 5. **registry 延迟导入不被破坏**：import `model_registry` / `models.builtin` / `backend_registry` 后，`sys.modules` 中不得出现任何 STT/TTS/LLM handler 模块（`_load_handler()` 必须保持惰性）。
 
 **最小回归命令**：
@@ -299,7 +299,7 @@ BackendSpec(
 
 该 card 本地显存 0、`repo_id=None`（权重不出域在服务端），输出格式常为 `pcm` / `wav_24000` / `wav_48000` / mp3；`xi-api-key` 从环境变量注入，不写进代码。
 
-### 8.4 `deprecated` 反例：`breeze-tts-2`
+### 8.4 `planned` 示例：`breeze-tts-2`（商业授权已取得）
 
 ```python
 ModelCard(
@@ -307,13 +307,13 @@ ModelCard(
     provider="BreezeBlue", weight_format="safetensors",
     backend_name="breeze-tts-2", repo_id="BreezeBlue/Breeze-TTS-2",
     min_vram_gb=7.7, license="BreezeBlue Research and Non-Commercial License",
-    status="deprecated",
+    status="planned",
     notes="商用场景（D7）禁用自托管；--fast-all 14.4 GiB 仅研究用途参考；"
           "商用按 §6.4 走路径 L（CosyVoice2）或路径 R（breeze-tts-2-hosted）。",
 )
 ```
 
-**本指南不为该 `deprecated` 本地 card 提供任何下载 / 安装命令**：D7 禁止自托管 Breeze TTS 2 权重，Spec B 不得实现其本地权重加载 Handler。它只作为「许可闸门 + 状态机」的反例存在。
+**商业授权已取得（§10）**：该 card 为 `planned`，Spec B 可以实现本地权重加载 Handler；权重下载与安装命令可按官方仓库 `breezeblue-ai/breeze-tts` 的 README 执行。`license` 字段保留官方权重许可证名，商用权来自单独商业授权。
 
 ---
 
@@ -335,7 +335,7 @@ pytest tests/ -x -q
 - **31 条 `BackendSpec(...)` 构造逐字不改**（`STT_BACKENDS` 15 / `LLM_BACKENDS` 4 / `TTS_BACKENDS` 12）；新增后端只能追加，不能重写既有条目。
 - **三个 CLI choices 与默认值不变**：`--stt`（默认 `parakeet-tdt`）、`--llm_backend`（默认 `transformers`，macOS 为 `mlx-lm`）、`--tts`（默认 `qwen3`）的 choices 仍由三张注册表派生。
 - `config/prod.yaml` 与 **9 个 compose 文件**（`docker-compose*.yml`）内容不变；`example_configs/*` 不因本框架改动；`module_arguments.py` / `s2s_pipeline.py` / `config.py` 的派生逻辑禁止手改（§2.3）。
-- `models list` 必须输出 **3 `available` / 5 `planned` / 1 `deprecated` / 27 `unregistered`** 行；`--json` 可解析、`null` 语义正确、`deprecated` 行带许可告警；`unregistered` 行不虚构版本 / 许可 / 显存。
+- `models list` 必须输出 **3 `available` / 6 `planned` / 0 `deprecated` / 27 `unregistered`** 行；`--json` 可解析、`null` 语义正确；`unregistered` 行不虚构版本 / 许可 / 显存（§10）。
 
 ### 9.3 交付验收点
 
@@ -399,9 +399,9 @@ python -m speech_to_speech.cli models list
 python -m speech_to_speech.cli models list --kind tts --json
 ```
 
-- `models list` 共 **36 行数据**：**3 `available` / 5 `planned` / 1 `deprecated` / 27 `unregistered`**（9 张 card + 27 行 `unregistered`），与 §9.2 一致；退出码 0。
-- stderr 出现许可告警：`Warning: breeze-tts-2 is deprecated: BreezeBlue Research and Non-Commercial License. 商用场景禁止自托管；…`（`--json` 模式同样输出）。
-- `--kind tts --json` 输出经 `ConvertFrom-Json` 解析成功：`PARSE_OK=True ROWS=14`，其中 `available=1 / deprecated=1 / planned=1 / unregistered=11`，全部 `kind=tts`；`null` 语义正确。
+- `models list` 共 **36 行数据**：**3 `available` / 6 `planned` / 0 `deprecated` / 27 `unregistered`**（9 张 card + 27 行 `unregistered`），与 §9.2 一致；退出码 0。
+- stderr **不再**出现 Breeze deprecated 许可告警（商业授权已取得、card 为 `planned`，见 §10）；其它 deprecated card 的告警机制仍保留。
+- `--kind tts --json` 输出经 `ConvertFrom-Json` 解析成功：`PARSE_OK=True ROWS=14`，其中 `available=1 / planned=2 / deprecated=0 / unregistered=11`，全部 `kind=tts`；`null` 语义正确。
 
 ### 兼容性红线核对
 
@@ -411,6 +411,21 @@ python -m speech_to_speech.cli models list --kind tts --json
 
 ### 资源与网络确认
 
-**确认**：本次全部测试与 CLI 验收**未下载任何模型权重**、**未加载任何真实模型**、**未占用 GPU**、**未发起任何网络调用**。模型目录全程为内存中的 `ModelCard` 元数据与注册表绑定；`planned` / `deprecated` card 无权重加载路径；测试使用桩 / mock 与本地临时文件，不触网。
+**确认**：本次全部测试与 CLI 验收**未下载任何模型权重**、**未加载任何真实模型**、**未占用 GPU**、**未发起任何网络调用**。模型目录全程为内存中的 `ModelCard` 元数据与注册表绑定；`planned` card 尚无权重加载路径（Spec B 未启动）；测试使用桩 / mock 与本地临时文件，不触网。
 
 > 结论：本分支 6 个源码 + 2 个测试文件在 `ruff check`、`mypy` 与聚焦测试上全绿；`ruff format --check` 的唯一失败已证实为基线平移。四条仓库级命令的失败全部归类为 pre-existing baseline（未隐藏、未修复、未格式化无关文件）。CLI 验收计数与兼容性红线均符合 §9.2。
+
+---
+
+## 10. 决策变更（2026-11-12）：BreezeBlue 商业授权已取得
+
+用户确认商务侧已取得 BreezeBlue 商业授权，因此：
+
+- `breeze-tts-2` 由 `deprecated` **改回 `planned`**（`planned` 仅表示 Spec B 适配层未实现，不再是许可 gate）；官方权重许可证名仍为 `BreezeBlue Research and Non-Commercial License`，商用权来自单独商业授权。
+- **可以自托管 Breeze TTS 2 权重用于商用**。D7 的禁令撤销；`config.py` 的 deprecated 闸门、`cli.py` 的 deprecated 告警、`ModelLicenseError` 保留为通用机制，但当前目录已无 `deprecated` card，不再作用于 Breeze。
+- 路径 L（CosyVoice2）/ 路径 R（付费托管 API）降级为**可选替代**，不再是合规必需。
+- 7.7 / 14.4 GiB 与叠加后的 12.3 / 19 GB 恢复为商用部署预算参考。
+- 当前状态分布：**3 `available` / 6 `planned` / 0 `deprecated` / 27 `unregistered`**。
+- 项目仍为演示开源项目；除 Breeze 外的其它模型商用许可仍由实际应用方自行申请。
+
+本节约束优先于本指南前文中任何「禁止自托管 / 商用禁用 / 仅研究用途 / 1 deprecated」的历史措辞。

@@ -155,12 +155,14 @@ def test_builtin_catalog_status_counts_and_license_gate():
         "qwen3-tts-1.7b-customvoice",
         "qwen3.5-4b-transformers",
     ]
-    assert [c.id for c in cards if c.status == "deprecated"] == ["breeze-tts-2"]
-    assert sum(c.status == "planned" for c in cards) == 5
+    assert not [c.id for c in cards if c.status == "deprecated"]
+    assert sum(c.status == "planned" for c in cards) == 6
 
     breeze = next(c for c in cards if c.id == "breeze-tts-2")
+    assert breeze.status == "planned"
     assert "Research and Non-Commercial" in breeze.license
     assert "商用" in breeze.notes
+    assert "商业授权" in breeze.notes
     assert breeze.min_vram_gb == 7.7
 
     qwen_llm = next(c for c in cards if c.id == "minicpm-homologous-qwen3-8b")
@@ -197,7 +199,7 @@ def test_importing_backend_registry_populates_global_catalog():
     from speech_to_speech.backend_registry import STT_BACKENDS  # noqa: F401
 
     assert len(mr.list_models()) == 9
-    assert mr.resolve_model("breeze-tts-2").status == "deprecated"
+    assert mr.get_model("breeze-tts-2").status == "planned"
 
 
 def test_backend_registry_import_keeps_handler_lazy_loading():

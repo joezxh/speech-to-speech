@@ -60,15 +60,16 @@ def builtin_model_cards() -> tuple[ModelCard, ...]:
             repo_id="BreezeBlue/Breeze-TTS-2",
             min_vram_gb=7.7,
             license="BreezeBlue Research and Non-Commercial License",
-            status="deprecated",
+            status="planned",
             notes=(
-                "项目定位为演示开源项目：权重与自托管输出仅限研究/非商业，商用许可由实际应用方自行申请；"
-                "演示/研究用途可自托管，但不得作为商用推荐路径（D7）。"
-                "--fast-all 快路径 14.4 GiB；两者仅研究用途参考，不进入商用部署预算。"
+                "项目已取得 BreezeBlue 商业授权（2026-11-12 用户确认），可商用自托管 Breeze TTS 2 权重；"
+                "官方权重许可证名仍为 BreezeBlue Research and Non-Commercial License，商用权来自单独商业授权。"
+                "status=planned 仅因 Spec B 适配层尚未实现，不再是许可 gate。"
+                "本列为官方 eager 显存 7.7 GiB；--fast-all 快路径 14.4 GiB 需 24 GB 卡，"
+                "叠加 4.6 GB 管线后约 12.3 GB / 19 GB，可作商用部署预算参考。"
                 "官方输出 24 kHz mono s16le PCM；本地流式 API 单并发、忙时 409；"
                 "checkpoint 自带 audio_tokenizer；--revision 固定权重版本。"
-                "商用须按 spec §6.4 走路径 L（CosyVoice2）或路径 R（付费托管 API）；"
-                "路径 R 由 Spec B 另注册 breeze-tts-2-hosted(weight_format=remote) card。"
+                "路径 L（CosyVoice2）/ 路径 R（付费托管 API）为可选替代，不再是合规必需。"
             ),
         ),
         ModelCard(
