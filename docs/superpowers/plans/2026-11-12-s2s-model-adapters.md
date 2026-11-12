@@ -155,7 +155,7 @@
 - Consumes: `audio_utils.resample_pcm_24k_to_16k` / `iter_pcm_chunks`（Task 1）、`BreezeInferenceAdapter` / `OfficialBreezeAdapter`（Task 3）、`BaseHandler[TTSIn, TTSOut]`、`AUDIO_RESPONSE_DONE`、`EndOfResponse`、`CancelScope`、`SpeculativeTurnTracker`
 - Produces:
   - `@dataclass class BreezeTTSHandlerArguments`，字段 `breeze_tts_model_name: str = "BreezeBlue/Breeze-TTS-2"`、`breeze_tts_revision`、`breeze_tts_device="cuda"`、`breeze_tts_fast_all=False`、`breeze_tts_ref_audio`、`breeze_tts_ref_text`、`breeze_tts_instruction=""`、`breeze_tts_cfg_scale=4.0`、`breeze_tts_seed`、`breeze_tts_chunk_size=512`、`breeze_tts_gen_*`（由 `normalize_dataclass_config()` 合并进 `gen_kwargs`）
-  - `class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut])`，`setup(should_listen, ..., adapter: BreezeInferenceAdapter | None = None, ...)`；`process(tts_input: TTSIn) -> Iterator[TTSOut]`
+  - `class BreezeTTSHandler(BaseHandler[TTSIn, TTSOut])`，`setup(should_listen, model_name, revision, device, fast_all, ref_audio, ref_text, instruction, cfg_scale, seed, chunk_size, gen_kwargs, *, adapter: BreezeInferenceAdapter | None = None, cancel_scope=None, speculative_turns=None, **_ignored)`；`process(tts_input: TTSIn) -> Iterator[TTSOut]`。**`setup()` 的参数名是 `spec.normalize()` 剥掉 `breeze_tts_` 前缀之后的名字**（如 `model_name`，不是 `breeze_tts_model_name`）；`adapter` 不是 dataclass 字段，生产路径不传，只在测试注入。
 
 - [ ] **Step 1: 写失败测试** `tests/test_breeze_tts_handler.py`（用 `BaseHandler.__new__` 或直接构造，风格参照 `tests/test_phonon_tts_handler.py:41-55`）
   - `test_process_yields_16k_int16_512_sample_chunks`：注入 stub adapter 返回 24000 samples 的 int16 正弦，断言所有音频块 `dtype == np.int16`、每块 512 samples、总数按 2/3 收敛。
@@ -171,7 +171,7 @@
 
 - [ ] **Step 3: 实现**
   - `breeze_tts_arguments.py`：按 Interfaces 字段定义 dataclass，字段名带 `breeze_tts_` 前缀，`gen_*` 字段用 `metadata` help 标明会合并进 `gen_kwargs`。
-  - `breeze_tts_handler.py`：`setup()` 中 `adapter = adapter or OfficialBreezeAdapter()`，调用 `adapter.load(repo_id=breeze_tts_model_name, revision=..., device=..., fast_all=...)`；保存 `should_listen` / `cancel_scope` / `speculative_turns` / `chunk_size`。
+  - `breeze_tts_handler.py`：`setup()` 中 `adapter = adapter or OfficialBreezeAdapter()`，调用 `adapter.load(repo_id=model_name, revision=revision, device=device, fast_all=fast_all)`；保存 `should_listen` / `cancel_scope` / `speculative_turns` / `chunk_size` / 三组模式参数。`setup()` 的参数名用剥前缀后的形式，与 `BreezeTTSHandlerArguments` 经 `normalize_dataclass_config()` 后的键一致。
   - `process()` 结构照 `TTS/cosyvoice_handler.py:119-150`：`EndOfResponse` 分支做陈旧轮判断并 yield 一次 `AUDIO_RESPONSE_DONE`；普通 `TTSInput` 调 `adapter.synthesize()` → `resample_pcm_24k_to_16k(..., input_dtype="int16")` → `iter_pcm_chunks(...)`；打断用 `CancelScope.is_stale()`。
   - `cleanup()` 调 `adapter.close()`；`on_session_end()` 记录 debug 日志。
 
