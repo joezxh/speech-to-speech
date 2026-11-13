@@ -1,0 +1,29 @@
+# 声纹模块增量重建（基座镜像已被清理时的回退路径）。
+#
+# 背景：完整构建（Dockerfile.voiceprint）依赖基座 `speech-to-speech-local:cu130-1.1-sox`；
+#   该镜像体积 11.8GB，常被 Docker 自动清理 → 构建会退化为联网拉取，
+#   在无 Docker Hub 直连/代理的机器上直接失败
+#   （dial tcp 104.23.125.189:443: connectex: connection attempt failed）。
+#
+# 本文件从**已含全部端点补丁**的 `speech-to-speech-local:cu130-1.3-voiceprint` 出发，
+#   只覆盖声纹服务实现模块 `src/speech_to_speech/voiceprint/`。
+#   端点补丁（ASR/TTS REST + 声纹 embeddings）已在基座镜像内，**无需重打** ——
+#   patch 脚本的幂等检测（`rest_transcriptions` / `_vp_embeddings` 已在文件中）
+#   本来也会跳过重打。
+#
+# 适用场景：**只改动了 src/speech_to_speech/voiceprint/ 下的实现代码**。
+# 若改动了 scripts/patch_*.py、基座镜像相关文件，仍须用 Dockerfile.voiceprint 完整重建。
+#
+# 构建（先备份旧 tag，便于回滚）：
+#   docker tag speech-to-speech-local:cu130-1.3-voiceprint speech-to-speech-local:cu130-1.3-voiceprint.bak
+#   docker build -f Dockerfile.voiceprint.hotfix -t speech-to-speech-local:cu130-1.3-voiceprint.new .
+#   docker tag speech-to-speech-local:cu130-1.3-voiceprint.new speech-to-speech-local:cu130-1.3-voiceprint
+#   docker rmi speech-to-speech-local:cu130-1.3-voiceprint.new
+FROM speech-to-speech-local:cu130-1.3-voiceprint
+USER root
+
+COPY src/speech_to_speech/voiceprint/ /usr/src/app/src/speech_to_speech/voiceprint/
+
+# 编译校验：覆盖进来的模块必须能被解释器接受
+RUN python3 -m compileall -q /usr/src/app/src/speech_to_speech/voiceprint \
+    && echo "voiceprint sources compile OK"

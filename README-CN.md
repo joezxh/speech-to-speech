@@ -192,6 +192,14 @@ uv sync
 
 对于仅客户端的、配合 vLLM、OpenAI 托管 Transcription API 或其他兼容服务器的语音识别，见 [OpenAI 兼容 STT](./docs/openai-compatible-stt-CN.md)。
 
+### 中文部署文档
+
+| 文档 | 用途 |
+|---|---|
+| [私有化部署手册（Docker）](./docs/private-deployment-manual-CN.md) | 离线交付、镜像与权重分发、模型更换、效果评估、故障速查 |
+| [ASR + LLM + TTS 模型组合矩阵](./docs/model-combination-matrix-CN.md) | 后端横向对比、显存基线、按硬件档位的组合推荐 |
+| [声纹嵌入服务设计](./docs/voiceprint-embedding-service-design-CN.md) | `/v1/audio/embeddings` 端点契约、鉴权与错误码规范 |
+
 ## 命令
 
 | 命令 | 行为 | 在以下场景使用 |

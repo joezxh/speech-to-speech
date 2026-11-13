@@ -1,0 +1,44 @@
+# 声纹嵌入能力镜像：ASR/TTS 独立端点 + 声纹嵌入端点（构建期固化，端点重建后仍在，满足 G0-b）。
+#
+# 设计依据：docs/voiceprint-embedding-service-design-CN.md（§3.5 三方案对比、§6 容器化部署）
+#
+# ★ 基座必须是**未注入 REST 补丁**的 cu130-1.1-sox：
+#   若从 cu130-1.2-rest 出发，旧的 ASR/TTS 端点已在镜像里，而 patch 脚本的幂等检测
+#   （"rest_transcriptions" in content）会跳过重打 → 容器里仍是旧版 TTS 端点
+#   （硬编码 generate_custom_voice），在 Base 权重下会报
+#   "Loaded model does not support custom voice generation"。
+FROM speech-to-speech-local:cu130-1.1-sox
+USER root
+
+# 1) ASR / TTS 独立端点（新版：TTS 支持参考音频克隆路径）
+COPY scripts/patch_pipeline_rest.py /tmp/patch_pipeline_rest.py
+RUN python3 /tmp/patch_pipeline_rest.py \
+    && grep -q "rest_transcriptions" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
+    && grep -q "_is_clone" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
+    && echo "ASR/TTS rest endpoints baked OK (clone-aware)" \
+    && rm /tmp/patch_pipeline_rest.py
+
+# 2) 声纹嵌入端点补丁
+COPY scripts/patch_voiceprint_embeddings.py /tmp/patch_voiceprint_embeddings.py
+RUN python3 /tmp/patch_voiceprint_embeddings.py \
+    && grep -q "_vp_embeddings" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
+    && grep -q "audio/embeddings/capability" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
+    && echo "voiceprint endpoints baked OK" \
+    && rm /tmp/patch_voiceprint_embeddings.py
+
+# 3) 声纹服务实现（含 standalone encoder 加载路径，方案 C）
+COPY src/speech_to_speech/voiceprint/ /usr/src/app/src/speech_to_speech/voiceprint/
+
+# 说明：**不覆盖** s2s_pipeline.py / module_arguments.py。
+# 基座镜像(cu130-1.1)不含 console 相关模块，而宿主工作树的 s2s_pipeline.py 已引入
+# `speech_to_speech.console_integration` 依赖，覆盖后容器会以
+# ModuleNotFoundError: No module named 'speech_to_speech.console_integration' 启动失败。
+# 因此声纹配置统一走环境变量（补丁层读取），不经过 CLI 参数。
+
+# 编译校验：补丁注入的代码必须能被解释器接受
+RUN python3 -m compileall -q /usr/src/app/src/speech_to_speech/voiceprint \
+    && python3 -m compileall -q /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
+    && echo "voiceprint sources compile OK"
+
+# 构建（上下文 = speech-to-speech-src/）：
+#   docker build -f Dockerfile.voiceprint -t speech-to-speech-local:cu130-1.3-voiceprint .

@@ -1,0 +1,138 @@
+# 方案 A 部署：LLM 走第三方服务 + TTS/声纹统一用 Qwen3-TTS-12Hz-1.7B-Base 一份权重。
+#
+# 与 docker-compose.thirdparty.yml 的差异（仅三处，其余完全一致）：
+#   1) 镜像 → speech-to-speech-local:cu130-1.3-voiceprint（多声纹端点补丁与实现）
+#   2) TTS 权重 → /root/.cache/qwen3-tts-base（Base 变体），并给参考音频走**克隆路径**
+#      （Base 的 spk_id 为空，没有 Aiden 等预设音色；本仓 handler 的分支顺序是
+#       `_has_voice_clone_reference()` 优先于 `model_type`，给了 ref_audio 即走克隆）
+#   3) 开启声纹端点（VOICEPRINT_* 环境变量）
+#
+# 基线对照：docker-compose.thirdparty.yml（CustomVoice + 预设音色，无声纹端点）
+#
+# 用法：
+#   docker compose -f docker-compose.voiceprint.yml --env-file .env.thirdparty up -d
+#
+# 设计依据：docs/voiceprint-embedding-service-design-CN.md §3.5 / §6
+
+name: speech-to-speech-voiceprint
+
+volumes:
+  s2s-model-cache:
+    name: s2s-model-cache
+
+services:
+  pipeline:
+    image: speech-to-speech-local:cu130-1.3-voiceprint
+    command:
+      - speech-to-speech
+      - serve
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8765"
+      # —— LLM：第三方 OpenAI 兼容服务（与 thirdparty 形态一致）——
+      - --llm_backend
+      - chat-completions
+      - --model_name
+      - "${LLM_MODEL}"
+      - --responses_api_base_url
+      - "${LLM_BASE_URL}"
+      - --responses_api_api_key
+      - "${LLM_API_KEY}"
+      - --responses_api_stream
+      - --responses_api_disable_thinking
+      - --responses_api_provider_unavailable_message
+      - "语言模型服务暂时不可用，请稍后再试。"
+      - --stream_batch_sentences
+      - "1"
+      # —— STT：Qwen3-ASR-1.7B-hf（与 192.168.40.30 环境一致，未变）——
+      - --stt
+      - qwen3-asr
+      - --qwen3_asr_model_name
+      - /root/.cache/qwen3-asr-model-hf
+      - --qwen3_asr_device
+      - auto
+      - --qwen3_asr_language
+      - auto
+      # —— TTS：Qwen3-TTS（权重目录与是否走克隆路径由 env 决定）——
+      # 方案 C（默认，生产形态）：CustomVoice 预设音色，首音 1.85s / RTF 0.41
+      # 方案 A：换成 Base（${TTS_MODEL_DIR}）并给参考音频 → 走克隆路径，
+      #         但实测首音 34~37s、RTF 0.03，**语音合成不可接受**，仅供对照
+      - --tts
+      - qwen3
+      - --qwen3_tts_model_name
+      - "${TTS_MODEL_DIR:-/root/.cache/qwen3-tts-model}"
+      - --qwen3_tts_backend
+      - torch
+      - --qwen3_tts_device
+      - cuda
+      - --qwen3_tts_non_streaming_mode
+      - "False"
+      - --qwen3_tts_streaming_chunk_size
+      - "4"
+      # 参考音频：仅当 TTS 权重是 Base（无预设音色）时需要；CustomVoice 下留空
+      - --qwen3_tts_ref_audio
+      - "${TTS_REF_AUDIO:-}"
+      # —— VAD 判停：与 192.168.40.30 环境一致（未变）——
+      - --min_silence_ms
+      - "${MIN_SILENCE_MS:-700}"
+      - --thresh
+      - "${VAD_THRESH:-0.6}"
+      - --no_smart_turn
+      - --speculative_reopen_ms
+      - "0"
+      - --unanswered_reopen_ms
+      - "0"
+      - --init_chat_role
+      - system
+      - --init_chat_prompt
+      - "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
+      - --no_enable_live_transcription
+      - --smart_turn_model_path
+      - /root/.cache/smart-turn-v3.2-cpu.onnx
+    ports:
+      # WS /v1/realtime（S2S 主链路）
+      # POST /v1/audio/transcriptions（ASR 独立接口）
+      # POST /v1/audio/speech（TTS 独立接口）
+      # POST /v1/audio/embeddings（声纹嵌入，需 Bearer）
+      # GET  /v1/audio/embeddings/capability（声纹探活，需 Bearer）
+      - "${PIPELINE_PORT:-8765}:8765/tcp"
+    environment:
+      - HF_HUB_OFFLINE=1
+      - HF_ENDPOINT=https://hf-mirror.com
+      - HF_HUB_ENABLE_PROGRESS_BARS=false
+      - MODELSCOPE_ENDPOINT=https://modelscope.cn
+      # —— 声纹端点配置（补丁层从环境变量读取）——
+      - VOICEPRINT_ENABLED=${VOICEPRINT_ENABLED:-true}
+      - VOICEPRINT_API_KEY=${VOICEPRINT_API_KEY:?VOICEPRINT_API_KEY 必须设置（fail-closed）}
+      - VOICEPRINT_MODEL=${VOICEPRINT_MODEL:-qwen3-tts-base-speaker}
+      - VOICEPRINT_MAX_AUDIO_MS=${VOICEPRINT_MAX_AUDIO_MS:-30000}
+      - VOICEPRINT_MAX_BYTES=${VOICEPRINT_MAX_BYTES:-10485760}
+      - VOICEPRINT_MIN_SPEECH_MS=${VOICEPRINT_MIN_SPEECH_MS:-800}
+      - VOICEPRINT_STRICT_REJECT=${VOICEPRINT_STRICT_REJECT:-false}
+      - VOICEPRINT_QUEUE_CAPACITY=${VOICEPRINT_QUEUE_CAPACITY:-16}
+      - VOICEPRINT_MAX_CONCURRENCY=${VOICEPRINT_MAX_CONCURRENCY:-4}
+      - VOICEPRINT_INFER_TIMEOUT_MS=${VOICEPRINT_INFER_TIMEOUT_MS:-3000}
+      # 方案 C：独立加载切分出来的 speaker encoder（22.9 MiB，不加载 talker）
+      #   留空则回退到"复用 TTS 模型对象"（方案 A，要求 TTS 权重为 Base）
+      - VOICEPRINT_ENCODER_DIR=${VOICEPRINT_ENCODER_DIR:-/root/.cache/qwen3-speaker-encoder}
+    volumes:
+      # 权重放在 Docker named volume（Linux 文件系统）而不是 Windows 绑定挂载：
+      # 实测从 Windows 挂载读权重仅 ~0.75 MB/s，冷启动要几十分钟；
+      # 放进 volume 后容器内读速正常，启动回到 1~2 分钟。
+      # 首次准备（一次性）：
+      #   docker volume create s2s-model-cache
+      #   docker run --rm -v "$PWD/cache:/src:ro" -v s2s-model-cache:/dst \
+      #     speech-to-speech-local:cu130-1.3-voiceprint sh -c "cp -a /src/. /dst/"
+      - s2s-model-cache:/root/.cache/
+      - ./silero-vad:/opt/silero-vad:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['${PIPELINE_GPU_ID:-0}']
+              capabilities: [gpu]

@@ -1095,3 +1095,77 @@ curl -s http://127.0.0.1:8765/v1/pool                    # 健康检查
 - [ ] 回滚镜像 tag 已打好（`backup-<日期>`）
 
 
+
+---
+
+## 11. 声纹嵌入服务（可选能力）
+
+除语音对话主链路外，本仓还可对外提供**说话人嵌入（声纹）提取**能力，供上层系统做
+1:1 说话人核验。设计与契约见
+[`voiceprint-embedding-service-design-CN.md`](./voiceprint-embedding-service-design-CN.md)。
+
+### 11.1 能力边界
+
+| 做 | 不做 |
+|---|---|
+| 一次音频 → 一个固定维度向量（OpenAI 兼容 `POST /v1/audio/embeddings`） | 不做注册/验证/底库/1:N 检索 |
+| 探活与自检（`GET /v1/audio/embeddings/capability`） | 不出任何身份结论（响应里没有 `verdict`/`confidence`） |
+| 技术质量分（有效语音时长、信噪、削波） | 不做业务质检判定（低 SNR / 重叠语音 → 归平台侧） |
+| 鉴权与背压保护 | 不落盘音频、不把向量写日志 |
+
+### 11.2 模型与权重（二选一）
+
+| 方案 | 权重 | 适用 |
+|---|---|---|
+| **A. 统一一份权重**（推荐） | `Qwen3-TTS-12Hz-1.7B-Base` 一份，同时做 TTS 与声纹 | 磁盘/显存/加载时间最优；代价：TTS 从"预设音色"改为"参考音频克隆" |
+| C. 切分 encoder | TTS 用 CustomVoice，声纹单独用切出的 `speaker_encoder.*`（22.9 MiB） | 必须保留预设音色与方言时选它 |
+
+> ⚠️ CustomVoice 权重**不含** speaker encoder；用 Base 的 config 去加载 CustomVoice 的权重，
+> encoder 会**随机初始化**（不报错，但向量毫无意义）。两者必须配套。
+
+### 11.3 启用方式
+
+```yaml
+# docker-compose.voiceprint.yml（示例，完整文件见仓库）
+services:
+  pipeline:
+    image: speech-to-speech-local:cu130-1.3-voiceprint
+    environment:
+      - VOICEPRINT_ENABLED=true
+      - VOICEPRINT_API_KEY=${VOICEPRINT_API_KEY:?必须设置}
+      - VOICEPRINT_MODEL=qwen3-tts-base-speaker
+```
+
+```bash
+# 探活
+curl -s -H "Authorization: Bearer $VOICEPRINT_API_KEY" \
+  http://127.0.0.1:8765/v1/audio/embeddings/capability
+
+# 提取向量
+curl -s -X POST http://127.0.0.1:8765/v1/audio/embeddings \
+  -H "Authorization: Bearer $VOICEPRINT_API_KEY" \
+  -F "file=@sample.wav" -F "purpose=verify"
+# → {"embedding":[...],"dim":2048,"model":"...","quality":0.87,"speechDurationMs":9200}
+```
+
+### 11.4 声纹效果评估
+
+在 §8 的四层体系之外，声纹能力额外关注两点：
+
+| 指标 | 怎么测 | 判定 |
+|---|---|---|
+| **同一人一致性** | 同一说话人录 3 段 → 3 个向量两两余弦 | 平均 ≥ 0.8（通道一致时） |
+| **异人可分性** | N 个不同说话人两两余弦 | 最高不应显著高于同一人均值（否则阈值无意义） |
+| 阈值标定 | DET 曲线 → 取 FAR ≤1% 时的 EER 阈值 | FAR ≤1% 且 FRR ≤5% |
+
+> 阈值**必须**实测标定后回填，不得使用配置初值直接投产。
+
+### 11.5 声纹相关故障速查
+
+| 现象 | 根因 | 处置 |
+|---|---|---|
+| 端点 404 | `VOICEPRINT_ENABLED` 未开启（关闭时不注册路由） | 打开开关并重建容器 |
+| 端点 503 `AUTH_NOT_CONFIGURED` | 未设 `VOICEPRINT_API_KEY` | 配置凭据（fail-closed，不会匿名放行） |
+| 端点 500 `INFERENCE_FAILED` | 模型不含 speaker encoder（用了 CustomVoice 权重） | 换 Base 权重；看日志 `voiceprint: inference failed` |
+| capability `ready=false` | 权重缺失或加载失败 | 核对 `cache/qwen3-tts-base/` 与挂载 |
+| 探测音频被 409 拒收 | 误把"检测不到语音"当成拒收条件 | 保持 `VOICEPRINT_STRICT_REJECT=false` |

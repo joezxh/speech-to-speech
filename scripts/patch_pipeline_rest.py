@@ -85,18 +85,58 @@ NEW_BLOCK = '''    # ── Standalone ASR / TTS REST endpoints (reuse in-proces
         if not text.strip():
             raise HTTPException(status_code=400, detail="empty input")
         try:
-            audio_arrays, sr = await _asyncio.to_thread(
-                tts.model.generate_custom_voice,
-                text=text,
-                speaker=voice,
-                language=language,
-                non_streaming_mode=True,
+            # 按 TTS handler 的实际模式分流：
+            #   · 配了参考音频 → 克隆路径（Base 变体没有预设音色，只能克隆）
+            #   · 未配参考音频 → 预设音色路径（CustomVoice 变体）
+            # 否则在 Base 上调用 generate_custom_voice 会因 spk_id 为空而返回空音频。
+            _is_clone = bool(
+                hasattr(tts, "_has_voice_clone_reference") and tts._has_voice_clone_reference()
             )
             chunks = []
-            for c in audio_arrays:
-                arr = c[0] if isinstance(c, tuple) else c
-                chunks.append(_np.asarray(arr).flatten())
+            sr = 24000
+            if _is_clone:
+                # 与 handler 的 _process_voice_clone 保持同一调用方式（流式 + 同一 chunk_size），
+                # 否则会走未优化的解码路径（实测首音 30s+）。
+                # ★ 必须在 to_thread 里消费：generate_voice_clone_streaming 是**同步生成器**，
+                #   直接在 async 端点里迭代会阻塞 event loop（整个服务卡死）。
+                def _collect_clone():
+                    _out = []
+                    _sr = 24000
+                    for _item in tts.model.generate_voice_clone_streaming(
+                        text=text,
+                        language=language,
+                        ref_audio=getattr(tts, "ref_audio", None),
+                        ref_spk=getattr(tts, "ref_spk", None),
+                        ref_rvq=getattr(tts, "ref_rvq", None),
+                        ref_text=getattr(tts, "ref_text", "") or "",
+                        chunk_size=getattr(tts, "streaming_chunk_size", 4),
+                        non_streaming_mode=False,
+                    ):
+                        _arr, _s = tts._prepare_audio_chunk(_item)
+                        if _arr is None or _s is None:
+                            continue
+                        _arr = _np.asarray(_arr).flatten()
+                        if _arr.size == 0:
+                            continue
+                        _out.append(_arr)
+                        _sr = _s
+                    return _out, _sr
+
+                chunks, sr = await _asyncio.to_thread(_collect_clone)
+            else:
+                audio_arrays, sr = await _asyncio.to_thread(
+                    tts.model.generate_custom_voice,
+                    text=text,
+                    speaker=voice,
+                    language=language,
+                    non_streaming_mode=True,
+                )
+                for c in audio_arrays:
+                    arr = c[0] if isinstance(c, tuple) else c
+                    chunks.append(_np.asarray(arr).flatten())
             waveform = _np.concatenate(chunks) if chunks else _np.zeros(0, dtype=_np.float32)
+            if waveform.size == 0:
+                raise ValueError("tts produced empty audio")
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"tts failed: {exc}")
         buf = _io.BytesIO()
