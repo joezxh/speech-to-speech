@@ -57,5 +57,6 @@ export const TOKEN_ENFORCED_GLOBS: readonly string[] = [
   'src/views/OverviewView.vue',
   'src/views/TrafficView.vue',
   'src/components/NotImplemented.vue',
-  'src/components/ClusterFormModal.vue'
+  'src/components/ClusterFormModal.vue',
+  'src/components/TopoChart.vue'
 ]
