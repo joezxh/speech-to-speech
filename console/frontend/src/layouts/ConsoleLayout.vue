@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 
 import { frontOverlays, type NavIcon, type NavMeta, type VoiceOverlay } from '@/router/nav'
 import { useAuthStore } from '@/stores/auth'
+import { useClusterStore } from '@/stores/cluster'
 import { useConsoleStore } from '@/stores/console'
 import { useLocaleStore } from '@/stores/locale'
 import { DRAWER_BREAKPOINT, useShellStore } from '@/stores/shell'
@@ -15,6 +16,7 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const consoleStore = useConsoleStore()
+const clusterStore = useClusterStore()
 const shell = useShellStore()
 const voice = useVoiceStore()
 const localeStore = useLocaleStore()
@@ -88,6 +90,14 @@ function onProfileChange(event: Event): void {
   consoleStore.selectProfile(select.value)
 }
 
+// 集群胶囊：切换走 store.switchTo（POST /switch 留审计），失败不切、select 回弹。
+function onClusterChange(event: Event): void {
+  const select = event.target as HTMLSelectElement
+  void clusterStore.switchTo(select.value).then((ok) => {
+    if (!ok) select.value = clusterStore.current
+  })
+}
+
 // 健康胶囊（demo `#health-pill`）：未连接 = warn，pipeline 非 ok = bad，否则 ok。
 const healthDot = computed<'ok' | 'warn' | 'bad'>(() => {
   const status = consoleStore.status
@@ -116,6 +126,7 @@ watch(
 )
 
 onMounted(() => {
+  void clusterStore.load()
   // 与 `console.less` / `DRAWER_BREAKPOINT` 同值：小屏侧栏变抽屉，舞台不被挤压。
   mql = window.matchMedia(`(max-width: ${DRAWER_BREAKPOINT - 1}px)`)
   syncNarrow(mql)
@@ -237,11 +248,18 @@ function onHistoryClick(): void {
         </button>
       </div>
 
-      <!-- 集群胶囊（demo `#cluster-pill`）：S1 的集群即 profile 权宜映射，
-           换成 demo 的原生 select 胶囊样式。 -->
+      <!-- 集群胶囊（demo `#cluster-pill`）：真实集群列表，切换=switch 审计（spec §5.1）。 -->
       <label class="shell__pill">
         <span>{{ t('shell.cluster') }}</span>
-        <select :value="consoleStore.profile" :aria-label="t('shell.cluster')" @change="onProfileChange">
+        <select :value="clusterStore.current" :aria-label="t('shell.cluster')" @change="onClusterChange">
+          <option v-for="row in clusterStore.rows" :key="row.name" :value="row.name">{{ row.name }}</option>
+        </select>
+      </label>
+
+      <!-- Profile 胶囊：从旧集群胶囊拆出，profile 语义保持不变（部署环境档位）。 -->
+      <label class="shell__pill">
+        <span>{{ t('shell.profile') }}</span>
+        <select :value="consoleStore.profile" :aria-label="t('shell.profile')" @change="onProfileChange">
           <option v-for="opt in profileOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
         </select>
       </label>
