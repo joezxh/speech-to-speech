@@ -4,9 +4,11 @@ import type { Locale } from '@/i18n/locale'
 
 const SESSION_KEY = 's2s.console.session'
 const PROFILE_KEY = 's2s.console.profile'
+const CLUSTER_KEY = 's2s.console.cluster'
 const LOCALE_KEY = 's2s.console.locale'
 
 export const DEFAULT_PROFILE = 'prod'
+export const DEFAULT_CLUSTER = 'default'
 
 /**
  * `sessionStorage`, not `localStorage`: the console is a single-host ops tool
@@ -45,6 +47,15 @@ export function readProfile(): string {
 
 export function saveProfile(profile: string): void {
   sessionStorage.setItem(PROFILE_KEY, profile)
+}
+
+/** 当前集群：与 profile 同存 sessionStorage，关标签页即回缺省（spec §5.1）。 */
+export function readCluster(): string {
+  return sessionStorage.getItem(CLUSTER_KEY) || DEFAULT_CLUSTER
+}
+
+export function saveCluster(cluster: string): void {
+  sessionStorage.setItem(CLUSTER_KEY, cluster)
 }
 
 export function readLocale(): Locale | null {

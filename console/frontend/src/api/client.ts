@@ -103,6 +103,8 @@ export const api = {
     request<T>({ ...config, url, method: 'get' }),
   post: <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> =>
     request<T>({ ...config, url, method: 'post', data: body }),
+  put: <T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> =>
+    request<T>({ ...config, url, method: 'put', data: body }),
   delete: <T>(url: string, config?: AxiosRequestConfig): Promise<T> =>
     request<T>({ ...config, url, method: 'delete' })
 }

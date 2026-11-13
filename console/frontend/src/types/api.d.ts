@@ -115,6 +115,46 @@ export interface InstancesSummary {
   slots_in_use: number
   slots_free: number
   pending_grants: number
+  // Task 5 派生键：legacy 路径不返回，必须保持可选。
+  machines_total?: number
+  machines_online?: number
+  error_rate_5m?: number | null
+  top_error_instance?: string | null
+}
+
+/** 集群行：字段名与后端 routers/clusters.py `_row_payload` 逐字一致。 */
+export interface ClusterRow {
+  name: string
+  registry: string
+  policy: 'least' | 'rr' | 'lat'
+  note: string
+  machines_total: number
+  machines_online: number
+  instances_total: number
+  healthy: boolean
+  updated_at: string
+  updated_by: string
+}
+
+/** 集群写载荷：POST 全量、PUT 不含 name（name 在路径上）。 */
+export interface ClusterWritePayload {
+  name: string
+  registry: string
+  policy: string
+  note: string
+}
+
+/** 最近事件行：字段名与后端 `/clusters/events` 逐字一致（camelCase）。 */
+export interface ClusterEventRow {
+  auditId: string
+  at: string
+  actor: string
+  role: string
+  action: string
+  profile: string
+  fields: string[]
+  result: 'ok' | 'error'
+  errorCode: string
 }
 
 /** 字段名与后端 schemas.instance.metric_point 逐字一致（camelCase）。 */
