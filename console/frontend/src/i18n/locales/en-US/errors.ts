@@ -4,6 +4,12 @@ export default {
   invalidRefreshToken: 'Sign-in is invalid, please sign in again',
   tooManyAttempts: 'Too many failures, please retry later',
   forbidden: 'Your role is not allowed to perform this action',
+  invalidRequest: 'The request is invalid',
+  duplicateName: 'Cluster name already exists',
+  duplicateRegistry: 'That registry is already used by another cluster',
+  clusterNotFound: 'Cluster does not exist',
+  clusterNotEmpty: 'The cluster still owns machines and cannot be deleted',
+  lastCluster: 'At least one cluster must remain',
   invalidParameter: 'Invalid parameter',
   versionConflict: 'Config was changed by others, refresh and retry',
   validationFailed: 'Parameter validation failed',
@@ -57,6 +63,7 @@ export default {
     delete: 'Delete failed',
     voiceDetail: 'Failed to read voice details',
     instances: 'Instance list unreadable',
-    trends: 'Trends unreadable'
+    trends: 'Trends unreadable',
+    events: 'Failed to load recent events'
   }
 }

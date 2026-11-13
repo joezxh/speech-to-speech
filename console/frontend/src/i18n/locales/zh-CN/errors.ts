@@ -4,6 +4,12 @@ export default {
   invalidRefreshToken: '登录已失效，请重新登录',
   tooManyAttempts: '失败次数过多，请稍后再试',
   forbidden: '当前角色无权执行该操作',
+  invalidRequest: '请求不合法',
+  duplicateName: '集群名已存在',
+  duplicateRegistry: '该 registry 已被其他集群使用',
+  clusterNotFound: '集群不存在',
+  clusterNotEmpty: '集群下仍有机器，无法删除',
+  lastCluster: '至少需要保留一个集群',
   invalidParameter: '参数不合法',
   versionConflict: '配置已被他人修改，请刷新后重试',
   validationFailed: '参数校验未通过',
@@ -57,6 +63,7 @@ export default {
     delete: '删除失败',
     voiceDetail: '音色详情读取失败',
     instances: '实例列表不可读',
-    trends: '趋势不可读'
+    trends: '趋势不可读',
+    events: '最近事件加载失败'
   }
 }
