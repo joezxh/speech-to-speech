@@ -231,18 +231,24 @@ const eventColumns = computed(() => [
                 v-if="record.name !== clusterStore.current && auth.hasPermission('console:cluster:switch')"
                 size="small"
                 @click="switchCluster(record as ClusterRow)"
-              >{{ t('overview.actions.switchTo') }}</a-button>
+              >
+                {{ t('overview.actions.switchTo') }}
+              </a-button>
               <a-button
                 v-if="auth.hasPermission('console:cluster:update')"
                 size="small"
                 @click="openEdit(record as ClusterRow)"
-              >{{ t('overview.actions.edit') }}</a-button>
+              >
+                {{ t('overview.actions.edit') }}
+              </a-button>
               <a-button
                 v-if="auth.hasPermission('console:cluster:delete')"
                 size="small"
                 danger
                 @click="removeCluster(record as ClusterRow)"
-              >{{ t('overview.actions.delete') }}</a-button>
+              >
+                {{ t('overview.actions.delete') }}
+              </a-button>
             </a-space>
           </template>
         </template>
