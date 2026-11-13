@@ -8,7 +8,7 @@ import i18n from '@/i18n'
  */
 
 /** snake_case machine code → camelCase i18n key segment. */
-function camel(code: string): string {
+export function camel(code: string): string {
   return code.replace(/_+$/, '').replace(/_([a-z0-9])/g, (_, c: string) => c.toUpperCase())
 }
 
