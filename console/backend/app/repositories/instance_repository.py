@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.base import utcnow
@@ -78,3 +78,10 @@ class InstanceRepository:
         self.session.commit()
         self.session.refresh(row)
         return row
+
+    def cluster_counts(self) -> dict[str, int]:
+        """每集群实例数：集群列表聚合与删除阻塞共用（spec §4.1/§4.2）。"""
+        rows = self.session.execute(
+            select(ParamInstance.cluster_id, func.count()).group_by(ParamInstance.cluster_id)
+        )
+        return {cluster_id: int(total) for cluster_id, total in rows}
