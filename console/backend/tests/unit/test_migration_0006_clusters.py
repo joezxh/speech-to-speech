@@ -10,11 +10,11 @@ import importlib.util
 import pathlib
 
 import sqlalchemy as sa
-from alembic import command
 from alembic.config import Config
 from alembic.runtime import migration
 from alembic.script import ScriptDirectory
 
+from alembic import command
 from app.config import database
 
 BACKEND_ROOT = pathlib.Path(__file__).resolve().parents[2]
