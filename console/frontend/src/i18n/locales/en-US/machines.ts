@@ -44,6 +44,7 @@ export default {
   inUse: 'In use',
   poolUnreachable: 'Session pool unreachable (/v1/pool not responding)',
   columnSession: 'Session',
+  hostFilter: 'Showing instances on machine {host} only',
   trend: {
     selectInstance: 'Select instance',
     refresh: 'Refresh',

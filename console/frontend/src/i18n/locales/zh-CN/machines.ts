@@ -44,6 +44,7 @@ export default {
   inUse: '占用',
   poolUnreachable: '会话池不可达（/v1/pool 无响应）',
   columnSession: '会话',
+  hostFilter: '仅显示机器 {host} 上的实例',
   trend: {
     selectInstance: '选择实例',
     refresh: '刷新',

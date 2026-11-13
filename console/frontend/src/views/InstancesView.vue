@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { AppError } from '@/api/client'
 import { getInstances, postInstanceAction } from '@/api/instances'
@@ -19,6 +19,7 @@ import { useConsoleStore } from '@/stores/console'
 import { useLogsStore } from '@/stores/logs'
 import { useRuntimeStore } from '@/stores/runtime'
 import type { InstanceRow, InstanceSnapshot } from '@/types/api'
+import { hostOf } from '@/utils/host'
 import { capacityPercent, statusColor } from '@/utils/instances-view'
 
 const consoleStore = useConsoleStore()
@@ -26,6 +27,7 @@ const runtime = useRuntimeStore()
 const logs = useLogsStore()
 const auth = useAuthStore()
 const router = useRouter()
+const route = useRoute()
 const { t } = useI18n()
 const {
   open: confirmOpen,
@@ -64,6 +66,16 @@ const badgeStatus = (status: string) => BADGE_STATUS[statusColor(status)] ?? 'de
 const canOperate = computed(() => auth.user?.role === 'operator' || auth.user?.role === 'admin')
 const instances = computed(() => snapshot.value?.instances ?? [])
 const summary = computed(() => snapshot.value?.summary ?? null)
+
+// 拓扑下钻（Task 11）写入 ?host=：只影响这张表，其余页面逻辑不动（spec §6 决议③）。
+const hostFilter = computed(() => String(route.query.host ?? ''))
+const visibleInstances = computed(() =>
+  hostFilter.value ? instances.value.filter((row) => hostOf(row.base_url) === hostFilter.value) : instances.value
+)
+
+function clearHostFilter(): void {
+  void router.replace({ name: 'machines', query: { ...route.query, host: undefined } })
+}
 
 async function poll(): Promise<void> {
   try {
@@ -180,13 +192,23 @@ function goTrends(row: InstanceRow): void {
       </div>
     </section>
 
+    <a-alert
+      v-if="hostFilter"
+      class="instances__hostfilter"
+      type="info"
+      show-icon
+      closable
+      :message="t('machines.hostFilter', { host: hostFilter })"
+      @close="clearHostFilter"
+    />
+
     <a-table
       v-if="instances.length"
       class="instances__table"
       size="small"
       row-key="instance_id"
       :pagination="false"
-      :data-source="instances"
+      :data-source="visibleInstances"
       :scroll="{ x: 900 }"
       :columns="[
         { title: t('machines.columns.instance'), key: 'instance_id', width: 180 },
@@ -341,5 +363,9 @@ function goTrends(row: InstanceRow): void {
     font-size: 12px;
     margin-left: 6px;
   }
+}
+
+.instances__hostfilter {
+  margin-bottom: 8px;
 }
 </style>
