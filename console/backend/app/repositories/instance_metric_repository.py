@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
+from app.models.param_instance import ParamInstance
 from app.models.param_instance_metric import ParamInstanceMetric
 
 _COUNT_COLUMNS = ("alloc_ok", "alloc_fail_no_instance", "alloc_fail_instance_503", "evict_count", "recover_count")
@@ -51,3 +52,30 @@ class InstanceMetricRepository:
         result = self.session.execute(delete(ParamInstanceMetric).where(ParamInstanceMetric.observed_at < cutoff))
         self.session.commit()
         return result.rowcount or 0
+
+    def alloc_window_by_cluster(self, cluster_id: str | None, *, since: datetime) -> list[dict]:
+        """窗口内按实例聚合的分配计数器（增量行求和，spec §4.4 前提：metric 落的是
+        采样 tick 间 delta，非累计值，窗口求和成立）。cluster_id=None = 全部集群。"""
+        stmt = (
+            select(
+                ParamInstanceMetric.instance_id,
+                func.sum(ParamInstanceMetric.alloc_ok).label("ok"),
+                func.sum(ParamInstanceMetric.alloc_fail_instance_503).label("fail_503"),
+                func.sum(ParamInstanceMetric.alloc_fail_no_instance).label("fail_none"),
+            )
+            .where(ParamInstanceMetric.observed_at >= since, ParamInstanceMetric.kind == "sample")
+            .group_by(ParamInstanceMetric.instance_id)
+        )
+        if cluster_id is not None:
+            stmt = stmt.join(
+                ParamInstance, ParamInstance.instance_id == ParamInstanceMetric.instance_id
+            ).where(ParamInstance.cluster_id == cluster_id)
+        return [
+            {
+                "instance_id": r.instance_id,
+                "ok": int(r.ok or 0),
+                "fail_503": int(r.fail_503 or 0),
+                "fail_none": int(r.fail_none or 0),
+            }
+            for r in self.session.execute(stmt)
+        ]

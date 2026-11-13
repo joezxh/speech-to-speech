@@ -21,10 +21,15 @@ hangup_router = APIRouter(prefix="/api/v1", tags=["instances"])
 
 
 @router.get("/instances")
-def get_instances(db: DbSession, profile: str = "prod", user: CurrentUser = Depends(require_user)):
-    """A.10: a degraded read is still a 200."""
+def get_instances(
+    db: DbSession,
+    profile: str = "prod",
+    cluster: str | None = None,
+    user: CurrentUser = Depends(require_user),
+):
+    """A.10: a degraded read is still a 200. cluster 缺省 = 全部行（现状不变）。"""
     latest = VersionRepository(db).latest_live(profile)
-    return ok(instances_service.collect(profile, int(latest.version) if latest else None, db=db))
+    return ok(instances_service.collect(profile, int(latest.version) if latest else None, db=db, cluster=cluster))
 
 
 def _registry_row(db, instance_id: str):

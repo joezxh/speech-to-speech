@@ -9,18 +9,62 @@ field and monkeypatch seam keeps working unchanged.
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 from app.config import allocator, console
+from app.repositories.instance_metric_repository import InstanceMetricRepository
 from app.repositories.instance_repository import InstanceRepository
 from app.services import allocator as allocator_service
 from app.services import instance_monitor, pool, process_probe
 
+# spec §4.4：窗口分母为 0 → null，绝不 0（需求确认点 4）。
+ERROR_RATE_WINDOW_S = 300
 
-def collect(profile: str, version: int | None, *, db) -> dict[str, Any]:
+
+def host_of(base_url: str) -> str:
+    """机器身份 = base_url 的 host（不含端口，spec §2.2）。解析失败退回原串。"""
+    try:
+        return urlparse(base_url).hostname or base_url
+    except ValueError:
+        return base_url
+
+
+def derive_machine_counts(rows: list, status_lookup) -> tuple[int, int]:
+    """(machines_total, machines_online)：host 去重；在线 = 该 host 至少有一个 online 实例。
+    /clusters 聚合与本文件 summary 共用，防口径漂移（spec §4.2）。"""
+    hosts = {host_of(row.base_url) for row in rows}
+    online_hosts = {
+        host_of(row.base_url)
+        for row in rows
+        if (state := status_lookup(row.instance_id)) is not None and state.status == "online"
+    }
+    return len(hosts), len(online_hosts)
+
+
+def _error_fields(db, cluster: str | None) -> dict:
+    since = datetime.now(UTC) - timedelta(seconds=ERROR_RATE_WINDOW_S)
+    per_instance = InstanceMetricRepository(db).alloc_window_by_cluster(cluster, since=since)
+    ok_total = sum(r["ok"] for r in per_instance)
+    fail_503 = sum(r["fail_503"] for r in per_instance)
+    fail_none = sum(r["fail_none"] for r in per_instance)
+    # 一次分配尝试恰好落入三类计数器之一（allocator 每次只 bump 其一）——两类失败不重复计数。
+    denominator = ok_total + fail_503 + fail_none
+    rate = None if denominator == 0 else round((fail_503 + fail_none) / denominator, 4)
+    failures = [(r["instance_id"], r["fail_503"] + r["fail_none"]) for r in per_instance]
+    # 并列取 instance_id 字典序最小（确定性）：先按 -失败数、再按 id 升序。
+    top = min((t for t in failures if t[1] > 0), key=lambda t: (-t[1], t[0]), default=None)
+    return {"error_rate_5m": rate, "top_error_instance": top[0] if top else None}
+
+
+def collect(profile: str, version: int | None, *, db, cluster: str | None = None) -> dict[str, Any]:
     rows = InstanceRepository(db).list_all()
+    if rows and cluster is not None:
+        # 缺省 = 全部行（现状不变）；给定 = 过滤 cluster_id（spec §4.4）。
+        rows = [row for row in rows if row.cluster_id == cluster]
     if rows:
-        return _collect_registry(profile, version, rows)
+        return _collect_registry(profile, version, rows, db=db, cluster=cluster)
     return _collect_legacy(profile, version)
 
 
@@ -77,7 +121,7 @@ def _collect_legacy(profile: str, version: int | None) -> dict[str, Any]:
 
 
 def _collect_registry(
-    profile: str, version: int | None, rows: list[Any]
+    profile: str, version: int | None, rows: list[Any], *, db, cluster: str | None
 ) -> dict[str, Any]:
     view = instance_monitor.snapshot()
     local_key = next(
@@ -141,6 +185,9 @@ def _collect_registry(
         # P1.4 已交付：本机已签发未领取的 grant 数（spec §10）。
         "pending_grants": allocator_service.pending_count(),
     }
+    machines_total, machines_online = derive_machine_counts(rows, view.get)
+    summary.update({"machines_total": machines_total, "machines_online": machines_online})
+    summary.update(_error_fields(db, cluster))
     legacy_pool = local.pool if local is not None and local.pool else None
     return {
         "profile": profile,

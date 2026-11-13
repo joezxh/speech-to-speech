@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urlparse
 
 from app.core.errors import ApiError
 from app.repositories.cluster_repository import ClusterRepository
@@ -76,26 +75,13 @@ def delete_cluster(db, *, name: str, actor: str) -> None:
     repo.delete(row)
 
 
-def _host_of(base_url: str) -> str:
-    try:
-        return urlparse(base_url).hostname or base_url
-    except ValueError:
-        return base_url
-
-
 def instance_host_stats(db, cluster_name: str) -> dict:
     """该集群的机器/实例计数（spec §4.2）：机器 = base_url host 去重；
-    machines_online = 至少有一个 online 实例的 host 数（实时状态取 instance_monitor 快照）。"""
+    machines_online = 至少有一个 online 实例的 host 数。派生逻辑与 /instances summary
+    共用 instances_service.derive_machine_counts，防口径漂移。"""
+    from app.services import instances_service  # noqa: PLC0415 - 避免 import 环
+
     rows = [r for r in InstanceRepository(db).list_all() if r.cluster_id == cluster_name]
-    hosts = {_host_of(r.base_url) for r in rows}
     view = instance_monitor.snapshot()
-    online_hosts = {
-        _host_of(r.base_url)
-        for r in rows
-        if (state := view.get(r.instance_id)) is not None and state.status == "online"
-    }
-    return {
-        "machines_total": len(hosts),
-        "machines_online": len(online_hosts),
-        "instances_total": len(rows),
-    }
+    machines_total, machines_online = instances_service.derive_machine_counts(rows, view.get)
+    return {"machines_total": machines_total, "machines_online": machines_online, "instances_total": len(rows)}
