@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import re
+from urllib.parse import urlparse
 
 from app.core.errors import ApiError
 from app.repositories.cluster_repository import ClusterRepository
 from app.repositories.instance_repository import InstanceRepository
+from app.services import instance_monitor
 
 # 与原型 saveClusterForm（console-refactor-demo.html L2878-2908）逐字一致（spec §4.1）。
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,39}$")
@@ -72,3 +74,28 @@ def delete_cluster(db, *, name: str, actor: str) -> None:
     if blocking > 0:
         raise ApiError("cluster_not_empty", f"cluster {name} still has {blocking} instance(s)", 409)
     repo.delete(row)
+
+
+def _host_of(base_url: str) -> str:
+    try:
+        return urlparse(base_url).hostname or base_url
+    except ValueError:
+        return base_url
+
+
+def instance_host_stats(db, cluster_name: str) -> dict:
+    """该集群的机器/实例计数（spec §4.2）：机器 = base_url host 去重；
+    machines_online = 至少有一个 online 实例的 host 数（实时状态取 instance_monitor 快照）。"""
+    rows = [r for r in InstanceRepository(db).list_all() if r.cluster_id == cluster_name]
+    hosts = {_host_of(r.base_url) for r in rows}
+    view = instance_monitor.snapshot()
+    online_hosts = {
+        _host_of(r.base_url)
+        for r in rows
+        if (state := view.get(r.instance_id)) is not None and state.status == "online"
+    }
+    return {
+        "machines_total": len(hosts),
+        "machines_online": len(online_hosts),
+        "instances_total": len(rows),
+    }

@@ -12,6 +12,7 @@ def register_api_routers(app: FastAPI) -> None:
     from app.routers import (  # noqa: PLC0415 - import cycle avoidance
         auth,
         catalog,
+        clusters,
         health,
         instances,
         logs,
@@ -31,6 +32,7 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(catalog.router)
     app.include_router(profiles.router)
     app.include_router(instances.router)
+    app.include_router(clusters.router)
 
     from app.config import allocator as allocator_settings  # noqa: PLC0415 - 与本函数内既有延迟 import 同层
 

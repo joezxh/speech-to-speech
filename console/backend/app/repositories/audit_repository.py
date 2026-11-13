@@ -79,3 +79,14 @@ class AuditRepository:
             stmt.order_by(ParamAudit.at.desc()).offset((page - 1) * page_size).limit(page_size)
         ).all()
         return list(rows), int(total)
+
+    def list_prefix(self, action_prefix: str, *, limit: int = 4) -> list[ParamAudit]:
+        """按 action 前缀取最新行（集群总览「最近事件」卡，spec §5.2-5）。
+        LIKE 前缀匹配 + 参数绑定，转义交驱动。"""
+        stmt = (
+            select(ParamAudit)
+            .where(ParamAudit.action.like(f"{action_prefix}%"))
+            .order_by(ParamAudit.id.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(stmt))
