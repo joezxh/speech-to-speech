@@ -16,7 +16,14 @@ from app.repositories.instance_runtime_repository import InstanceRuntimeReposito
 from app.repositories.proxy_metric_repository import ProxyMetricRepository
 from app.repositories.version_repository import VersionRepository
 from app.schemas.common import ok
-from app.schemas.instance import WINDOWS, HangupRequest, InstanceCreate, metric_point, proxy_metric_point
+from app.schemas.instance import (
+    WINDOWS,
+    HangupRequest,
+    InstanceBinding,
+    InstanceCreate,
+    metric_point,
+    proxy_metric_point,
+)
 from app.services import instance_monitor, instance_probe, instances_service
 
 router = APIRouter(prefix="/api/v1", tags=["instances"])
@@ -33,6 +40,32 @@ def get_instances(
     """A.10: a degraded read is still a 200. cluster 缺省 = 全部行（现状不变）。"""
     latest = VersionRepository(db).latest_live(profile)
     return ok(instances_service.collect(profile, int(latest.version) if latest else None, db=db, cluster=cluster))
+
+
+@router.put("/instances/{instance_id}/machine")
+def bind_instance_machine(
+    instance_id: str,
+    payload: InstanceBinding,
+    db: DbSession,
+    request: Request,
+    user: CurrentUser = Depends(require_admin),
+):
+    """手工绑定/解绑机器（spec 2026-11-17 §7.1）：machine_id 传空 = 解绑。"""
+    row = InstanceRepository(db).get_by_instance_id(instance_id)
+    if row is None:
+        raise ApiError("not_found", f"instance {instance_id} does not exist", 404)
+    machine_id = (payload.machine_id or "").strip()
+    if machine_id:
+        from app.repositories.machine_repository import MachineRepository
+
+        if MachineRepository(db).get(machine_id) is None:
+            raise ApiError("not_found", f"machine {machine_id} does not exist", 404)
+    row.machine_id = machine_id or None
+    row.updated_by = user.username
+    row.updated_at = datetime.now(UTC)
+    db.commit()
+    _audit(db, user, "instance.bind_machine", instance_id, ["machine_id"], _request_id(request))
+    return ok({"instance_id": row.instance_id, "machine_id": row.machine_id})
 
 
 def _registry_row(db, instance_id: str):

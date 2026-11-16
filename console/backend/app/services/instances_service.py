@@ -150,6 +150,7 @@ def _collect_registry(
             {
                 "instance_id": row.instance_id,
                 "base_url": row.base_url,
+                "machine_id": row.machine_id,  # spec 2026-11-17 §7.1：空 = 未绑定实例
                 "status": state.status if state else "unknown",
                 "weight": row.weight,
                 "enabled": row.enabled,

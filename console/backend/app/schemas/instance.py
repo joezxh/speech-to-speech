@@ -26,6 +26,12 @@ class InstanceCreate(BaseModel):
     cluster_id: str = Field(default="default", max_length=64)
 
 
+class InstanceBinding(BaseModel):
+    """手工绑定机器（spec 2026-11-17 §7.1）：machine_id 传空 = 解绑。"""
+
+    machine_id: str = Field(default="", max_length=64)
+
+
 def metric_point(row) -> dict:
     return {
         "observedAt": iso_utc(row.observed_at),

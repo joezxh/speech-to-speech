@@ -34,6 +34,59 @@ def caps_for(capabilities: list[str]) -> list[str]:
     return [cap for cap in SUPPORTED_CAPS if cap in capabilities]
 
 
+def _host_port_of_public_addr(public_addr: str) -> tuple[str, int] | None:
+    """`host:port` → (host, port)；缺端口或解析失败 → None。"""
+    text = public_addr.strip()
+    if not text or "://" in text:
+        return None
+    host, _sep, port_text = text.rpartition(":")
+    if not host or not port_text.isdigit():
+        return None
+    return host.strip("[]"), int(port_text)
+
+
+def _host_port_of_base_url(base_url: str) -> tuple[str, int] | None:
+    from urllib.parse import urlparse  # noqa: PLC0415
+
+    try:
+        parsed = urlparse(base_url)
+    except ValueError:
+        return None
+    if not parsed.hostname or parsed.port is None:
+        return None
+    return parsed.hostname, parsed.port
+
+
+def bind_instances_by_public_addr(db, machine_id: str, workloads) -> int:
+    """心跳回填绑定（§7.1）：public_addr 的 host:port 反查 param_instance.base_url。
+
+    不按 listen 匹配（容器内地址与 console 侧 base_url 不可比）；未命中的
+    实例保持 machine_id=NULL，由 machines 页手工绑定。返回绑定实例数。
+    """
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.param_instance import ParamInstance  # noqa: PLC0415
+
+    wanted = {
+        pair
+        for item in workloads
+        if (pair := _host_port_of_public_addr(item.public_addr)) is not None
+    }
+    if not wanted:
+        return 0
+    bound = 0
+    for row in db.scalars(
+        select(ParamInstance).where(ParamInstance.machine_id.is_(None))
+    ).all():
+        location = _host_port_of_base_url(row.base_url)
+        if location is not None and location in wanted:
+            row.machine_id = machine_id
+            bound += 1
+    if bound:
+        db.commit()
+    return bound
+
+
 def get_token_diff(machine_id: str) -> dict:
     return dict(_TOKEN_DIFFS.get(machine_id, {}))
 
@@ -119,6 +172,7 @@ def heartbeat(db: Session, token_machine_id: str, body: HeartbeatIn) -> dict:
             for item in body.workloads
         ],
     )
+    bind_instances_by_public_addr(db, token_machine_id, body.workloads)
     _TOKEN_DIFFS[token_machine_id] = dict(body.tokens)
 
     return {
