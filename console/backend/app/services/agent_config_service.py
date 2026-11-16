@@ -16,10 +16,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.db.base import utcnow
 from app.models.machine import ParamMachine
 from app.models.machine_config import ParamAgentConfigVersion, ParamMachineDraft
 from app.models.param_cluster import ParamCluster
+from app.repositories.machine_config_repository import MachineConfigRepository
 from app.repositories.machine_repository import MachineRepository
+from app.schemas.common import iso_utc
+from app.services import layout_service as layout
 from app.services import publish_flow_service, renderer_service
 
 DEFAULT_PROFILE = "prod"
@@ -140,3 +144,103 @@ def _prune_old_versions(db: Session, machine_id: str) -> None:
     ).all()
     for stale in rows:
         db.delete(stale)
+
+
+# ---- A2：拉取（If-None-Match → 304） --------------------------------------
+
+
+def latest_snapshot(db: Session, machine_id: str) -> ParamAgentConfigVersion | None:
+    return db.scalar(
+        select(ParamAgentConfigVersion)
+        .where(ParamAgentConfigVersion.machine_id == machine_id)
+        .order_by(ParamAgentConfigVersion.config_version.desc())
+    )
+
+
+def pull(db: Session, machine_id: str, if_none_match: str) -> tuple[dict | None, int, str]:
+    """返回 (data, status, etag)。命中当前 etag → (None, 304, 当前 etag)，不渲染不递增。
+
+    版本号只在内容变化时递增：agent 每轮都带 If-None-Match，未变更的轮询
+    不会把快照环形滚掉。
+    """
+    snapshot = latest_snapshot(db, machine_id)
+    if snapshot is not None and if_none_match:
+        current = _etag(snapshot.yaml_text)
+        if if_none_match.strip() == current:
+            return None, 304, current
+    version, etag, text = render_target(db, machine_id)
+    fresh = latest_snapshot(db, machine_id)
+    rendered_at = iso_utc(fresh.rendered_at) if fresh is not None else ""
+    data = {
+        "config_version": version,
+        "etag": etag,
+        "yaml_text": text,
+        "rendered_at": rendered_at,
+    }
+    return data, 200, etag
+
+
+# ---- A3：回报（漂移源） ----------------------------------------------------
+
+
+def _expected_values(db: Session, machine: ParamMachine, keys: list[str]) -> dict:
+    """live 期望值：profile 文件现状中各键当前所在位置的值。"""
+    profile = _resolve_profile(db, machine)
+    path = publish_flow_service.require_profile(profile)
+    base = renderer_service.load_base(path)
+    known = publish_flow_service.entries()
+    expected: dict[str, object] = {}
+    for key in keys:
+        entry = known.get(key)
+        if entry is None:
+            continue
+        located, _reason = layout.locate(base, profile, entry)
+        if located is None:
+            continue
+        node: object = base
+        try:
+            for part in located:
+                node = node[part]  # type: ignore[index]
+        except (KeyError, IndexError, TypeError):
+            continue
+        expected[key] = node
+    return expected
+
+
+def _values_equal(expected: object, actual: object) -> bool:
+    try:
+        return float(expected) == float(actual)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        pass
+    lhs, rhs = str(expected).strip().lower(), str(actual).strip().lower()
+    if lhs in ("true", "false") or rhs in ("true", "false"):
+        return lhs == rhs
+    return lhs == rhs
+
+
+def report_values(db: Session, machine_id: str, config_version: int, values: dict) -> dict:
+    """A3：values 逐键 upsert 进 param_machine_config，返回 {accepted, drift_count}。"""
+    machine = _machine_row(db, machine_id)
+    filtered = secret_keys_filtered(values)
+    expected = _expected_values(db, machine, list(filtered))
+    drift_count = sum(
+        1 for key, value in filtered.items() if key in expected and not _values_equal(expected[key], value)
+    )
+    MachineConfigRepository(db).upsert_report(machine_id, filtered, config_version)
+    return {"accepted": True, "drift_count": drift_count}
+
+
+# ---- A4：确认（ack） -------------------------------------------------------
+
+
+def ack(db: Session, machine_id: str, config_version: int, ok: bool, error: str | None) -> dict:
+    """A4：ok=false 的版本不留快照（从环形中剔除）；ok=true 的保留。
+
+    快照本身在 render_target 时已落行——ack 只决定它去留。
+    """
+    if not ok:
+        stale = db.get(ParamAgentConfigVersion, (machine_id, config_version))
+        if stale is not None:
+            db.delete(stale)
+            db.commit()
+    return {"accepted": True}

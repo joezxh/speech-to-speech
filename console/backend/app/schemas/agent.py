@@ -48,3 +48,19 @@ class HeartbeatIn(BaseModel):
     runtime: dict = Field(default_factory=dict)
     # token 窗口增量（§5.2 草案的 tokens{}）：本任务暂存内存，Task 14 接表。
     tokens: dict = Field(default_factory=dict)
+
+
+class AgentConfigReportIn(BaseModel):
+    """A3：回报本机实际生效的配置键值（这份 values 就是漂移判定的实际值）。"""
+
+    config_version: int
+    applied_at: str = ""
+    values: dict[str, str] = Field(default_factory=dict)
+
+
+class AgentConfigAckIn(BaseModel):
+    """A4：目标配置落地结果；ok=false 时该版本不留下发快照。"""
+
+    config_version: int
+    ok: bool
+    error: str | None = None
