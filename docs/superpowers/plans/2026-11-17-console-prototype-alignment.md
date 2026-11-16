@@ -294,11 +294,11 @@ export function testStepsToView(steps: TestStep[]): { key; label; state }[]
 
 - 页面元素按设计 §4.5 逐条：告警条 / 搜索 + 两按钮 / 12 列机器表 / 内联展开 11 列负载清单+汇总行 / 新增两步模态（负载声明表单，pipeline 锁定勾选）+ 三步测试面板 / 编辑模态。
 
-- [ ] **Step 1: 写失败测试** —— viewmodel：搜索命中 id 与 addr；vram 汇总与水位；标签分组计数；`simulate=fail` 时测试面板第 2 步呈失败态。
-- [ ] **Step 2:** FAIL。
-- [ ] **Step 3: 实现**（antd 零引用；模态/开关用 proto 组件；i18n 双语 key 成对）。
-- [ ] **Step 4:** vitest PASS；`npm run build` 零错误；`npx vitest run src/i18n/i18n.spec.ts` PASS。
-- [ ] **Step 5: Commit** `feat(console-front): 机器管理页按原型重写（多负载/注册测试/自动注册）`
+- [x] **Step 1: 写失败测试** —— viewmodel：搜索命中 id 与 addr；vram 汇总与水位；标签分组计数；`simulate=fail` 时测试面板第 2 步呈失败态。
+- [x] **Step 2:** FAIL。
+- [x] **Step 3: 实现**（antd 零引用；模态/开关用 proto 组件；i18n 双语 key 成对）。
+- [x] **Step 4:** vitest PASS；`npm run build` 零错误；`npx vitest run src/i18n/i18n.spec.ts` PASS。
+- [x] **Step 5: Commit** `feat(console-front): 机器管理页按原型重写（多负载/注册测试/自动注册）`
 
 ---
 
