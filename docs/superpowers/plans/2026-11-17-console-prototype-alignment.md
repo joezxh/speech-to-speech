@@ -118,11 +118,11 @@ def heartbeat(machine_id: str, body: HeartbeatIn) -> HeartbeatOut
 - 协议字段严格按设计 §5.2 心跳体（`protocol_version`/`agent_version`/`machine{}`/`capabilities[]`/`workloads[]`(含 `listen`/`public_addr`)/`runtime{}`/`tokens{}`）与响应体（`accepted`/`machine_id`/`server_time`/`config_version`/`config_etag`/`poll_after_s`）。
 - 越权规则（§5.4）：agent 端点按 token 映射 `machine_id`；body/query 里 `machine_id` 仅做一致性校验，不一致 → 403。
 
-- [ ] **Step 1: 写失败测试** —— 用例：合法注册码换 token、注册码二次使用 → 401、错误注册码 → 401、`protocol_version` 高于支持值 → 400、心跳首到建档（`state` 从 `pending_register` → `ok`）、重复心跳更新负载清单与 `last_seen_at`、token 差分字段入库（暂存内存，Task 14 接表）、body `machine_id` 与 token 不符 → 403、capabilities 缺项 → 面板可用性标记降级（服务返回 `caps` 交集）。
-- [ ] **Step 2:** 跑测试 → FAIL。
-- [ ] **Step 3: 实现**（`token_hash`/`register_code_hash` sha256；心跳 upsert 负载清单按 `kind+port` 对齐；`config_version`/`config_etag` 本任务先返回 0/空串，Task 7 接 `agent_config_service`）。
-- [ ] **Step 4:** 跑两个测试文件 → PASS；`python -m pytest console/backend/tests/integration/test_static_mount_order.py -v` → PASS。
-- [ ] **Step 5: Commit** `feat(console): agent 注册与心跳端点（A0/A1，一次性注册码两段式）`
+- [x] **Step 1: 写失败测试** —— 用例：合法注册码换 token、注册码二次使用 → 401、错误注册码 → 401、`protocol_version` 高于支持值 → 400、心跳首到建档（`state` 从 `pending_register` → `ok`）、重复心跳更新负载清单与 `last_seen_at`、token 差分字段入库（暂存内存，Task 14 接表）、body `machine_id` 与 token 不符 → 403、capabilities 缺项 → 面板可用性标记降级（服务返回 `caps` 交集）。
+- [x] **Step 2:** 跑测试 → FAIL。
+- [x] **Step 3: 实现**（`token_hash`/`register_code_hash` sha256；心跳 upsert 负载清单按 `kind+port` 对齐；`config_version`/`config_etag` 本任务先返回 0/空串，Task 7 接 `agent_config_service`）。
+- [x] **Step 4:** 跑两个测试文件 → PASS；`python -m pytest console/backend/tests/integration/test_static_mount_order.py -v` → PASS。
+- [x] **Step 5: Commit** `feat(console): agent 注册与心跳端点（A0/A1，一次性注册码两段式）`
 
 ### Task 5: 目标配置渲染与版本（A2 的后端内核）
 
