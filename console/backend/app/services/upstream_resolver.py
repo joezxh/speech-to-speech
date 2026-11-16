@@ -104,19 +104,36 @@ def _pick(tied: list[Allocation], rng) -> Allocation:
     return chooser.choices(tied, weights=[a.weight for a in tied], k=1)[0]
 
 
+def _allows_routing(instance_id: str, routing) -> bool:
+    """RoutingDecision 的候选过滤；default = 全放行。"""
+    spec = routing.candidates
+    if spec.kind == "pinned_instance":
+        return instance_id == spec.instance_id
+    if spec.kind == "machine_filter":
+        return instance_id in spec.instance_ids
+    return True
+
+
 def rank_session(
     *,
     store: AllocatorStore,
     capability: str = "",
     exclude: frozenset[str] = frozenset(),
     rng=None,
+    routing=None,
 ) -> list[Allocation]:
-    """按空闲槽位选台。返回完整候选序（胜者第一），供数据面逐台换。"""
+    """按空闲槽位选台。返回完整候选序（胜者第一），供数据面逐台换。
+
+    routing（Task 17 插桩）：RoutingDecision 或 None。None = 无路由域参与，
+    与改前逐字一致（等价性受 test_rank_session_equivalence 保护）。
+    """
     rows: list[tuple[Allocation, float]] = []
     for spec in store.list_instances():
         if not _healthy(spec):
             continue
         if spec.instance_id in exclude:
+            continue
+        if routing is not None and not _allows_routing(spec.instance_id, routing):
             continue
         if not _has_capability(spec.instance_id, capability):
             continue

@@ -10,10 +10,6 @@ from app.core.errors import ApiError
 from app.repositories import lb_repository
 from app.repositories.lb_repository import rules_ordered
 
-# 分流型规则才允许 share/sticky；其余类型存空（模型注释同源）。
-SHARED_TYPES = {"canary"}
-
-
 def _rule_out(rule) -> dict:
     return {
         "id": rule.id,
@@ -82,8 +78,9 @@ def create_rule(
         match_value=match_value,
         target_kind=target_kind,
         target_value=target_value,
-        share_pct=share_pct if match_type in SHARED_TYPES else None,
-        sticky_ttl_s=sticky_ttl_s if match_type in SHARED_TYPES else None,
+        # share_pct 是金丝雀/分流的开关：任何类型都可带（default+20% = 20% 金丝雀）。
+        share_pct=share_pct,
+        sticky_ttl_s=sticky_ttl_s,
         enabled=enabled,
         updated_by=actor,
     )
