@@ -14,7 +14,7 @@ from app.config import console as console_settings
 from app.db.database import get_db
 from app.main import create_app
 from app.repositories.user_repository import UserRepository
-from app.services import runtime_service
+from app.services import pool, runtime_service
 from app.services.auth_service import hash_password
 
 PROFILE_YAML = "schema_version: 1\nblocks: {}\npipelines: {}\n"
@@ -66,6 +66,16 @@ def test_unknown_profile_is_404(client):
 
 
 def test_stopped_pipeline_still_answers_200(client, monkeypatch):
+    # 这一条只考 pipeline 停没停，所以把其余三个来源钉死：`_gpu` 真跑
+    # nvidia-smi 在慢机器上会超过快照的 2s 预算，那时拿到的是降级帧
+    # （alerts=runtime_degraded），测的就不是"停机"这件事了。
+    monkeypatch.setattr(
+        runtime_service, "_gpu", lambda: {"available": False, "reason": "nvidia_smi_missing"}
+    )
+    monkeypatch.setattr(
+        runtime_service, "_pool", lambda: pool.PoolState(reachable=True, size=1, in_use=0)
+    )
+    monkeypatch.setattr(runtime_service, "_metrics_tail", lambda **kw: [])
     monkeypatch.setattr(runtime_service, "_pipeline_running", lambda: False)
     response = client.get("/api/v1/runtime/models?profile=prod", headers=_auth(client))
     assert response.status_code == 200

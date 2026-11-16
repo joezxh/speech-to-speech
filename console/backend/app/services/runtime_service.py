@@ -65,7 +65,10 @@ def collect(profile: str, window_s: int = 300) -> dict[str, Any]:
     except TimeoutError:
         data = _degraded(profile, window_s, cached, "snapshot budget exhausted")
     except Exception as exc:  # noqa: BLE001 - a snapshot must not become a 500
-        logger.warning("runtime snapshot failed for {}: {}", profile, exc)
+        # 本模块用的是标准库 logging（不是 loguru）：占位符必须是 %s，写成 {}
+        # 会让 logging 在 emit 时做 "msg % args" 抛 TypeError——而这行就在
+        # "绝不能变成 5xx" 的兜底路径上，一崩就真的 500 了。
+        logger.warning("runtime snapshot failed for %s: %s", profile, exc)
         data = _degraded(profile, window_s, cached, str(exc))
 
     _cache[(profile, window_s)] = (time.monotonic(), data)
@@ -79,7 +82,8 @@ def _degraded(
     why: str,
 ) -> dict[str, Any]:
     """Previous frame (stale but real) or an all-reasons frame, plus the alert."""
-    logger.warning("runtime snapshot degraded ({}): {}", profile, why)
+    # 同上：标准库 logging 用 %s 占位，不能写成 loguru 的 {}。
+    logger.warning("runtime snapshot degraded (%s): %s", profile, why)
     upstream = cached[1] if cached else _empty(profile, window_s)
     return {**upstream, "alerts": sorted({*upstream.get("alerts", ()), "runtime_degraded"})}
 

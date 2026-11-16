@@ -158,6 +158,9 @@ def test_instances_aggregates_registry_rows(client, db_session, monkeypatch):
         PoolState(reachable=True, size=4, in_use=2, units=()), 12)
     instance_monitor.registry._states["pipe-b"] = RuntimeState(instance_id="pipe-b", base_url="http://b:8765")
     instance_monitor.registry.set_drain("pipe-b", True)
+    # 上面是绕过巡检直接改注册表的，所以读接口的 2s 防抖快照（instance_monitor.snapshot）
+    # 还指着上一个用例的旧视图——必须失效一次，否则读到的是过期状态。
+    instance_monitor.invalidate()
     # 注册表路径下不得回退到 legacy 直连读，否则 monkeypatch 基线会被误触发
     monkeypatch.setattr(pool, "read_pool",
                         lambda timeout=5.0, base_url=None: pytest.fail("legacy read_pool called"))
