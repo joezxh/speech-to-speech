@@ -396,9 +396,9 @@ def issue(username: str, role: str) -> str          # 128bit urlsafe；内存表
 def consume(ticket: str) -> TicketIdentity | None   # 一次性：消费即焚；过期/不存在 → None
 ```
 
-- [ ] **Step 1: 写失败测试** —— 换票需 JWT（无 → 401）；消费一次后二次消费 → None；60s 过期 → None；消费成功返回 `{username, role}`。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): realtime 一次性短票据（60s TTL，一次性）`
+- [x] **Step 1: 写失败测试** —— 换票需 JWT（无 → 401）；消费一次后二次消费 → None；60s 过期 → None；消费成功返回 `{username, role}`。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): realtime 一次性短票据（60s TTL，一次性）`
 
 ### Task 17: RoutingEngine + `rank_session` 插桩 + 亲和
 
