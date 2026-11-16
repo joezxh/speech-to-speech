@@ -267,11 +267,11 @@ def auto_register(p: AutoRegisterIn, actor: str) -> AutoRegisterResult
 // PModal/PDrawer:{ open:boolean; title:string } · useToast(): { push(msg, kind?:'ok'|'warn'|'bad') }
 ```
 
-- [ ] **Step 1: 写失败测试** —— proto.spec：每个组件渲染出对应原型 class 的根节点；PBar `pct>100` 截断到 100；PWave 柱数 = props.bars.length；useToast push 后 toast 容器出现、3.5s 自动消失。
-- [ ] **Step 2:** `npx vitest run src/components/proto/proto.spec.ts` → FAIL。
-- [ ] **Step 3: 实现**：从 `console/design/console-refactor-demo.html` 的 `<style>` 段移植类到 `prototype.less`（**裸 hex → token**）；13 组件 + useToast；tokens.ts 白名单追加。
-- [ ] **Step 4:** vitest PASS；`npx vitest run src/styles/hex-ban.spec.ts` PASS。
-- [ ] **Step 5: Commit** `feat(console-front): 原型外观层——prototype.less 与 13 个 proto 组件`
+- [x] **Step 1: 写失败测试** —— proto.spec：每个组件渲染出对应原型 class 的根节点；PBar `pct>100` 截断到 100；PWave 柱数 = props.bars.length；useToast push 后 toast 容器出现、3.5s 自动消失。
+- [x] **Step 2:** `npx vitest run src/components/proto/proto.spec.ts` → FAIL。
+- [x] **Step 3: 实现**：从 `console/design/console-refactor-demo.html` 的 `<style>` 段移植类到 `prototype.less`（**裸 hex → token**）；13 组件 + useToast；tokens.ts 白名单追加。
+- [x] **Step 4:** vitest PASS；`npx vitest run src/styles/hex-ban.spec.ts` PASS。
+- [x] **Step 5: Commit** `feat(console-front): 原型外观层——prototype.less 与 13 个 proto 组件`
 
 ### Task 12: 机器页重写（InstancesView → 机器管理）
 
