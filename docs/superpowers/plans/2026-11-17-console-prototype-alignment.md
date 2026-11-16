@@ -321,9 +321,9 @@ def window_sum(machine_id: str | None, since: datetime, until: datetime) -> Toke
 
 - 单通道：`instance_probe` 对 `/v1/usage` 的既有轮询**不落库**（保持内存兜底）；落库真值唯一来源是 agent。
 
-- [ ] **Step 1: 写失败测试**（含 Review Focus #1）—— 正常差分累加；**计数器归零**（prev>cur → delta=cur，无负行）；连续 3 窗 `sum(delta)==累计差`；`window_sum` 聚合正确。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): token 增量落库与窗口聚合（单通道=agent）`
+- [x] **Step 1: 写失败测试**（含 Review Focus #1）—— 正常差分累加；**计数器归零**（prev>cur → delta=cur，无负行）；连续 3 窗 `sum(delta)==累计差`；`window_sum` 聚合正确。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): token 增量落库与窗口聚合（单通道=agent）`
 
 ### Task 14: token/LB 观测接口（T1–T5, L1–L6）
 
