@@ -159,11 +159,11 @@ def secret_keys_filtered(values: dict) -> dict               # 密钥类键不�
 **Interfaces:**
 - Produces：A3 `report` 把 `values` 逐键 upsert 进 `param_machine_config`（`observed_at=now`，`reported_by='agent'`），返回 `{accepted, drift_count}`；A4 `ack` 成功时**保存该版本下发快照**（最近 N=5 版，表即 Task 5 的 `param_agent_config_version`，按机保留）。
 
-- [ ] **Step 1: 写失败测试** —— 用例：report 后 `param_machine_config` 有行且 `drift_count` 正确（与 profile live 期望值比对）、ack 成功后快照可查（最近 5 版环形）、ack `ok=false` 不产生快照、304 语义（`If-None-Match` 命中当前 etag → 304）。
-- [ ] **Step 2:** 跑测试 → FAIL。
-- [ ] **Step 3: 实现**。
-- [ ] **Step 4:** 跑测试 → PASS。
-- [ ] **Step 5: Commit** `feat(console): agent 配置拉取/回报/确认（漂移源与 ack 快照）`
+- [x] **Step 1: 写失败测试** —— 用例：report 后 `param_machine_config` 有行且 `drift_count` 正确（与 profile live 期望值比对）、ack 成功后快照可查（最近 5 版环形）、ack `ok=false` 不产生快照、304 语义（`If-None-Match` 命中当前 etag → 304）。
+- [x] **Step 2:** 跑测试 → FAIL。
+- [x] **Step 3: 实现**。
+- [x] **Step 4:** 跑测试 → PASS。
+- [x] **Step 5: Commit** `feat(console): agent 配置拉取/回报/确认（漂移源与 ack 快照）`
 
 ### Task 7: agent 进程本体（pipeline 仓）+ supervisord 接线
 
