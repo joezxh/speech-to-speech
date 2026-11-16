@@ -348,9 +348,9 @@ def rules() -> list[LbRuleOut] / def create_rule(...) / def update_rule(id,...) 
 def route_stats(window) -> {rules:[{rule_id,matched,tokens,share_pct}], sticky_hit_rate}
 ```
 
-- [ ] **Step 1: 写失败测试** —— 窗口边界（5m/1h/24h 对齐整窗）；prompt/completion 拆分来自 input/output；成本公式单测（单价常量进配置）；分布 share_pct 归一（sum=100±0.5）；egress 按 kind 聚合、`route='lb'|'direct'` 由 `kind==pipeline` 推导；规则 CRUD 优先级唯一、缺 `match_value` 400；**route_stats 在无路由日志时 `sticky_hit_rate=None`（不可得，不是 0）**。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现（路由注册在 mount_spa 前）→ **Step 4:** PASS + `test_static_mount_order.py` PASS。
-- [ ] **Step 5: Commit** `feat(console): token 观测与路由规则接口（T1–T5/L1–L6）`
+- [x] **Step 1: 写失败测试** —— 窗口边界（5m/1h/24h 对齐整窗）；prompt/completion 拆分来自 input/output；成本公式单测（单价常量进配置）；分布 share_pct 归一（sum=100±0.5）；egress 按 kind 聚合、`route='lb'|'direct'` 由 `kind==pipeline` 推导；规则 CRUD 优先级唯一、缺 `match_value` 400；**route_stats 在无路由日志时 `sticky_hit_rate=None`（不可得，不是 0）**。
+- [x] **Step 2:** FAIL → **Step 3:** 实现（路由注册在 mount_spa 前）→ **Step 4:** PASS + `test_static_mount_order.py` PASS。
+- [x] **Step 5: Commit** `feat(console): token 观测与路由规则接口（T1–T5/L1–L6）`
 
 ### Task 15: traffic 页重写
 
