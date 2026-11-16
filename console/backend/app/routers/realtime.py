@@ -18,14 +18,22 @@ import uuid
 from contextlib import suppress
 
 import websockets
-from fastapi import APIRouter, Request, WebSocket
+from fastapi import APIRouter, Depends, Request, WebSocket
 from loguru import logger
 
 from app.config import allocator as allocator_settings
 from app.config import console
-from app.services import allocator, calls_service, proxy_counters, upstream_resolver
+from app.core.security import CurrentUser, require_user
+from app.schemas.common import ok
+from app.services import allocator, calls_service, proxy_counters, realtime_ticket, upstream_resolver
 
 router = APIRouter(tags=["realtime"])
+
+
+@router.post("/api/v1/realtime/ticket")
+def issue_realtime_ticket(user: CurrentUser = Depends(require_user)):
+    """WS 短票据换发（Task 16）：用户 JWT 换 60s 一次性票据，JWT 不上查询串。"""
+    return ok({"ticket": realtime_ticket.issue(user.username, user.role), "ttl_s": int(realtime_ticket.TTL_S)})
 
 SESSION_CREATED = "session.created"
 SESSION_LIMIT_REACHED = "session_limit_reached"
