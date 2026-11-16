@@ -185,11 +185,11 @@ def tail_turn_latency(path: str, since_offset: int) -> tuple[int, list[dict]]  #
 - `config_sync.py`：拉取（`If-None-Match`）→ 临时文件+原子替换 → 按 `effect` 分流（`hot`→`/internal/sessions/update`；`start`→supervisor XML-RPC 重启 `pipeline`，复用 `restart_runner` 的调用方式；`container`→只记声明）→ `config/report` 回报 `values` → `config/ack`。
 - 主循环（`__main__.py`）：无 token 且有注册码 → register；心跳失败指数退避 1→60s；任一环节失败不抛出、不阻塞语音。
 
-- [ ] **Step 1: 写失败测试** —— `usage_diff`：正常递增、计数器归零（prev>cur → delta=cur）、None 首次；`tail_turn_latency`：断点续读、offset 回退容错。
-- [ ] **Step 2:** 跑测试 → FAIL。
-- [ ] **Step 3: 实现** 采集器 + 主循环 + client（`httpx`）+ supervisord 条目。
-- [ ] **Step 4:** 跑测试 → PASS。
-- [ ] **Step 5:** 人工验证步骤（写入计划不写入代码）：`S2S_AGENT_CONSOLE_URL=http://127.0.0.1:8000 S2S_AGENT_REGISTER_CODE=<M3 返回值> python -m speech_to_speech.agent` → 观察机器表 `state=ok`、`last_seen_at` 刷新。**Commit** `feat(agent): s2s-agent 常驻进程（注册/心跳/配置拉取/退避）`
+- [x] **Step 1: 写失败测试** —— `usage_diff`：正常递增、计数器归零（prev>cur → delta=cur）、None 首次；`tail_turn_latency`：断点续读、offset 回退容错。
+- [x] **Step 2:** 跑测试 → FAIL。
+- [x] **Step 3: 实现** 采集器 + 主循环 + client（`httpx`）+ supervisord 条目。
+- [x] **Step 4:** 跑测试 → PASS。
+- [x] **Step 5:** 人工验证步骤（写入计划不写入代码）：`S2S_AGENT_CONSOLE_URL=http://127.0.0.1:8000 S2S_AGENT_REGISTER_CODE=<M3 返回值> python -m speech_to_speech.agent` → 观察机器表 `state=ok`、`last_seen_at` 刷新。**Commit** `feat(agent): s2s-agent 常驻进程（注册/心跳/配置拉取/退避）`
 
 ### Task 8: A5 turn-latency 上报 + 单通道让位
 
