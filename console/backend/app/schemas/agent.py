@@ -64,3 +64,9 @@ class AgentConfigAckIn(BaseModel):
     config_version: int
     ok: bool
     error: str | None = None
+
+
+class AgentTurnLatencyIn(BaseModel):
+    """A5：逐轮 TURN_LATENCY 行上报（logged_at 为行内时间戳，ISO 字符串）。"""
+
+    rows: list[dict] = Field(default_factory=list)

@@ -43,6 +43,31 @@ def upsert_many(session: Session, rows: list[dict[str, Any]]) -> int:
     return len(rows)
 
 
+def rebuild_many(session: Session, rows: list[dict[str, Any]]) -> int:
+    """重建重放：只覆盖本机行（machine_id 为空）。
+
+    远端机器的行来自 agent 上报，删表即失、由 agent 下一窗口重新上报补回，
+    不参与重放（spec 2026-11-17 §7.1 扩列边界 1）。
+    """
+    if not rows:
+        return 0
+    insert = _DIALECT_INSERTS.get(session.get_bind().dialect.name, sqlite_insert)
+    statement = insert(TurnLatencyRow).values(rows)
+    session.execute(
+        statement.on_conflict_do_update(
+            index_elements=[TurnLatencyRow.response_key, TurnLatencyRow.turn_revision],
+            set_={
+                column: statement.excluded[column]
+                for column in rows[0]
+                if column not in ("response_key", "turn_revision")
+            },
+            where=TurnLatencyRow.machine_id.is_(None),
+        )
+    )
+    session.commit()
+    return len(rows)
+
+
 def to_ms(seconds: float | int | None) -> int | None:
     """Seconds in the log line, milliseconds in the table; `None` stays `None`.
 

@@ -11,9 +11,15 @@ from fastapi import APIRouter, Header, Query, Request, Response
 
 from app.core.errors import ApiError
 from app.deps import DbSession
-from app.schemas.agent import AgentConfigAckIn, AgentConfigReportIn, AgentRegisterIn, HeartbeatIn
+from app.schemas.agent import (
+    AgentConfigAckIn,
+    AgentConfigReportIn,
+    AgentRegisterIn,
+    AgentTurnLatencyIn,
+    HeartbeatIn,
+)
 from app.schemas.common import ok
-from app.services import agent_config_service, agent_registry_service
+from app.services import agent_config_service, agent_latency_service, agent_registry_service
 
 router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
 
@@ -80,3 +86,14 @@ def ack_config(
     """A4：落地结果；ok=false 的版本不留下发快照。"""
     machine_id = _machine_id(db, authorization)
     return ok(agent_config_service.ack(db, machine_id, payload.config_version, payload.ok, payload.error))
+
+
+@router.post("/turn-latency")
+def report_turn_latency(
+    payload: AgentTurnLatencyIn,
+    db: DbSession,
+    authorization: str = Header(default=""),
+):
+    """A5：逐轮 TURN_LATENCY 行上报；machine_id 取 token 所指机器（§5.4）。"""
+    machine_id = _machine_id(db, authorization)
+    return ok(agent_latency_service.report_rows(db, machine_id, payload.rows))

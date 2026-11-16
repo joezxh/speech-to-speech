@@ -124,6 +124,19 @@ def _split(raw: bytes, start: int, limit: int) -> tuple[list[tuple[int, str]], i
     return lines, offset
 
 
+def agent_channel_active(session: Session) -> bool:
+    """单通道让位判定（spec 2026-11-17 §5.3.5）：存在注册成功的 agent（token 已签发）
+    即视为 agent 通道生效，本机索引器让位——两通道永不并行写同一台机器。"""
+    from sqlalchemy import select  # noqa: PLC0415
+
+    from app.models.machine import ParamMachine  # noqa: PLC0415
+
+    token = session.scalar(
+        select(ParamMachine.token_hash).where(ParamMachine.token_hash.is_not(None)).limit(1)
+    )
+    return token is not None
+
+
 def ingest_once(
     session: Session,
     *,
@@ -132,6 +145,9 @@ def ingest_once(
     limit: int = MAX_LINES_PER_TICK,
 ) -> dict[str, Any]:
     """One tick. Returns the counters the panel's `index` block is built from."""
+    # 单通道让位：agent 生效后本机日志由 agent 上报，索引器跳过（落行才置 machine_id 空）。
+    if agent_channel_active(session):
+        return {"ingested": 0, "skipped": 0, "reset": False, "offset": 0, "missing": False, "yielded": True}
     target = Path(log_dir) / TARGET
     if not target.is_file():
         return {"ingested": 0, "skipped": 0, "reset": False, "offset": 0, "missing": True}
