@@ -1,4 +1,8 @@
 export default {
+  page: {
+    title: 'Cluster Overview',
+    desc: 'Machines, pipeline instances and recent changes across the cluster.'
+  },
   kpi: {
     machines: 'Machines',
     pipelineInstances: 'Pipeline instances',
@@ -21,19 +25,31 @@ export default {
     instancesRegistered: 'Registered instances',
     seedConfigured: 'Seed config',
     secretsConsistent: 'Secret consistency',
-    errorRate: 'Error rate (5m)'
+    errorRate: 'Error rate (5m)',
+    sub: {
+      machinesOnline: 'Machines online {n}',
+      activeSessions: 'Active sessions: {n}',
+      stickyHit: 'Sticky hit rate · coming in S3',
+      topError: 'Top error source: {source}',
+      noSamples: 'No allocation samples in window'
+    }
   },
   topology: {
-    title: 'Cluster topology',
+    title: 'Cluster topology — LB → machines → pipeline instances',
+    hint: 'click a machine to inspect its deployments and parameters',
     clusterLayer: 'Cluster',
     lbLayer: 'Load balancer',
     machineLayer: 'Machines',
-    instanceLayer: 'Pipeline instances'
+    instanceLayer: 'Pipeline instances',
+    empty: 'No machines in this cluster yet — add machines on the Machines page first.',
+    poolSessions: '/v1/pool · {n} sessions',
+    machineMeta: '{n} instances · {m} online',
+    occupancy: '{inUse}/{size}'
   },
   policy: {
-    least: 'Least sessions',
-    rr: 'Round robin',
-    lat: 'Lowest latency'
+    least: 'least-in-use',
+    rr: 'round-robin',
+    lat: 'least-latency'
   },
   table: {
     cluster: 'Cluster',
@@ -44,15 +60,22 @@ export default {
     status: 'Status',
     actions: 'Actions',
     current: 'Current',
-    empty: 'No clusters yet'
+    empty: 'No clusters yet',
+    sectionTitle: 'Clusters — one LB registry per cluster',
+    hint: 'A cluster is scoped by its load-balancing registry; machines register and get scheduled through it.'
   },
   status: {
     healthy: 'Healthy',
-    unhealthy: 'Unhealthy'
+    unhealthy: 'Unhealthy',
+    ok: 'Healthy',
+    warn: 'Degraded',
+    draining: 'Draining',
+    bad: 'Fault',
+    muted: 'No data'
   },
   actions: {
-    create: 'New cluster',
-    switchTo: 'Switch',
+    create: 'Add cluster',
+    switchTo: 'Enter',
     edit: 'Edit',
     delete: 'Delete'
   },
@@ -76,24 +99,51 @@ export default {
   legend: {
     title: 'Legend',
     cluster: 'Cluster',
-    lb: 'Load balancer',
+    lb: 'Load balancer (unified entry)',
     machine: 'Machine',
     instance: 'Pipeline instance',
     online: 'Online',
     degraded: 'Degraded',
     offline: 'Offline',
-    muted: 'No data'
+    muted: 'No data',
+    ok: 'Healthy',
+    warn: 'Degraded',
+    draining: 'Draining',
+    bad: 'Fault',
+    flow: 'Animated edge = active traffic'
   },
   events: {
-    title: 'Recent events',
+    title: 'Recent cluster events',
+    hint: 'full history in Audit Log',
     at: 'Time',
     actor: 'Actor',
     role: 'Role',
+    category: 'Category',
     action: 'Action',
     target: 'Target',
     result: 'Result',
     ok: 'OK',
     error: 'Failed',
-    empty: 'No cluster operations yet'
+    empty: 'No cluster operations yet',
+    cat: {
+      cluster: 'Cluster',
+      param: 'Params',
+      deploy: 'Deploy',
+      release: 'Release',
+      voice: 'Voice',
+      machine: 'Machine',
+      access: 'Access',
+      other: 'Other'
+    }
+  },
+  toast: {
+    created: 'Cluster {name} created.',
+    updated: 'Cluster {name} updated.',
+    deleted: 'Cluster {name} removed.',
+    switched: 'Switched to cluster {name}.',
+    last: 'At least one cluster must remain.',
+    blocked: '{name} still hosts {n} machine(s) — remove them first.',
+    serverError: 'Operation failed: {message}',
+    switchFailed: 'Switching cluster failed: {message}'
   }
 }

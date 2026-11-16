@@ -29,3 +29,16 @@ def metric_point(row) -> dict:
         "evictCount": row.evict_count,
         "recoverCount": row.recover_count,
     }
+
+
+def proxy_metric_point(row) -> dict:
+    """数据面代理采样点（spec §7）。与 metric_point 分开：两张表的列语义不同。"""
+    return {
+        "observedAt": iso_utc(row.observed_at),
+        "observedBy": row.observed_by,
+        "service": row.service,
+        "ok": row.ok,
+        "failCount": row.fail_count,
+        "failReason": row.fail_reason,
+        "durationMs": row.duration_ms,
+    }

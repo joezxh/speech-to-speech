@@ -196,3 +196,30 @@ CREATE INDEX ix_param_instance_cluster_id ON param_instance (cluster_id);
 
 UPDATE alembic_version SET version_num='0006_clusters' WHERE alembic_version.version_num = '0005_instances';
 
+-- Running upgrade 0006_clusters -> 0007_comments
+
+UPDATE alembic_version SET version_num='0007_comments' WHERE alembic_version.version_num = '0006_clusters';
+
+-- Running upgrade 0007_comments -> 0008_proxy_metrics
+
+CREATE TABLE param_proxy_metric (
+    id INTEGER NOT NULL,
+    instance_id VARCHAR(64) NOT NULL,
+    service VARCHAR(32) NOT NULL,
+    observed_at DATETIME NOT NULL,
+    observed_by VARCHAR(64) DEFAULT '' NOT NULL,
+    ok INTEGER DEFAULT '0' NOT NULL,
+    fail_count INTEGER DEFAULT '0' NOT NULL,
+    fail_reason VARCHAR(64) DEFAULT '' NOT NULL,
+    duration_ms INTEGER DEFAULT '0' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_proxy_metric_instance_id ON param_proxy_metric (instance_id);
+
+CREATE INDEX ix_param_proxy_metric_service ON param_proxy_metric (service);
+
+CREATE INDEX ix_param_proxy_metric_observed_at ON param_proxy_metric (observed_at);
+
+UPDATE alembic_version SET version_num='0008_proxy_metrics' WHERE alembic_version.version_num = '0007_comments';
+

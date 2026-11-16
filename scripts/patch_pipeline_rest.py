@@ -145,6 +145,17 @@ NEW_BLOCK = '''    # ── Standalone ASR / TTS REST endpoints (reuse in-proces
 '''
 
 def main() -> None:
+    import os
+
+    # Legacy compatibility layer. Recent source trees ship
+    # api/openai_realtime/audio_services.py and create_app() mounts those routes.
+    # Only old base images still need the string injection below.
+    source_module = (
+        "/usr/src/app/src/speech_to_speech/api/openai_realtime/audio_services.py"
+    )
+    if os.path.isfile(source_module):
+        print("SOURCE MODULES PRESENT - patch skipped (mount_audio_services)")
+        return
     with open(TARGET) as f:
         content = f.read()
     if "rest_transcriptions" in content:

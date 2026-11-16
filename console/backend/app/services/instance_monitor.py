@@ -15,9 +15,10 @@ from loguru import logger
 from sqlalchemy.orm import Session
 
 from app.config import allocator
+from app.config import console
 from app.repositories.instance_metric_repository import InstanceMetricRepository
 from app.repositories.instance_repository import InstanceRepository
-from app.services import instance_probe
+from app.services import capability_probe, instance_probe, proxy_counters
 from app.services.instance_registry import EVICTED, OFFLINE, ONLINE, RECOVERED, InstanceRegistry
 
 _SNAPSHOT_TTL_S = 2.0
@@ -89,6 +90,39 @@ def probe_all(session: Session) -> None:
     _invalidate_cache()
 
 
+def apply_capabilities(reports: dict[str, capability_probe.CapabilityReport]) -> None:
+    """把能力指纹写进注册表（spec §5.1）。
+
+    能力是派生状态：只驻留内存，不落 `param_instance_metric`——那张表的列语义是
+    槽位（size/in_use/free/stuck），塞进代理/能力信息会让两套口径混在一张表里。
+    """
+    for instance_id, report in reports.items():
+        state = registry.get(instance_id)
+        if state is None:
+            continue
+        state.capabilities = report.available
+        state.capability_issues = dict(report.issues)
+    _invalidate_cache()
+
+
+async def probe_capabilities_round() -> None:
+    """能力轮：与容量轮分开的一轮（spec §5.1）。
+
+    容量轮是同步串行的（probe_all），再加两个同步探测会让一轮耗时变成
+    N × (2s + 声纹 + 情感)，一台慢就推迟其余。能力探测走异步并发，单台超时独立，
+    且不写指标表。
+    """
+    base_urls = [
+        (instance_id, state.base_url) for instance_id, state in registry.snapshot().items()
+    ]
+    if not base_urls:
+        return
+    reports = await capability_probe.probe_all_capabilities(
+        base_urls, timeout=console.lb_capability_probe_timeout_s
+    )
+    apply_capabilities(reports)
+
+
 def sample_metrics(session: Session, counters: dict[str, int] | None = None) -> None:
     """30s 采样：usage 顺带刷新（失败不判健康，spec §9）。
 
@@ -105,7 +139,26 @@ def sample_metrics(session: Session, counters: dict[str, int] | None = None) -> 
     deltas = counters or {}
     for instance_id in registry.snapshot():
         _write_metric(session, instance_id, kind="sample", counters=_counters_for(instance_id, deltas))
+    _flush_proxy_metrics(session)
     _invalidate_cache()
+
+
+def _flush_proxy_metrics(session: Session) -> None:
+    """把代理侧的窗口计数落到 param_proxy_metric（spec §7）。
+
+    代理每请求 bump 一次内存计数，真正落库在这里做——每请求写一次 DB 太重，
+    而 30s 窗口增量正好和这张表的语义一致。
+    """
+    from app.repositories.proxy_metric_repository import (  # noqa: PLC0415 - 避免 import 环
+        ProxyMetricRepository,
+    )
+
+    rows = proxy_counters.drain()
+    if not rows:
+        return
+    now = datetime.now(UTC)
+    prepared = [{**row, "observed_at": now, "observed_by": allocator.resolved_console_id} for row in rows]
+    ProxyMetricRepository(session).insert_many(prepared)
 
 
 def _counters_for(instance_id: str, deltas: dict[str, int]) -> dict[str, int] | None:
@@ -148,19 +201,24 @@ def snapshot() -> dict[str, Any]:
 async def run_forever() -> None:
     """lifespan 启停（与 turn_latency_indexer.run_forever 同模式）。
 
-    每 tick：probe_all；每 usage_interval_s 一次 sample_metrics；每小时一次 prune。
-    任何异常只记日志，循环不死（spec §9/§15 P1.2）。
+    每 tick：probe_all；每 lb_capability_interval_s 一次能力轮；每 usage_interval_s
+    一次 sample_metrics；每小时一次 prune。任何异常只记日志，循环不死（spec §9/§15 P1.2）。
     """
     from app.db.database import SessionLocal  # noqa: PLC0415 - 避免 import 环
 
     ticks = 0
     pruned_after_s = 3600
     last_prune = time.monotonic()
+    last_capability = time.monotonic()
     while True:
         await asyncio.sleep(allocator.probe_interval_s)
         session = SessionLocal()
         try:
             await asyncio.to_thread(probe_all, session)
+            # 能力轮独立于容量轮：慢的一台不许拖住整轮（spec §5.1）。
+            if time.monotonic() - last_capability >= console.lb_capability_interval_s:
+                last_capability = time.monotonic()
+                await probe_capabilities_round()
             ticks += 1
             if ticks * allocator.probe_interval_s >= allocator.usage_interval_s:
                 ticks = 0

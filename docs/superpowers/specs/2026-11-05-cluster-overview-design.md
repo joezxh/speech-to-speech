@@ -199,3 +199,54 @@
 | 7 降级态 | §6 |
 | 后端分层/复用实例注册/审计/权限码 | §2–§4 |
 | i18n/token/数据源/范围约束 | §5.5 + §1 |
+
+---
+
+## 9. 原型对齐补遗（2026-11-14）
+
+按原型 `console/design/console-refactor-demo.html` 的 `renderOverview()` / `clusterRows()` /
+`topoSVG()` / `openClusterForm()` / `toast()` 逐项复核，补齐实施期缩水或与设计文档互相矛盾的部分。
+基准优先级：**原型（界面与交互） > 本设计（真实数据口径） > 实施计划（Task 描述）**。
+
+### 9.1 已补齐的差异
+
+| # | 原型 / 设计 | 补齐前 | 补齐后 |
+|---|---|---|---|
+| 1 | `head(nav.overview, overview.desc)` 页面标题 + 描述 | 无页面头 | `overview.page.*` + `.overview__head` |
+| 2 | KPI 四卡带**标签子文案**（在线机器 N / 活跃会话: N / 主要错误来源: …） | 只有裸数值，第一卡干脆为空 | `clusterKpis` 产出 `subKey/subParams`，视图 `t()` 渲染；命中率按 §4.4 用「待 S3 交付」占位 |
+| 3 | KPI 主值 24px + `tabular-nums` | 18px mono | 对齐原型 |
+| 4 | 集群卡标题含 `cluster.hint` 说明 | 只有「集群」二字 | `#title` slot：sectionTitle + hint |
+| 5 | 状态 `statusTag(c.state)` 四态（健康/降级/排空中/故障）+ 空集群灰 tag | 只有 healthy/unhealthy 两态 badge | `clusterStatus()` 由 `healthy + machines_online/total` 真实派生四态 |
+| 6 | 策略列显示**代码态** `least-in-use` / `round-robin` / `least-latency`（§5.2-2「不翻译」） | 译成「最少会话/轮询/最低延迟」（计划 Task 14 走查文案与原型/本设计冲突） | i18n 改回代码态，表单下拉同源 |
+| 7 | 切换按钮文案 `Enter` / 「进入」 | 「切换」 | 对齐原型 |
+| 8 | 拓扑卡标题含 `topo.hint` | 无 | `#title` slot |
+| 9 | 拓扑为**横向**三段：左 LB(180×76) → 机器行(200×64) → 实例 chip(120×30)，viewBox 980×H，贝塞尔连线 | 纵向四层等距小方块(128×34) + 直线 | `topoLayout.ts` / `TopoChart.vue` 按原型几何重写 |
+| 10 | LB 盒三行（标题 / policy / `/v1/pool · N sessions`），§5.2-3 要求展示 registry 与 policy | 固定字符串 `Console LB` | 集群名 + `registry · policy` + 真实活跃会话 |
+| 11 | 机器盒有元信息与状态圆点、实例 chip 有 `inUse/size · rpm` | 只有 id | 真实 `N 实例 · M 在线` 与 `inUse/size`；无来源的 role/ver/util/rpm 一律省略（§1 不引 Mock） |
+| 12 | `edge flow` 动效（有 `inUse>0` 的实例连线点亮） | 无 | CSS dash 动画 + `prefers-reduced-motion` 降级 |
+| 13 | 图例**六项**（LB / 健康 / 降级 / 排空中 / 故障 / 流动连线） | 四项 | 六项 + LB 方框 / 虚线示意 |
+| 14 | 最近事件**无表头、五列含「分类」tag**，标题带 `recent.hint` | 有表头、无分类列（改成「对象」）、无 hint | 原生 `<table>` 无表头；分类由 `action` 点分前缀派生并 i18n；hint 补齐 |
+| 15 | `toast.cluster.*` 带集群名，删除阻塞有 `last`/`blocked` toast；§5.3 服务端失败要「内联错误条 + toast」双反馈 | 完全无 toast | `ant-design-vue message` 覆盖增/改/删/切换与 409 分支；表单失败同补 |
+| 16 | 计划 Task 14「重启后端 → 轮询/重载恢复」 | 只在 onMounted / watch 取数 | 15s 防重入自动刷新，卸载清理 |
+| 17 | `.grid.g4` = `repeat(4, 1fr)` + `gap: 14px`，四张 KPI 卡**等宽铺满整行**；`@media (max-width:1100px)` 降 2 列 | `repeat(auto-fill, minmax(180px,1fr))` 按宽度浮动列数，不能保证四卡铺满 | 固定 4 列 `minmax(0,1fr)` + 14px + 1100px 断点；卡片 padding/字重/间距同步对齐原型 `.kpi` |
+
+### 9.2 有意保留的「真实数据 vs 原型 mock」偏差
+
+原型是 `Static prototype (mock data, no backend)`，下列值**不能**照搬，均按 §1「数据全部来自真实接口」处理：
+
+| 原型 | 真实实现 |
+|---|---|
+| 「会话粘滞命中 94%」 | 后端本期不提供命中率 → §4.4 的「待 S3 交付」占位；主值仍是真实 `slots_in_use` |
+| 「主要错误来源: s2s-a1-3」 | `top_error_instance`（无样本时「窗口内无分配样本」） |
+| LB 盒第一行 `Load Balancing` | 真实集群名（同时保留 §5.2-3「集群层」语义） |
+| 机器盒 `role · ver · util%`、chip 的 `rpm` | 无数据源 → 省略，改渲染实例数/在线数、`inUse/size` |
+| toast 文案里的「（Mock）」 | 真实写操作，去掉该字样 |
+| `audit.cat.*` 来自 mock AUDITS 的 `cat` 字段 | 由真实审计 `action` 的点分前缀派生（`cluster.create` → `cluster`） |
+
+### 9.3 验证
+
+- `npm test`：**39 个文件 / 226 例全绿**（含 i18n zh/en 键集一致、hex-ban、tokens、新增的横向拓扑/四态/段落契约断言）
+- `npm run lint`（`--max-warnings 0`）：通过
+- `npx vue-tsc --noEmit`：通过
+- `vite build`：通过（`OverviewView` 17.96 kB）
+- 未覆盖：浏览器视觉走查与 CON-02 九场景截图归档（需启动后端并登录，见 §7）

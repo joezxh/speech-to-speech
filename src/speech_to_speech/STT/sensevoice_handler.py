@@ -18,6 +18,15 @@ console = Console()
 # These must be stripped before the transcript is forwarded to the LLM.
 _TAG_PATTERN = re.compile(r"<\|[^|]*\|>")
 
+# Language tags SenseVoice emits. Also covers low-resource / SEA languages that
+# downstream routers may care about even if SenseVoice itself falls back on them.
+_SENSEVOICE_LANGUAGE_TAGS = frozenset(
+    {
+        "zh", "zh_en", "yue", "ja", "ko", "en",
+        "th", "vi", "id", "ms", "tl", "km", "lo", "my", "ne", "hi",
+    }
+)
+
 
 class SenseVoiceSTTHandler(BaseSTTHandler):
     """
@@ -74,6 +83,14 @@ class SenseVoiceSTTHandler(BaseSTTHandler):
     def _clean(text: str) -> str:
         return _TAG_PATTERN.sub("", text or "").strip()
 
+    @staticmethod
+    def _extract_language_tag(raw_text: str) -> str | None:
+        for match in _TAG_PATTERN.finditer(raw_text or ""):
+            tag = match.group(0)[2:-2].strip()
+            if tag in _SENSEVOICE_LANGUAGE_TAGS:
+                return tag
+        return None
+
     def process(self, vad_audio: STTIn) -> Iterator[STTOut]:
         logger.debug("infering sensevoice...")
         try:
@@ -88,9 +105,13 @@ class SenseVoiceSTTHandler(BaseSTTHandler):
         except Exception as exc:
             logger.error("SenseVoice inference failed: %s", exc)
             return
-        pred_text = self._clean(pred[0]["text"]) if pred else ""
+        raw_text = pred[0]["text"] if pred else ""
+        pred_text = self._clean(raw_text)
         logger.debug("finished sensevoice inference")
         console.print(f"[yellow]USER: {pred_text}")
+
+        detected_lang = self._extract_language_tag(raw_text)
+        resolved_lang = detected_lang or (None if self.language == "auto" else self.language)
 
         if vad_audio.mode == "progressive":
             yield PartialTranscription(
@@ -101,7 +122,7 @@ class SenseVoiceSTTHandler(BaseSTTHandler):
         else:
             yield Transcription(
                 text=pred_text,
-                language_code=None if self.language == "auto" else self.language,
+                language_code=resolved_lang,
                 turn_id=vad_audio.turn_id,
                 turn_revision=vad_audio.turn_revision,
                 speech_stopped_at_s=vad_audio.created_at_s,

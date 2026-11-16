@@ -160,6 +160,9 @@ def _collect_registry(
                 "stuck": state.pool.stuck if reachable else None,
                 "probe_ms": state.probe_ms if state else None,
                 "p95_probe_ms": state.p95_probe_ms if state else None,
+                # 能力指纹（spec §5.1）：派生状态，只驻留内存。空数组 = 还没探测过。
+                "capabilities": sorted(state.capabilities) if state else [],
+                "capability_issues": dict(state.capability_issues) if state else {},
                 "units": [
                     {"index": u.get("index"), "state": u.get("state"), "sessionId": u.get("session_id")}
                     for u in (state.pool.units if reachable else ())

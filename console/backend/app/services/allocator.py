@@ -7,49 +7,26 @@ from __future__ import annotations
 
 import asyncio
 import random
-from urllib.parse import urlsplit, urlunsplit
 
 from loguru import logger
 
 from app.config import allocator as settings
-from app.services.allocator_store import InMemoryAllocatorStore, InstanceSpec
+from app.services import upstream_resolver
+from app.services.allocator_store import InMemoryAllocatorStore
+from app.services.upstream_resolver import Allocation, grant_connect_url
 
 SESSION_PATH = "/v1/realtime"
 store = InMemoryAllocatorStore()
 _rng = random.Random()  # 测试里 monkeypatch allocator._rng = random.Random(42) 保证确定性
 
-
-def grant_connect_url(base_url: str) -> str:
-    """http→ws、https→wss（calls_service.handshake_url 的反向，复用其映射表思路）。"""
-    parts = urlsplit(base_url.strip())
-    scheme = {"http": "ws", "https": "wss"}.get(parts.scheme, parts.scheme or "ws")
-    path = parts.path.rstrip("/") or SESSION_PATH
-    if path == "/":
-        path = SESSION_PATH
-    return urlunsplit((scheme, parts.netloc, path, parts.query, ""))
+__all__ = ["Allocation", "allocate", "drain_counters", "expire_task", "grant_connect_url", "pending_count", "store"]
 
 
-def _candidates(target: InMemoryAllocatorStore, exclude: set[str]) -> list[InstanceSpec]:
-    # spec §8.2 四步：过滤 → free/capacity 降序主排序 → 同分按 weight 加权随机。
-    # §6.2 的 pending_local 在这里扣（RuntimeState.effective_free 不包含它）。
-    rows: list[tuple[InstanceSpec, float]] = []
-    for spec in target.list_instances():
-        if not (spec.enabled and spec.weight > 0 and spec.status in ("online", "degraded")):
-            continue
-        if spec.instance_id in exclude:
-            continue
-        free = max(0, spec.effective_free - target.pending_count(spec.instance_id))
-        if free <= 0:
-            continue
-        rows.append((spec, free / spec.capacity if spec.capacity else float(free)))
-    if not rows:
-        return []
-    best = max(ratio for _, ratio in rows)
-    tied = [spec for spec, ratio in rows if ratio == best]
-    if len(tied) == 1:
-        return tied
-    first = _rng.choices(tied, weights=[spec.weight for spec in tied], k=1)[0]
-    return [first] + [spec for spec in tied if spec is not first]
+def _candidates(target: InMemoryAllocatorStore, exclude: set[str]) -> list[Allocation]:
+    # spec §8.2 四步在 upstream_resolver.rank_session 里：过滤 → free/capacity
+    # 降序主排序 → 同分按 weight 加权随机。§6.2 的 pending_local 在那里扣
+    # （RuntimeState.effective_free 不包含它）。
+    return upstream_resolver.rank_session(store=target, exclude=frozenset(exclude), rng=_rng)
 
 
 async def allocate(

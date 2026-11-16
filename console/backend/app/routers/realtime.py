@@ -1,22 +1,34 @@
-"""`/v1/realtime*`：浏览器进入回环 8765 的唯一通道（§10.2.3）。
+"""`/v1/realtime*`：浏览器进入 S2S 的唯一通道（§10.2.3 / spec 2026-11-16）。
 
-只开两条路。`/v1/pool`、`/v1/usage` 是运维数据，控制台在服务端自己读，不往
-公网放（§12 R4）。
+两种模式：
+- `CONSOLE_LB_MODE=off`（默认）：回环 pipeline，逐字保持改造前的行为。
+- `CONSOLE_LB_MODE=proxy`：按注册表选台转发，上游满员时静默换台。
+
+静默换台的由来（spec §5.3）：pipeline 满员时是**握手成功之后**才回一个
+`error`(session_limit_reached) 事件再 close 1008。nginx 这类透明代理必须先把 101
+交给客户端，撤不回来；console 自己是 WebSocket 服务端，可以在 accept 浏览器之前
+先与上游完成握手、校验第一帧，失败就换一台——浏览器因此看不到中间态。
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
+import uuid
 from contextlib import suppress
 
 import websockets
 from fastapi import APIRouter, Request, WebSocket
 from loguru import logger
 
+from app.config import allocator as allocator_settings
 from app.config import console
-from app.services import calls_service
+from app.services import allocator, calls_service, proxy_counters, upstream_resolver
 
 router = APIRouter(tags=["realtime"])
+
+SESSION_CREATED = "session.created"
+SESSION_LIMIT_REACHED = "session_limit_reached"
 
 
 def _upstream_url(url) -> str:
@@ -29,9 +41,58 @@ def _upstream_url(url) -> str:
     return f"{'wss' if scheme == 'https' else 'ws'}://{host}{url.path}{query}"
 
 
+def _upstream_ws_url(base_url: str, path: str, query: str) -> str:
+    """实例 base_url + 浏览器路径 → 上游 ws:// 地址。"""
+    base = base_url.strip().rstrip("/")
+    if "://" not in base:
+        base = "http://" + base
+    scheme, host = base.split("://", 1)
+    suffix = f"?{query}" if query else ""
+    return f"{'wss' if scheme == 'https' else 'ws'}://{host}{path}{suffix}"
+
+
 def _subprotocols(websocket: WebSocket) -> list[str]:
     raw = websocket.headers.get("sec-websocket-protocol", "")
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _frame_field(frame: str | bytes, *names: str) -> str:
+    """从一帧 JSON 里取第一个非空的字符串字段；解析失败返回空串。"""
+    if isinstance(frame, bytes):
+        try:
+            frame = frame.decode("utf-8")
+        except UnicodeDecodeError:
+            return ""
+    try:
+        payload = json.loads(frame)
+    except (TypeError, ValueError):
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    for name in names:
+        value = payload.get(name)
+        if isinstance(value, dict):
+            value = value.get("type")
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def _is_session_limit_error(frame: str | bytes) -> bool:
+    """上游说"我满了"：要换一台，别让浏览器看见。"""
+    return (
+        _frame_field(frame, "type") == "error"
+        and _frame_field(frame, "error") == SESSION_LIMIT_REACHED
+    )
+
+
+def _is_session_created(frame: str | bytes) -> bool:
+    return _frame_field(frame, "type") == SESSION_CREATED
+
+
+async def _close_quietly(upstream) -> None:
+    with suppress(Exception):
+        await upstream.close()
 
 
 async def _client_to_upstream(client: WebSocket, upstream) -> None:
@@ -53,13 +114,36 @@ async def _upstream_to_client(client: WebSocket, upstream) -> None:
             await client.send_text(message)
 
 
+async def _pump(websocket: WebSocket, upstream) -> None:
+    """双向逐帧转发；一侧关闭就关另一侧，否则端口会积压僵尸连接。"""
+    tasks = [
+        asyncio.create_task(_client_to_upstream(websocket, upstream)),
+        asyncio.create_task(_upstream_to_client(websocket, upstream)),
+    ]
+    _done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+    await asyncio.gather(*pending, return_exceptions=True)
+    with suppress(Exception):
+        await upstream.close()
+    with suppress(Exception):
+        await websocket.close()
+
+
 @router.websocket("/v1/realtime")
 async def realtime(websocket: WebSocket) -> None:
-    """把浏览器的 Realtime WS 接到回环 pipeline。
+    """把浏览器的 Realtime WS 接到上游 pipeline。
 
     不改路径、不缓冲帧（缓冲会把 TTS 首字节延迟放大，§12 R20）——两边都是逐帧转发。
-    一侧关闭就关另一侧，否则回环端口会积压僵尸连接。
     """
+    if console.lb_mode == "proxy":
+        await _proxy_with_failover(websocket)
+        return
+    await _proxy_to_loopback(websocket)
+
+
+async def _proxy_to_loopback(websocket: WebSocket) -> None:
+    """改造前的路径：固定回环 pipeline（CONSOLE_LB_MODE=off）。"""
     try:
         upstream = await websockets.connect(
             _upstream_url(websocket.url),
@@ -76,23 +160,126 @@ async def realtime(websocket: WebSocket) -> None:
         return
 
     await websocket.accept(subprotocol=upstream.subprotocol)
-    tasks = [
-        asyncio.create_task(_client_to_upstream(websocket, upstream)),
-        asyncio.create_task(_upstream_to_client(websocket, upstream)),
-    ]
-    _done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    for task in pending:
-        task.cancel()
-    await asyncio.gather(*pending, return_exceptions=True)
-    with suppress(Exception):
-        await upstream.close()
-    with suppress(Exception):
-        await websocket.close()
+    await _pump(websocket, upstream)
+
+
+async def _proxy_with_failover(websocket: WebSocket) -> None:
+    """按注册表选台，上游满员/连不上就换一台（spec §5.3）。
+
+    三种终态（统一口径）：
+    - 成功：首帧是 session.created → accept 浏览器，转发首帧。
+    - 满员：上游明确回 session_limit_reached 且换台耗尽 → accept 后转发该 error
+      事件 + close 1008（与今天直连 pipeline 的表现完全一致）。
+    - 不可达/无候选：不 accept，直接 close → ASGI 回 403 握手失败（close code
+      送不到浏览器，这是既有事实）。
+    """
+    tried: set[str] = set()
+    last_full_frame: str | bytes | None = None
+    for _attempt in range(console.lb_failover_attempts + 1):
+        ranked = upstream_resolver.rank_session(
+            store=allocator.store,
+            capability="realtime",
+            exclude=frozenset(tried),
+            rng=allocator._rng,
+        )
+        if not ranked:
+            break
+        spec = ranked[0]
+        tried.add(spec.instance_id)
+        res_key = uuid.uuid4().hex
+        if not allocator.store.reserve(
+            spec.instance_id, res_key, allocator_settings.grant_ttl_s
+        ):
+            # 本机视图里这台已经满了：换下一台，不去打扰它。
+            continue
+        try:
+            upstream = await websockets.connect(
+                _upstream_ws_url(spec.base_url, websocket.url.path, websocket.url.query),
+                subprotocols=_subprotocols(websocket) or None,
+                max_size=None,
+                compression=None,
+                open_timeout=5.0,
+            )
+        except Exception as exc:
+            logger.warning("lb failover: upstream {} unreachable: {}", spec.instance_id, exc)
+            proxy_counters.bump(
+                spec.instance_id, "realtime", ok=False, fail_reason="upstream_unreachable"
+            )
+            allocator.store.release(res_key)
+            continue
+        try:
+            first = await asyncio.wait_for(
+                upstream.recv(), timeout=console.lb_upstream_ready_timeout_s
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "lb failover: upstream {} sent no first frame in time", spec.instance_id
+            )
+            await _close_quietly(upstream)
+            allocator.store.release(res_key)
+            continue
+        except Exception as exc:
+            logger.warning(
+                "lb failover: upstream {} closed before the first frame: {}",
+                spec.instance_id,
+                exc,
+            )
+            await _close_quietly(upstream)
+            allocator.store.release(res_key)
+            continue
+
+        if _is_session_limit_error(first):
+            # 满员：静默换台，浏览器不该看到中间态。
+            last_full_frame = first
+            proxy_counters.bump(
+                spec.instance_id, "realtime", ok=False, fail_reason="session_limit_reached"
+            )
+            await _close_quietly(upstream)
+            allocator.store.release(res_key)
+            continue
+
+        await websocket.accept(subprotocol=upstream.subprotocol)
+        if isinstance(first, bytes):
+            await websocket.send_bytes(first)
+        else:
+            await websocket.send_text(first)
+        # 会话已建立：占位从"预留"转成"会话期"，不再靠 TTL 回收。
+        allocator.store.hold(res_key, spec.instance_id)
+        upstream_resolver.inflight_enter(spec.instance_id)
+        proxy_counters.bump(spec.instance_id, "realtime", ok=True)
+        try:
+            await _pump(websocket, upstream)
+        finally:
+            upstream_resolver.inflight_exit(spec.instance_id)
+            allocator.store.release(res_key)
+        return
+
+    if last_full_frame is not None:
+        # 满员终态：accept 后把上游的 error 事件原样交给浏览器（今天直连也是这个
+        # 事件 + 1008），前端零改动。
+        await websocket.accept()
+        if isinstance(last_full_frame, bytes):
+            await websocket.send_bytes(last_full_frame)
+        else:
+            await websocket.send_text(last_full_frame)
+        await websocket.close(code=1008)
+        return
+
+    # 不可达 / 无候选：不 accept，直接 close。
+    logger.warning("lb failover: no usable upstream for /v1/realtime")
+    await websocket.close(code=1013)
 
 
 @router.post("/v1/realtime/calls", include_in_schema=False)
 async def realtime_calls(request: Request):
-    """同源的 SDP 入口。不回填 `Location`：它指向回环，浏览器拿不到。"""
+    """同源的 SDP 入口。
+
+    off 模式不回填 `Location`：它指向回环，浏览器拿不到。proxy 模式回填上游的
+    `/v1/realtime/calls/{id}`——console 自己也注册了这个路径，浏览器拿得到。
+    """
+    offer = await request.body()
+    if console.lb_mode == "proxy":
+        return await calls_service.forward_selected(offer, keep_location=True)
     return await calls_service.forward(
-        calls_service.loopback_url(), await request.body(), keep_location=False
+        calls_service.loopback_url(), offer, keep_location=False
     )

@@ -4,6 +4,16 @@
 > 落点：`speech-to-speech-src`（137 语音网关侧）
 > 上游设计：`mediation-docs/superpowers/specs/2026-11-04-voiceprint-verify-design.md`（SP-6，跨仓契约在 §3.3 / §6.2）、`mediation-docs/superpowers/specs/2026-11-10-ai-capability-demo-design.md`（调用端 Demo 形态）
 
+> **2026-11-14 实施补充（本机 PyCharm 场景）**：端点不再只靠构建期字符串补丁注入容器镜像，
+> 已提升为源码模块 `src/speech_to_speech/api/openai_realtime/voiceprint_routes.py`，由
+> `create_app()` 的 `mount_voiceprint(app, pool)` 直接挂载；`scripts/patch_voiceprint_embeddings.py`
+> 降级为旧基座镜像的兼容层。`GET /v1/audio/embeddings/capability` 路径与 Bearer 契约保持不变，
+> 仍是兼容别名，不新增统一能力端点（统一 `GET /v1/capabilities` 属后续阶段）。
+> 本机 `VOICEPRINT_ENCODER_DIR=cache/qwen3-speaker-encoder`（由 `extract_speaker_encoder.py`
+> 从 `cache/qwen3-tts-base` 切出），容器仍用 `/root/.cache/qwen3-speaker-encoder`；
+> 其余 `VOICEPRINT_*` 取值与 `.env.thirdparty` 一致。完整启用步骤见
+> `docs/service-enablement-CN.md`。本文其余章节的构建期注入描述仍适用于旧镜像。
+
 ---
 
 ## 0. 文档定位与阅读指引

@@ -31,7 +31,9 @@ class TurnLatencyRow(Base):
     tts_ttfa_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     vad_decision_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     hold_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # 迁移 0004 建了 ix_turn_latency_logged_at；模型需声明同名索引，
+    # 否则 alembic check 会把它当成「待删除索引」的漂移。
+    logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     raw_offset: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     ingested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow

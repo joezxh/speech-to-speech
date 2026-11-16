@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { message } from 'ant-design-vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -15,13 +16,15 @@ import { useClusterStore } from '@/stores/cluster'
 import { useConsoleStore } from '@/stores/console'
 import type { ClusterEventRow, ClusterRow, InstanceRow, InstanceSnapshot, InstancesSummary } from '@/types/api'
 import { clusterKpis } from '@/utils/clusterKpis'
+import { clusterStatus, type ClusterStatus } from '@/utils/clusterStatus'
+import { describeAlert } from '@/utils/error'
 import { DASH, formatTime } from '@/utils/format'
 import { hostOf } from '@/utils/host'
 import { layoutTopo } from '@/utils/topoLayout'
 
 /**
  * 集群总览（spec §5.2，原型 renderOverview/clusterRows/topoSVG）：
- * 五段=KPI 四卡 / 集群表 CRUD / 拓扑 / 图例+最近事件 / 全降级态。
+ * 页面头 + 五段=KPI 四卡 / 集群表 CRUD / 拓扑 / 图例+最近事件 / 全降级态。
  * 数据只有三个来源：/clusters、/clusters/events、/instances?cluster=，不引 Mock。
  * 端点各败各的：一条告警或一个端点不可用都不能让整页空白。
  */
@@ -50,6 +53,27 @@ const formCluster = ref<ClusterRow | null>(null)
 
 const kpis = computed(() => clusterKpis(clusterStore.currentRow, summary.value))
 
+const KPI_LABELS: Record<string, string> = {
+  machines: 'overview.kpi.machines',
+  instances: 'overview.kpi.pipelineInstances',
+  sessions: 'overview.kpi.activeSessions',
+  errorRate: 'overview.kpi.errorRate'
+}
+
+const STATUS_COLOR: Record<ClusterStatus, string> = {
+  ok: 'green',
+  warn: 'orange',
+  draining: 'orange',
+  bad: 'red',
+  muted: 'default'
+}
+
+const EVENT_CATEGORIES = ['cluster', 'param', 'deploy', 'release', 'voice', 'machine', 'access']
+function categoryOf(action: string): string {
+  const prefix = action.split('.')[0]
+  return EVENT_CATEGORIES.includes(prefix) ? prefix : 'other'
+}
+
 // 机器层不是表：从当前集群实例的 base_url host 去重派生（spec §3）。
 const topo = computed(() => {
   const hosts = new Map<string, boolean>()
@@ -57,10 +81,20 @@ const topo = computed(() => {
     const host = hostOf(row.base_url)
     hosts.set(host, (hosts.get(host) ?? false) || row.status === 'online')
   }
+  const current = clusterStore.currentRow
   return layoutTopo({
     cluster: clusterStore.current,
+    registry: current?.registry ?? '',
+    policy: current?.policy ?? 'least',
+    sessions: summary.value?.slots_in_use ?? null,
     machines: [...hosts].map(([host, online]) => ({ host, online })),
-    instances: instances.value.map((row) => ({ id: row.instance_id, status: row.status, host: hostOf(row.base_url) }))
+    instances: instances.value.map((row) => ({
+      id: row.instance_id,
+      status: row.status,
+      host: hostOf(row.base_url),
+      inUse: row.in_use,
+      size: row.size
+    }))
   })
 })
 
@@ -97,13 +131,31 @@ async function loadClusterData(): Promise<void> {
   }
 }
 
+// 15s 自动刷新（原型是静态 mock，真实数据需要持续更新）：防重入，避免
+// /instances 探池耗时数秒时请求叠罗汉；卸载即清理。
+let refreshing = false
+let timer: number | undefined
+async function refreshSafely(): Promise<void> {
+  if (refreshing) return
+  refreshing = true
+  try {
+    await loadClusterData()
+  } finally {
+    refreshing = false
+  }
+}
+
 onMounted(async () => {
   await clusterStore.load()
-  await loadClusterData()
+  await refreshSafely()
+  timer = window.setInterval(() => void refreshSafely(), 15000)
+})
+onBeforeUnmount(() => {
+  if (timer !== undefined) window.clearInterval(timer)
 })
 
-watch(() => clusterStore.current, () => void loadClusterData())
-watch(() => consoleStore.profile, () => void loadClusterData())
+watch(() => clusterStore.current, () => void refreshSafely())
+watch(() => consoleStore.profile, () => void refreshSafely())
 
 function openCreate(): void {
   formCluster.value = null
@@ -120,14 +172,20 @@ async function onSaved(row: ClusterRow): Promise<void> {
   await clusterStore.load()
   // 场景 3：新增成功后自动切入新集群，便于紧接着加机器；switchTo 顺带留审计。
   if (isNew) await clusterStore.switchTo(row.name)
-  await loadClusterData()
+  message.success(t(isNew ? 'overview.toast.created' : 'overview.toast.updated', { name: row.name }))
+  await refreshSafely()
 }
 
 async function switchCluster(row: ClusterRow): Promise<void> {
   actionError.value = null
   const ok = await clusterStore.switchTo(row.name)
-  if (!ok) actionError.value = clusterStore.error
-  else await loadClusterData()
+  if (!ok) {
+    actionError.value = clusterStore.error
+    message.error(t('overview.toast.switchFailed', { message: clusterStore.error?.message ?? '' }))
+    return
+  }
+  message.success(t('overview.toast.switched', { name: row.name }))
+  await refreshSafely()
 }
 
 async function removeCluster(row: ClusterRow): Promise<void> {
@@ -139,10 +197,16 @@ async function removeCluster(row: ClusterRow): Promise<void> {
   actionError.value = null
   try {
     await clusterStore.remove(row.name)
+    message.success(t('overview.toast.deleted', { name: row.name }))
   } catch (caught) {
-    actionError.value = caught instanceof AppError ? caught : new AppError('unknown', String(caught))
+    const err = caught instanceof AppError ? caught : new AppError('unknown', String(caught))
+    actionError.value = err
+    if (err.code === 'last_cluster') message.warning(t('overview.toast.last'))
+    else if (err.code === 'cluster_not_empty')
+      message.warning(t('overview.toast.blocked', { name: row.name, n: row.machines_total }))
+    else message.error(t('overview.toast.serverError', { message: err.message }))
   }
-  await loadClusterData()
+  await refreshSafely()
 }
 
 // 场景 8：拓扑里的机器跳部署参数页，用 query.host 带身份（Task 12 接手高亮/筛选）。
@@ -159,38 +223,40 @@ const tableColumns = computed(() => [
   { title: t('overview.table.status'), key: 'status', width: 90 },
   { title: t('overview.table.actions'), key: 'actions', width: 220 }
 ])
-
-const eventColumns = computed(() => [
-  { title: t('overview.events.at'), key: 'at', width: 160 },
-  { title: t('overview.events.actor'), dataIndex: 'actor', key: 'actor', width: 110 },
-  { title: t('overview.events.action'), key: 'action', width: 140 },
-  { title: t('overview.events.target'), dataIndex: 'profile', key: 'target', width: 130 },
-  { title: t('overview.events.result'), key: 'result', width: 90 }
-])
 </script>
 
 <template>
   <div class="overview">
+    <!-- 原型 head(nav.overview, overview.desc)：页面标题 + 一句说明。 -->
+    <div class="overview__head">
+      <h1>{{ t('overview.page.title') }}</h1>
+      <p>{{ t('overview.page.desc') }}</p>
+    </div>
+
     <ErrorBanner :error="instancesError" />
     <ErrorBanner :error="eventsError" />
     <ErrorBanner :error="clusterStore.error" />
     <ErrorBanner :error="actionError" />
 
     <section v-if="alerts.length" class="overview__alerts">
-      <a-alert v-for="alert in alerts" :key="alert" type="warning" show-icon :message="alert" />
+      <a-alert v-for="alert in alerts" :key="alert" type="warning" show-icon :message="describeAlert(alert)" />
     </section>
 
     <!-- ① KPI 四卡：机器 / 实例 / 活跃会话 / 错误率(5m)，随当前集群联动。 -->
     <div class="overview__grid">
       <a-card v-for="kpi in kpis" :key="kpi.key" size="small" class="kpi">
-        <p class="kpi__label">{{ t(`overview.kpi.${kpi.key === 'instances' ? 'pipelineInstances' : kpi.key === 'sessions' ? 'activeSessions' : kpi.key}`) }}</p>
+        <p class="kpi__label">{{ t(KPI_LABELS[kpi.key]) }}</p>
         <p class="kpi__value" :class="`is-${kpi.tone}`" :data-metric="`kpi.${kpi.key}`">{{ kpi.primary }}</p>
-        <p v-if="kpi.sub" class="kpi__sub">{{ kpi.sub }}</p>
+        <p v-if="kpi.subKey" class="kpi__sub">{{ t(`overview.kpi.sub.${kpi.subKey}`, kpi.subParams) }}</p>
       </a-card>
     </div>
 
     <!-- ② 集群表：当前行带「当前」标签且不摆切换按钮（场景 2）。 -->
-    <a-card size="small" :title="t('shell.cluster')">
+    <a-card size="small">
+      <template #title>
+        <span class="overview__card-title">{{ t('overview.table.sectionTitle') }}</span>
+        <span class="overview__card-hint">{{ t('overview.table.hint') }}</span>
+      </template>
       <template #extra>
         <a-button v-if="auth.hasPermission('console:cluster:create')" size="small" type="primary" @click="openCreate">
           {{ t('overview.actions.create') }}
@@ -223,7 +289,9 @@ const eventColumns = computed(() => [
             <span class="mono">{{ record.instances_total }}</span>
           </template>
           <template v-else-if="column.key === 'status'">
-            <a-badge :status="record.healthy ? 'success' : 'error'" :text="t(record.healthy ? 'overview.status.healthy' : 'overview.status.unhealthy')" />
+            <a-tag :color="STATUS_COLOR[clusterStatus(record as ClusterRow)]">
+              {{ t(`overview.status.${clusterStatus(record as ClusterRow)}`) }}
+            </a-tag>
           </template>
           <template v-else-if="column.key === 'actions'">
             <a-space>
@@ -256,41 +324,48 @@ const eventColumns = computed(() => [
     </a-card>
 
     <!-- ③ 拓扑：集群→LB→机器→pipeline 实例，机器可点跳部署参数页（场景 8）。 -->
-    <a-card size="small" :title="t('overview.topology.title')">
+    <a-card size="small">
+      <template #title>
+        <span class="overview__card-title">{{ t('overview.topology.title') }}</span>
+        <span class="overview__card-hint">{{ t('overview.topology.hint') }}</span>
+      </template>
       <TopoChart :layout="topo" @machine="goMachine" />
     </a-card>
 
     <div class="overview__split">
-      <!-- ④a 图例 -->
+      <!-- ④a 图例：原型六项（LB / 健康 / 降级 / 排空中 / 故障 / 流动连线）。 -->
       <a-card size="small" :title="t('overview.legend.title')">
         <ul class="legend">
-          <li><span class="legend__dot is-ok" />{{ t('overview.legend.online') }}</li>
-          <li><span class="legend__dot is-warn" />{{ t('overview.legend.degraded') }}</li>
-          <li><span class="legend__dot is-bad" />{{ t('overview.legend.offline') }}</li>
-          <li><span class="legend__dot is-muted" />{{ t('overview.legend.muted') }}</li>
+          <li><span class="legend__lb" />{{ t('overview.legend.lb') }}</li>
+          <li><span class="legend__dot is-ok" />{{ t('overview.legend.ok') }}</li>
+          <li><span class="legend__dot is-warn" />{{ t('overview.legend.warn') }}</li>
+          <li><span class="legend__dot is-draining" />{{ t('overview.legend.draining') }}</li>
+          <li><span class="legend__dot is-bad" />{{ t('overview.legend.bad') }}</li>
+          <li><span class="legend__flow" />{{ t('overview.legend.flow') }}</li>
         </ul>
       </a-card>
 
-      <!-- ④b 最近事件：audit action 代码态不翻译（spec §8.4 口径），结果列翻译。 -->
-      <a-card size="small" :title="t('overview.events.title')">
-        <a-table
-          v-if="events.length"
-          size="small"
-          row-key="auditId"
-          :pagination="false"
-          :data-source="events"
-          :columns="eventColumns"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'at'"><span class="mono">{{ formatTime(record.at) }}</span></template>
-            <template v-else-if="column.key === 'action'"><span class="mono">{{ record.action }}</span></template>
-            <template v-else-if="column.key === 'result'">
-              <a-tag :color="record.result === 'ok' ? 'green' : 'red'">
-                {{ t(record.result === 'ok' ? 'overview.events.ok' : 'overview.events.error') }}<template v-if="record.result === 'error' && record.errorCode"> · {{ record.errorCode }}</template>
-              </a-tag>
-            </template>
-          </template>
-        </a-table>
+      <!-- ④b 最近事件：原型无表头、五列含「分类」tag；action 代码态不翻译，结果列翻译。 -->
+      <a-card size="small">
+        <template #title>
+          <span class="overview__card-title">{{ t('overview.events.title') }}</span>
+          <span class="overview__card-hint">{{ t('overview.events.hint') }}</span>
+        </template>
+        <table v-if="events.length" class="events-table">
+          <tbody>
+            <tr v-for="event in events" :key="event.auditId">
+              <td class="mono">{{ formatTime(event.at) }}</td>
+              <td>{{ event.actor }}</td>
+              <td><span class="tag tag--accent">{{ t(`overview.events.cat.${categoryOf(event.action)}`) }}</span></td>
+              <td class="mono">{{ event.action }}</td>
+              <td>
+                <span :class="['tag', event.result === 'ok' ? 'tag--ok' : 'tag--bad']">
+                  {{ t(event.result === 'ok' ? 'overview.events.ok' : 'overview.events.error') }}<template v-if="event.result === 'error' && event.errorCode"> · {{ event.errorCode }}</template>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
         <p v-else class="events-empty">{{ t('overview.events.empty') }}</p>
       </a-card>
     </div>
@@ -306,16 +381,48 @@ const eventColumns = computed(() => [
   flex-direction: column;
   gap: 16px;
 
+  &__head {
+    margin: 0 0 2px;
+
+    h1 {
+      color: var(--s2s-color-text);
+      font-size: 20px;
+      margin: 0 0 6px;
+    }
+
+    p {
+      color: var(--s2s-color-muted);
+      font-size: 13px;
+      margin: 0;
+    }
+  }
+
+  &__card-title {
+    font-weight: 600;
+  }
+
+  &__card-hint {
+    color: var(--s2s-color-faint);
+    font-size: 12px;
+    font-weight: 400;
+    margin-left: 8px;
+  }
+
   &__alerts {
     display: flex;
     flex-direction: column;
     gap: 8px;
   }
 
+  /* 原型 .grid.g4：四卡等宽铺满整行；窄屏（≤1100px）降为两列。 */
   &__grid {
     display: grid;
-    gap: 12px;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 14px;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+
+    @media (max-width: 1100px) {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   &__split {
@@ -326,17 +433,24 @@ const eventColumns = computed(() => [
 }
 
 .kpi {
+  /* 原型 .kpi padding: 14px 16px；a-card 的 body 需穿透 scoped 才能覆盖。 */
+  :deep(.ant-card-body) {
+    padding: 14px 16px;
+  }
+
   &__label {
     color: var(--s2s-color-muted);
     font-size: 12px;
-    margin: 0 0 4px;
+    margin: 0;
   }
 
   &__value {
     color: var(--s2s-color-text);
     font-family: var(--s2s-font-mono);
-    font-size: 18px;
-    margin: 0;
+    font-size: 24px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 680;
+    margin: 6px 0 0;
 
     &.is-warn {
       color: var(--s2s-color-warning);
@@ -399,6 +513,10 @@ const eventColumns = computed(() => [
       background: var(--s2s-color-warning);
     }
 
+    &.is-draining {
+      background: var(--s2s-color-warning);
+    }
+
     &.is-bad {
       background: var(--s2s-color-danger);
     }
@@ -407,11 +525,65 @@ const eventColumns = computed(() => [
       background: var(--s2s-color-muted);
     }
   }
+
+  &__lb {
+    border: 1px solid var(--s2s-color-accent);
+    border-radius: 3px;
+    height: 10px;
+    width: 14px;
+  }
+
+  &__flow {
+    border-top: 2px dashed var(--s2s-color-accent);
+    height: 0;
+    width: 16px;
+  }
 }
 
 .events-empty {
   color: var(--s2s-color-muted);
   font-size: 12px;
   margin: 0;
+}
+
+/* 原型 .tbl / .tag：最近事件表无表头，分类与结果用彩色标签。 */
+.events-table {
+  border-collapse: collapse;
+  font-size: 12px;
+  width: 100%;
+
+  td {
+    border-bottom: 1px solid var(--s2s-color-border);
+    color: var(--s2s-color-text);
+    padding: 9px 10px;
+    vertical-align: middle;
+  }
+
+  tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+.tag {
+  border: 1px solid var(--s2s-color-border);
+  border-radius: 999px;
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+
+  &--accent {
+    border-color: var(--s2s-color-accent);
+    color: var(--s2s-color-accent);
+  }
+
+  &--ok {
+    border-color: var(--s2s-color-success);
+    color: var(--s2s-color-success);
+  }
+
+  &--bad {
+    border-color: var(--s2s-color-danger);
+    color: var(--s2s-color-danger);
+  }
 }
 </style>

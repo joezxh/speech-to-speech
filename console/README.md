@@ -82,6 +82,9 @@ insensitive). In the container they come from `config/prod.env`.
 | `SUPERVISOR_SOCKET` | `/run/s2s-console/supervisor.sock` | process status and restarts |
 | `LOG_DIR` | `/var/log/supervisor` | read-only source for the log panel |
 | `DATA_DIR` | `/app/data` | turn-latency cursor, voice library |
+| `CONSOLE_LB_MODE` | `off` | `proxy` makes the console the only data-plane entry (registry-driven selection); `off` keeps the pre-2026-11-16 behaviour. Needs `ALLOCATOR_MODE=local` — see below |
+| `ALLOCATOR_MODE` | `off` | `local` enables the instance registry, the probe loop and the local grant path |
+| `INSTANCES_SEED_PATH` | empty | declarative instance seed; empty means the DB is the only source |
 
 ## Pointing the console at a local pipeline-1
 
@@ -111,6 +114,32 @@ The browser never learns `8765`: `npm run dev` proxies `/v1` (with `ws: true`) t
 the console on `:8000`, which forwards the socket to the pipeline. Same-origin
 means no second CORS surface, and `8765` stays unpublished in the container
 deployment.
+
+### Load balancing across pipeline boxes
+
+`CONSOLE_LB_MODE=proxy` turns the console into the **only** data-plane entry:
+`/v1/realtime`, `/v1/audio/*` (ASR / TTS / voiceprint / emotion) and `/api/calls`
+are forwarded to the instance the console picks from the instance registry
+(`config/instances.yaml` seeds it; the DB is the source of truth). An upstream that
+is full or unreachable is swapped for another box **silently** — the browser never
+sees the intermediate state.
+
+It needs `ALLOCATOR_MODE=local` and a non-empty registry; with `CONSOLE_LB_MODE=off`
+(the default) the console behaves exactly as before and `/v1/audio/*` answers
+`501 lb_disabled`. The full matrix, the WS end states and the error codes are in
+[`../docs/console-service.md`](../docs/console-service.md) §11.
+
+Because `8765` is no longer published by `docker-compose.yml`, anything that used
+to call the pipeline directly has to go through the console:
+
+```bash
+# was: http://host:8765/v1/audio/transcriptions
+curl -s http://host:8000/v1/audio/transcriptions -F file=@sample.wav
+```
+
+For **local debugging** keep using `docker-compose.local.yml`: it still publishes
+`8765`, so you can talk to the pipeline directly while the console keeps proxying
+the browser.
 
 ### Verifying the wire, in order
 

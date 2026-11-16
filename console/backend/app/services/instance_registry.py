@@ -31,6 +31,11 @@ class RuntimeState:
     consecutive_successes: int = 0
     last_error: str = ""
     probe_history: list[int] = field(default_factory=list)
+    # 能力指纹（spec §5.1）：派生状态，只驻留内存，不落库、不进 seed。
+    # 探测要花一次 HTTP 往返，且各实例的端点集合可能不同（声纹/情感是条件注册的），
+    # 所以选台时要按能力过滤，否则会把请求发给没有该路由的机器。
+    capabilities: frozenset[str] = frozenset()
+    capability_issues: dict[str, str] = field(default_factory=dict)
 
     @property
     def effective_free(self) -> int:

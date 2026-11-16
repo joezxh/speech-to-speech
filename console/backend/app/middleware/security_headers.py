@@ -25,6 +25,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         max_body_bytes: int = 2 * 1024 * 1024,
         upload_body_bytes: int | None = None,
         upload_paths: tuple[str, ...] = ("/api/v1/voices",),
+        exempt_paths: tuple[str, ...] = (),
     ) -> None:
         super().__init__(app)
         self.max_body_bytes = max_body_bytes
@@ -33,15 +34,22 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # would refuse it first with the wrong code (design §3.11.2 vs §2.5).
         self.upload_body_bytes = upload_body_bytes or max_body_bytes
         self.upload_paths = upload_paths
+        # Paths whose size limit is enforced by the handler itself. The proxy
+        # face answers 413 in the pipeline error shape, and two different 413
+        # shapes for the same limit is worse than one (spec §5.4).
+        self.exempt_paths = exempt_paths
 
     async def dispatch(self, request: Request, call_next):
         declared = request.headers.get("content-length")
-        limit = (
-            self.upload_body_bytes
-            if request.method == "POST" and request.url.path in self.upload_paths
-            else self.max_body_bytes
-        )
-        if declared and declared.isdigit() and int(declared) > limit:
+        if request.url.path in self.exempt_paths:
+            limit = None
+        else:
+            limit = (
+                self.upload_body_bytes
+                if request.method == "POST" and request.url.path in self.upload_paths
+                else self.max_body_bytes
+            )
+        if limit is not None and declared and declared.isdigit() and int(declared) > limit:
             return JSONResponse({"code": "invalid_parameter", "message": "request body too large"}, status_code=413)
         response = await call_next(request)
         response.headers["X-Frame-Options"] = "DENY"

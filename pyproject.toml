@@ -69,6 +69,11 @@ dependencies = [
 chattts = [
     "ChatTTS>=0.2.1",
 ]
+cosyvoice2 = [
+    "funasr>=1.2.7",
+    "modelscope>=1.17.1",
+    "cosyvoice @ git+https://github.com/FunAudioLLM/CosyVoice.git",
+]
 faster-whisper = [
     "faster-whisper>=1.0.3",
 ]

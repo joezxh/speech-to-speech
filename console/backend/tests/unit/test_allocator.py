@@ -104,3 +104,19 @@ async def test_draining_instance_is_never_selected(two_online):
     two_online.set_drain("pipe-b", True)
     assert await allocator.allocate("s-1") is None
     assert allocator.drain_counters() == {"alloc_fail_no_instance": 1}
+
+
+async def test_the_grant_shape_did_not_gain_or_lose_keys(two_online):
+    # demo 面的契约：grant 的键集合不能因为选台改造而变（spec §5.2）。
+    grant = await allocator.allocate("s-shape")
+    assert set(grant) == {"state", "session_id", "connect_url", "expires_in"}
+
+
+async def test_a_held_slot_is_not_reused_until_it_is_released(two_online):
+    # hold：会话已建立 → 占位不再靠 TTL 回收，但仍然占着槽位。
+    allocator.store.reserve("pipe-a", "s-hold", 60)
+    allocator.store.hold("s-hold", "pipe-a")
+    assert allocator.store.pending_count("pipe-a") == 1
+    allocator.store.release("s-hold")
+    assert allocator.store.pending_count("pipe-a") == 0
+    assert allocator.store.occupied_count() == 0

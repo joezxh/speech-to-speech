@@ -89,6 +89,20 @@ async def lifespan(app: FastAPI):
     if allocator_settings.mode != "off" or allocator_settings.seed_path.strip():
         monitor = asyncio.create_task(instance_monitor.run_forever())
 
+    # LB 模式（proxy）：巡检是"先 sleep 再探"（instance_monitor.run_forever），
+    # 冷启动的头几秒注册表还是空的 → 选台无候选 → 浏览器握手失败。所以 proxy
+    # 模式下启动即探一轮容量与能力，不等那 5s（spec §4.2）。
+    if console_settings.lb_mode == "proxy":
+        session = SessionLocal()
+        try:
+            await asyncio.to_thread(instance_monitor.probe_all, session)
+            await instance_monitor.probe_capabilities_round()
+        except Exception as exc:  # noqa: BLE001 - 探测失败不该挡住启动
+            logger.warning("lb startup probe skipped: {}", exc)
+            session.rollback()
+        finally:
+            session.close()
+
     try:
         yield
     finally:
@@ -113,6 +127,13 @@ def create_app() -> FastAPI:
         # A voice upload is capped by its own endpoint (10 MiB), plus multipart
         # overhead; the 2 MiB guard is for JSON payloads.
         upload_body_bytes=console_settings.voice_max_bytes + 1024 * 1024,
+        # 这三条由代理自己把关：限值与错误体（pipeline 风格的 413）必须一致，
+        # 中间件的闸会给 console envelope 的 413，两种形状不能混（spec §5.4）。
+        exempt_paths=(
+            "/v1/audio/transcriptions",
+            "/v1/audio/embeddings",
+            "/v1/audio/emotion",
+        ),
     )
     app.add_middleware(RequestIdMiddleware)
     app.add_exception_handler(ApiError, api_error_handler)

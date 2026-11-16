@@ -198,5 +198,288 @@ CREATE INDEX ix_param_instance_cluster_id ON param_instance (cluster_id);
 
 UPDATE alembic_version SET version_num='0006_clusters' WHERE alembic_version.version_num = '0005_instances';
 
+-- Running upgrade 0006_clusters -> 0007_comments
+
+COMMENT ON TABLE "param_user" IS '控制台操作员账号与角色，用于登录鉴权';
+
+COMMENT ON TABLE "param_audit" IS '操作审计日志，仅追加；fields 只存字段名不存值';
+
+COMMENT ON TABLE "param_cluster" IS '集群登记表：一个负载均衡注册中心界定一个集群';
+
+COMMENT ON TABLE "param_draft" IS '配置草稿：每个配置档一份增量补丁，不是整份配置';
+
+COMMENT ON TABLE "param_instance" IS 'Pipeline 实例注册表，运维开关与集群归属落库';
+
+COMMENT ON TABLE "param_instance_metric" IS '实例状态与分配计数采样；计数为窗口增量而非累计值，空值表示不可得';
+
+COMMENT ON TABLE "param_proxy_metric" IS '数据面代理采样：按实例与服务记录成功数与失败原因，成功数为窗口增量';
+
+COMMENT ON TABLE "param_version" IS '配置版本快照，创建后不可变；保存配置全文用于启动自检';
+
+COMMENT ON TABLE "turn_latency" IS '单轮语音延迟索引，可由日志重建，只存原始毫秒值';
+
+COMMENT ON TABLE "voices" IS '音色上传记录，音频与特征路径相对音色数据卷保存';
+
+COMMENT ON COLUMN "param_user"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_user"."username" IS '登录用户名，全局唯一';
+
+COMMENT ON COLUMN "param_user"."password_hash" IS '口令哈希，不存明文';
+
+COMMENT ON COLUMN "param_user"."role" IS '角色：admin 或 operator';
+
+COMMENT ON COLUMN "param_user"."disabled" IS '是否禁用，禁用后不可登录';
+
+COMMENT ON COLUMN "param_user"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_user"."last_login_at" IS '最近一次成功登录时间（UTC）';
+
+COMMENT ON COLUMN "param_audit"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_audit"."at" IS '事件发生时间（UTC）';
+
+COMMENT ON COLUMN "param_audit"."actor" IS '操作人用户名';
+
+COMMENT ON COLUMN "param_audit"."role" IS '操作发生时的角色';
+
+COMMENT ON COLUMN "param_audit"."action" IS '动作代码，点分前缀表示分类';
+
+COMMENT ON COLUMN "param_audit"."profile" IS '关联的配置档名或对象标识';
+
+COMMENT ON COLUMN "param_audit"."version" IS '关联的配置版本号';
+
+COMMENT ON COLUMN "param_audit"."fields" IS '变更字段名列表，只存字段名不存值';
+
+COMMENT ON COLUMN "param_audit"."result" IS '结果：ok 或 error';
+
+COMMENT ON COLUMN "param_audit"."error_code" IS '失败时的机器可读错误码';
+
+COMMENT ON COLUMN "param_audit"."duration_s" IS '操作耗时（秒）';
+
+COMMENT ON COLUMN "param_audit"."request_id" IS '请求追踪标识';
+
+COMMENT ON COLUMN "param_cluster"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_cluster"."name" IS '集群名称，全局唯一';
+
+COMMENT ON COLUMN "param_cluster"."registry" IS '负载均衡注册中心地址；空串表示存量 default 集群';
+
+COMMENT ON COLUMN "param_cluster"."policy" IS '调度策略：least、rr 或 lat';
+
+COMMENT ON COLUMN "param_cluster"."note" IS '备注说明';
+
+COMMENT ON COLUMN "param_cluster"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_cluster"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_cluster"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_draft"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_draft"."profile" IS '配置档名，每档仅一份草稿';
+
+COMMENT ON COLUMN "param_draft"."base_version" IS '草稿所基于的配置版本号';
+
+COMMENT ON COLUMN "param_draft"."patch" IS '增量补丁（JSON），不是整份配置';
+
+COMMENT ON COLUMN "param_draft"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_draft"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_instance"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_instance"."instance_id" IS '实例标识，注册 seed 的幂等键';
+
+COMMENT ON COLUMN "param_instance"."base_url" IS '实例端点地址';
+
+COMMENT ON COLUMN "param_instance"."weight" IS '调度权重';
+
+COMMENT ON COLUMN "param_instance"."max_sessions_hint" IS '声明容量，仅用于展示与偏差告警，不参与分配';
+
+COMMENT ON COLUMN "param_instance"."labels_json" IS '实例标签（JSON）';
+
+COMMENT ON COLUMN "param_instance"."enabled" IS '是否参与调度';
+
+COMMENT ON COLUMN "param_instance"."drain_requested" IS '是否请求排空，控制台重启后仍保持';
+
+COMMENT ON COLUMN "param_instance"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_instance"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_instance"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_instance"."cluster_id" IS '所属集群名，软关联 param_cluster.name';
+
+COMMENT ON COLUMN "param_instance_metric"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_instance_metric"."instance_id" IS '实例标识，软关联 param_instance.instance_id';
+
+COMMENT ON COLUMN "param_instance_metric"."observed_at" IS '采样时间（UTC）';
+
+COMMENT ON COLUMN "param_instance_metric"."observed_by" IS '采集方标识，未配置时取主机名';
+
+COMMENT ON COLUMN "param_instance_metric"."kind" IS '采样类型：sample 或状态跳变';
+
+COMMENT ON COLUMN "param_instance_metric"."size" IS '实例池容量';
+
+COMMENT ON COLUMN "param_instance_metric"."in_use" IS '占用中的会话槽位数';
+
+COMMENT ON COLUMN "param_instance_metric"."free" IS '空闲槽位数';
+
+COMMENT ON COLUMN "param_instance_metric"."stuck" IS '卡住的槽位数';
+
+COMMENT ON COLUMN "param_instance_metric"."status" IS '实例状态';
+
+COMMENT ON COLUMN "param_instance_metric"."probe_ms" IS '探活耗时（毫秒）';
+
+COMMENT ON COLUMN "param_instance_metric"."alloc_ok" IS '本采样窗口内分配成功次数';
+
+COMMENT ON COLUMN "param_instance_metric"."alloc_fail_no_instance" IS '本窗口内无可用实例的分配失败次数';
+
+COMMENT ON COLUMN "param_instance_metric"."alloc_fail_instance_503" IS '本窗口内实例返回 503 的分配失败次数';
+
+COMMENT ON COLUMN "param_instance_metric"."evict_count" IS '本窗口内实例摘除次数';
+
+COMMENT ON COLUMN "param_instance_metric"."recover_count" IS '本窗口内实例恢复次数';
+
+COMMENT ON COLUMN "param_proxy_metric"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_proxy_metric"."instance_id" IS '实例标识，软关联 param_instance.instance_id';
+
+COMMENT ON COLUMN "param_proxy_metric"."service" IS '服务名，例如 asr、tts、voiceprint、emotion、realtime';
+
+COMMENT ON COLUMN "param_proxy_metric"."observed_at" IS '采样时间（UTC）';
+
+COMMENT ON COLUMN "param_proxy_metric"."observed_by" IS '采集方标识，未配置时取主机名';
+
+COMMENT ON COLUMN "param_proxy_metric"."ok" IS '本采样窗口内代理成功次数';
+
+COMMENT ON COLUMN "param_proxy_metric"."fail_count" IS '本采样窗口内代理失败次数';
+
+COMMENT ON COLUMN "param_proxy_metric"."fail_reason" IS '失败原因，空表示本窗口无失败';
+
+COMMENT ON COLUMN "param_proxy_metric"."duration_ms" IS '本窗口内平均耗时（毫秒）';
+
+COMMENT ON COLUMN "param_version"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_version"."profile" IS '配置档名';
+
+COMMENT ON COLUMN "param_version"."version" IS '版本号，与配置档名组成唯一键';
+
+COMMENT ON COLUMN "param_version"."status" IS '发布状态，例如 publishing';
+
+COMMENT ON COLUMN "param_version"."note" IS '版本说明';
+
+COMMENT ON COLUMN "param_version"."author" IS '发布人';
+
+COMMENT ON COLUMN "param_version"."yaml_text" IS '配置全文快照，用于启动自检';
+
+COMMENT ON COLUMN "param_version"."yaml_sha256" IS '配置全文的摘要';
+
+COMMENT ON COLUMN "param_version"."env_sha256" IS '环境变量摘要';
+
+COMMENT ON COLUMN "param_version"."duration_s" IS '发布耗时（秒）';
+
+COMMENT ON COLUMN "param_version"."rolled_back_to" IS '回滚指向的版本号';
+
+COMMENT ON COLUMN "param_version"."error_code" IS '发布失败时的错误码';
+
+COMMENT ON COLUMN "param_version"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "turn_latency"."response_key" IS '响应标识，联合主键之一';
+
+COMMENT ON COLUMN "turn_latency"."turn_revision" IS '轮次修订号，联合主键之一';
+
+COMMENT ON COLUMN "turn_latency"."turn_id" IS '对话轮次标识';
+
+COMMENT ON COLUMN "turn_latency"."source" IS '日志来源';
+
+COMMENT ON COLUMN "turn_latency"."status" IS '本轮状态';
+
+COMMENT ON COLUMN "turn_latency"."smart_status" IS 'Smart Turn 判定状态';
+
+COMMENT ON COLUMN "turn_latency"."e2e_ms" IS '端到端延迟（毫秒）';
+
+COMMENT ON COLUMN "turn_latency"."stt_ms" IS '语音识别耗时（毫秒）';
+
+COMMENT ON COLUMN "turn_latency"."llm_ms" IS '语言模型耗时（毫秒）';
+
+COMMENT ON COLUMN "turn_latency"."tts_ttfa_ms" IS '语音合成首包耗时（毫秒）';
+
+COMMENT ON COLUMN "turn_latency"."vad_decision_ms" IS 'VAD 判停耗时（毫秒）';
+
+COMMENT ON COLUMN "turn_latency"."hold_ms" IS '保持等待耗时（毫秒）';
+
+COMMENT ON COLUMN "turn_latency"."logged_at" IS '日志写入时间（UTC）';
+
+COMMENT ON COLUMN "turn_latency"."raw_offset" IS '原始日志偏移量，重建时用于定位';
+
+COMMENT ON COLUMN "turn_latency"."ingested_at" IS '入库时间（UTC）';
+
+COMMENT ON COLUMN "voices"."id" IS '音色标识';
+
+COMMENT ON COLUMN "voices"."name" IS '音色名称，唯一';
+
+COMMENT ON COLUMN "voices"."source" IS '音色来源';
+
+COMMENT ON COLUMN "voices"."backend" IS '合成后端';
+
+COMMENT ON COLUMN "voices"."language" IS '语种';
+
+COMMENT ON COLUMN "voices"."status" IS '音色状态，例如 draft';
+
+COMMENT ON COLUMN "voices"."audio_relpath" IS '参考音频相对路径';
+
+COMMENT ON COLUMN "voices"."audio_bytes" IS '音频字节数';
+
+COMMENT ON COLUMN "voices"."audio_seconds" IS '音频时长（秒）';
+
+COMMENT ON COLUMN "voices"."trim_start_ms" IS '裁剪起点（毫秒）';
+
+COMMENT ON COLUMN "voices"."trim_end_ms" IS '裁剪终点（毫秒）';
+
+COMMENT ON COLUMN "voices"."ref_text" IS '参考音频对应的文本';
+
+COMMENT ON COLUMN "voices"."instruct" IS '音色描述指令';
+
+COMMENT ON COLUMN "voices"."spk_relpath" IS '说话人特征相对路径';
+
+COMMENT ON COLUMN "voices"."rvq_relpath" IS 'RVQ 特征相对路径';
+
+COMMENT ON COLUMN "voices"."error_code" IS '处理失败时的错误码';
+
+COMMENT ON COLUMN "voices"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "voices"."created_by" IS '上传人';
+
+COMMENT ON COLUMN "voices"."consent_ack_at" IS '授权确认时间（UTC）';
+
+COMMENT ON COLUMN "voices"."retention_days" IS '保留天数';
+
+UPDATE alembic_version SET version_num='0007_comments' WHERE alembic_version.version_num = '0006_clusters';
+
+-- Running upgrade 0007_comments -> 0008_proxy_metrics
+
+CREATE TABLE param_proxy_metric (
+    id SERIAL NOT NULL,
+    instance_id VARCHAR(64) NOT NULL,
+    service VARCHAR(32) NOT NULL,
+    observed_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    observed_by VARCHAR(64) DEFAULT '' NOT NULL,
+    ok INTEGER DEFAULT '0' NOT NULL,
+    fail_count INTEGER DEFAULT '0' NOT NULL,
+    fail_reason VARCHAR(64) DEFAULT '' NOT NULL,
+    duration_ms INTEGER DEFAULT '0' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_proxy_metric_instance_id ON param_proxy_metric (instance_id);
+
+CREATE INDEX ix_param_proxy_metric_service ON param_proxy_metric (service);
+
+CREATE INDEX ix_param_proxy_metric_observed_at ON param_proxy_metric (observed_at);
+
+UPDATE alembic_version SET version_num='0008_proxy_metrics' WHERE alembic_version.version_num = '0007_comments';
+
 COMMIT;
 

@@ -10,20 +10,24 @@
 FROM speech-to-speech-local:cu130-1.1-sox
 USER root
 
-# 1) ASR / TTS 独立端点（新版：TTS 支持参考音频克隆路径）
+# 1) ASR / TTS 独立端点
+#    新版源码由 api/openai_realtime/audio_services.py 直接挂载；旧基座仍靠补丁注入。
+#    自检同时接受两种形态，镜像复用时不会静默缺端点。
 COPY scripts/patch_pipeline_rest.py /tmp/patch_pipeline_rest.py
-RUN python3 /tmp/patch_pipeline_rest.py \
-    && grep -q "rest_transcriptions" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
-    && grep -q "_is_clone" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
-    && echo "ASR/TTS rest endpoints baked OK (clone-aware)" \
+RUN API=/usr/src/app/src/speech_to_speech/api/openai_realtime \
+    && python3 /tmp/patch_pipeline_rest.py \
+    && ( grep -q "rest_transcriptions" "$API/websocket_router.py" \
+         || grep -q "ASR_PATH" "$API/audio_services.py" 2>/dev/null ) \
+    && echo "ASR/TTS rest endpoints present OK" \
     && rm /tmp/patch_pipeline_rest.py
 
-# 2) 声纹嵌入端点补丁
+# 2) 声纹嵌入端点
 COPY scripts/patch_voiceprint_embeddings.py /tmp/patch_voiceprint_embeddings.py
-RUN python3 /tmp/patch_voiceprint_embeddings.py \
-    && grep -q "_vp_embeddings" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
-    && grep -q "audio/embeddings/capability" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
-    && echo "voiceprint endpoints baked OK" \
+RUN API=/usr/src/app/src/speech_to_speech/api/openai_realtime \
+    && python3 /tmp/patch_voiceprint_embeddings.py \
+    && ( grep -q "_vp_embeddings" "$API/websocket_router.py" \
+         || grep -q "EMBEDDINGS_PATH" "$API/voiceprint_routes.py" 2>/dev/null ) \
+    && echo "voiceprint endpoints present OK" \
     && rm /tmp/patch_voiceprint_embeddings.py
 
 # 3) 声纹服务实现（含 standalone encoder 加载路径，方案 C）

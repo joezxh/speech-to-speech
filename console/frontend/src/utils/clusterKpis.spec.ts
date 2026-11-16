@@ -68,6 +68,19 @@ describe('clusterKpis', () => {
     expect(clean.errorRate.tone).toBe('ok')
   })
 
+  it('exposes prototype sub-line i18n keys (labels, not bare numbers)', () => {
+    const k = byKey(clusterKpis(row, summary({ error_rate_5m: 0.0234, top_error_instance: 'pipe-b' })))
+    expect(k.machines.subKey).toBe('machinesOnline')
+    expect(k.machines.subParams).toEqual({ n: '2' })
+    expect(k.instances.subKey).toBe('activeSessions')
+    expect(k.instances.subParams).toEqual({ n: '9' })
+    expect(k.sessions.subKey).toBe('stickyHit')
+    expect(k.errorRate.subKey).toBe('topError')
+    expect(k.errorRate.subParams).toEqual({ source: 'pipe-b' })
+    const empty = byKey(clusterKpis(row, summary()))
+    expect(empty.errorRate.subKey).toBe('noSamples')
+  })
+
   it('never leaks NaN into any card', () => {
     const cards = clusterKpis(null, summary({ slots_in_use: Number.NaN }))
     for (const card of cards) expect(card.primary + card.sub).not.toContain('NaN')

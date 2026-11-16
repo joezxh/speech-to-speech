@@ -576,6 +576,17 @@ def create_app(
 
     llm_proxy_usage = mount_llm_proxy(app, llm_proxy_config)
 
+    # Standalone services used to be injected only by build-time patches into
+    # the container image. Mount them here so a source-tree start exposes the
+    # same endpoint set. All three read their switches from the process env.
+    from speech_to_speech.api.openai_realtime.audio_services import mount_audio_services
+    from speech_to_speech.api.openai_realtime.emotion_routes import mount_emotion
+    from speech_to_speech.api.openai_realtime.voiceprint_routes import mount_voiceprint
+
+    mount_audio_services(app, pool)
+    mount_voiceprint(app, pool)
+    mount_emotion(app)
+
     def _claim_unit(transport: SessionTransport | None) -> PipelineUnit | None:
         """Atomically (between asyncio yield points) reserve the first idle unit.
 

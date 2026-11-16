@@ -124,6 +124,11 @@ curl -s http://127.0.0.1:8000/api/v1/auth/me -H "Authorization: Bearer <accessTo
 | 前端（开发） | `npm run dev`（= `vite`） | `:3000`，被占用自动 `+1` | `console/frontend` |
 | 前端（生产） | 构建产物由后端托管 | 同后端 `:8000`，页面在 `/console` | — |
 | pipeline | `speech-to-speech serve -f config/prod.yaml --name prod` | `127.0.0.1:8765`（容器内 loopback） | 仓库根 |
+| SER（情感，GPU 编排） | `docker compose --env-file .env -f docker-compose.gpu.yml up -d --build` @ `mediation-deploy/ser` | `127.0.0.1:8023/ser`（nginx）/ `8022`（推理） | 见 `docs/service-enablement-CN.md` |
+
+交付形态（`docker-compose.yml`）只 publish `:8000`：8765 已从宿主机网段收回，
+外部调用方统一走 console 的 `/v1/audio/*`，浏览器走同源 `/v1/realtime`。
+见 §11。
 
 Vite 开发代理（`console/frontend/vite.config.ts`）：`/api`、`/vendor`、`/v1`
 （`ws: true`）全部转发到 `process.env.VITE_DEV_BACKEND ?? http://localhost:8000`。
@@ -174,9 +179,15 @@ $env:VITE_DEV_BACKEND="http://127.0.0.1:8001"; npm run dev
 | `s2s-pipeline-prod` | Python | Module name `speech_to_speech.cli`；Parameters `serve -f config/prod.yaml --name prod`；Working dir 仓库根 |
 | `s2s-dev (backend + frontend)` | Compound | 同时起 backend (reload) + frontend |
 
-调试请选**不带 reload** 的那个。`config/prod.yaml` 是容器口径
-（`/root/.cache/*`、`device: cuda`、`0.0.0.0`），Windows 原生跑不起来；
-本机联调 pipeline 建议用 Docker，或自备一份轻量 YAML。
+调试请选**不带 reload** 的那个。`config/prod.yaml` 已把权重路径改为本机 `cache/`
+（`{env: S2S_ASR_MODEL_DIR}` / `{env: S2S_TTS_MODEL_DIR}` 由 `config/prod.env` 提供），
+需要本机 CUDA 与已下载的权重；容器部署仍走 CLI flags，不使用该 YAML。
+
+选 `s2s-pipeline-prod`（不带 `--with-console`）时 console 保持在 8000 独立运行；
+若选 `s2s-pipeline-prod-with-console`，console 会在 8765 同进程再起一份，两者不要同时开。
+
+8765 除 WS `/v1/realtime` 外还提供 ASR / TTS / 声纹 / 情感四类独立端点，
+启用方式、env 清单与冒烟步骤见 `docs/service-enablement-CN.md`。
 
 ---
 
@@ -304,6 +315,20 @@ pipeline :8765
 | WS | `/v1/realtime` | 无 | 反代到 pipeline；上游连不上时 close `1013` |
 | POST | `/v1/realtime/calls` | 无 | 转发 SDP |
 
+pipeline 独立端点（`8765`，由 `create_app()` 直接挂载，非 console 自身的路由）：
+
+| 方法 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| POST | `/v1/audio/transcriptions` | 无 | ASR，复用同进程 `Qwen3ASRSTTHandler` |
+| POST | `/v1/audio/speech` | 无 | TTS，复用同进程 `Qwen3TTSHandler`，wav |
+| POST | `/v1/audio/embeddings` | Bearer `VOICEPRINT_API_KEY` | 声纹嵌入（方案 C，CPU encoder） |
+| GET | `/v1/audio/embeddings/capability` | Bearer | 声纹能力探活（`dim` 自报） |
+| POST | `/v1/audio/emotion` | 无（服务端注入 SER 的 `X-API-Key`） | 情感代理到现成 emotion2vec_plus_large 服务 |
+| GET | `/v1/audio/emotion/health` | 同上 | 转发 SER `/health` |
+
+`SER_ENABLED=true` 但 `SER_API_KEY` 为空时情感路由不会注册（fail-closed）。
+完整 env 映射与错误码见 `docs/service-enablement-CN.md`。
+
 前端页面统一在 `/console`（`/console/login` 为登录页）；`/assets`、`/worklets`
 走 immutable 缓存，`index.html` 走 `no-store`。
 
@@ -327,6 +352,10 @@ pipeline :8765
 | `drain` 后仍拿到 grant | 看到的是已签发未领取的 pending（`INSTANCE_GRANT_TTL_S` 内不会消失），或 console 重启后忘了 `refresh_specs()` |
 | `POST …/hangup` 返回 404/405 | `INSTANCE_WEBRTC_HANGUP_ENABLED` 没开，路由根本没注册（默认关，spec §9.2；SPA catch-all 只注册 GET，故未挂载的 POST 返 405） |
 | `POST …/hangup` 返回 503 `admin_disabled` | 这台 console 的 `S2S_ADMIN_TOKEN` 为空；多 console 必须与实例侧同值（spec §12） |
+| 浏览器语音连不上（LB 模式） | 查 `CONSOLE_LB_MODE`、`ALLOCATOR_MODE`、实例页的 `capabilities` 列；冷启动时 pipeline 还没加载完也会这样（§11.6） |
+| `/v1/audio/*` 回 501 `lb_disabled` | `CONSOLE_LB_MODE` 还是 `off`（§11.1） |
+| `/v1/audio/*` 回 503 `no_available_instance` | 注册表里没有可用实例：seed 没落库、实例 `enabled=false`、或还在 `unknown`/`offline`（§11.6） |
+| 声纹返回 503 | 该实例没配 `VOICEPRINT_API_KEY`（路由在但未配置，§11.5） |
 
 ---
 
@@ -341,7 +370,13 @@ pipeline :8765
 | `console/backend/app/routers/auth.py` | 登录、刷新、`/me` |
 | `console/backend/app/core/spa.py` | SPA 托管与 `STATIC_DIR` 校验 |
 | `console/deploy/supervisord.conf` | 容器里两个进程的命令与日志路径 |
-| `docker-compose.yml` | 只 publish 8000；`env_file: ./config/prod.env` |
+| `docker-compose.yml` | 只 publish 8000；`env_file: ./config/prod.env`（8765 已取消 publish，见 §11.2） |
+| `config/instances.yaml` | 实例注册表的声明式 seed（交付形态登记本机 pipeline） |
+| `console/backend/app/routers/audio_proxy.py` | `/v1/audio/*` 六条反代路由的注册（off 模式也注册） |
+| `console/backend/app/services/audio_proxy_service.py` | ASR/TTS/声纹/情感反代：选台、白名单头透传、体积闸、错误映射 |
+| `console/backend/app/services/upstream_resolver.py` | 两套选台策略（session 容量感知 / stateless 在途感知）与在途计数 |
+| `console/backend/app/services/capability_probe.py` | 能力指纹探测与"存在但不可用"的判定 |
+| `console/backend/app/routers/realtime.py` | `/v1/realtime` 的静默换台与三种终态 |
 | `console/backend/app/services/instance_registry.py` | 实例级状态机（unknown/online/degraded/offline/draining）与 effective_free 建模 |
 | `console/backend/app/services/instance_monitor.py` | 常驻巡检循环 + 探测缓存 + 指标采样与清理 |
 | `console/backend/app/services/allocator.py` / `allocator_store.py` | 本地分配选台/grant/503 换台；`AllocatorStore` 为 Phase 2 替换点 |
@@ -456,3 +491,118 @@ stateDiagram-v2
 console 以 `--workers 1` 运行（§1）：内存 `AllocatorStore` 与 `publish_flow_service` 的
 进程内锁同前提——多 worker 会让 grant 与发布状态在进程间不一致（spec §13/§16）。
 Phase 2 换 `PostgresAllocatorStore` 后此约束才放开。
+
+---
+
+## 11. S2S 数据面负载均衡（spec 2026-11-16）
+
+一句话：**console 是唯一数据面入口**。浏览器与外部调用方只跟 `:8000` 说话，console
+按实例注册表选台后转发给 pipeline；`8765` 收敛为容器内/内网端口。
+
+设计全文见 `docs/superpowers/specs/2026-11-16-console-s2s-load-balancing-design.md`，
+实施计划见 `docs/superpowers/plans/2026-11-16-console-s2s-load-balancing.md`。
+
+### 11.1 两种模式与端点矩阵
+
+开关只有一个：`CONSOLE_LB_MODE`（默认 `off` = 与本期之前行为等价）。
+
+| `CONSOLE_LB_MODE` | `/v1/realtime`（WS） | `/v1/audio/*`（ASR/TTS/声纹/情感） | `/api/calls`（WebRTC SDP） |
+|---|---|---|---|
+| `off` | 反代到回环 pipeline（`PIPELINE_BASE_URL`） | **注册但回 501 `lb_disabled`** | 转发到 env 钉死的 `SPEECH_TO_SPEECH_URL`（无 pin 则 404） |
+| `proxy` | 选台后反代到实例 | 选台后反代到实例 | 选台后转发到实例 |
+
+`off` 也注册 `/v1/audio/*` 是有意的：不注册的话 `GET /v1/audio/embeddings/capability`
+会命中 SPA catch-all 拿到 **200 + index.html**（探针解析 JSON 直接炸），POST 则拿到
+**405**。显式注册并回 501 JSON，调用方至少拿到一个可解析的"未启用"。
+
+`proxy` 的前提：`ALLOCATOR_MODE=local`（spec §4.2）且注册表非空。前提不满足时
+**不会**悄悄退回 `off`，而是明确回 503 `no_available_instance`——安静降级比报错更难查。
+选台用两套策略：
+
+- **占 unit 槽位的端点**（WS、WebRTC）按 `free/capacity` 降序 + 权重随机；
+- **不占槽位的端点**（ASR/TTS/声纹/情感复用 pool 里的 handler，不 claim unit）
+  按 console 侧记录的在途请求数升序（least-conn 的近似）。
+
+### 11.2 8765 收敛清单
+
+| compose | 处置 | 理由 |
+|---|---|---|
+| `docker-compose.yml` | **收敛**（删 publish，保留 `expose: 8765/tcp`） | 交付形态，唯一对外入口是 console `:8000` |
+| `docker-compose.local.yml` | 保留 publish | 本地开发要直连 8765 调试 |
+| `docker-compose.baked.yml` / `.baked.cu130.yml` | 保留 | 烘焙镜像的实验形态 |
+| `.cu130.yml` / `.gpustack.yml` / `.llm-bundled.yml` / `.vn.ms.llm-bundled.yml` | 保留 | 服务器/GPUStack 部署形态，外部有直连调用方 |
+| `.thirdparty.yml` / `.voiceprint.yml` | 保留 | 声纹/情感的外部调用方直连 8765 |
+
+取消 publish 的收益：`/v1/pool`、`/v1/usage`、`/v1/audio/*` 大多无应用层鉴权
+（声纹除外），收敛后这些端点不再对宿主机网段暴露。
+
+入口切换的前置条件：`config/prod.env` 的 `SPEECH_TO_SPEECH_URL` **必须留空**。
+填了值 → 前端 `allowDirect=true` 且 `s2sUrl` 指向 8765 → 浏览器绕过 console 直连，
+删 publish 等于直接打断语音链路。留空后前端自动回落同源 `/v1/realtime`（前端零改动）。
+
+### 11.3 WS 的三种终态
+
+| 终态 | 浏览器看到 | 触发条件 |
+|---|---|---|
+| 成功 | 101 + 正常会话 | 上游首帧是 `session.created` |
+| 满员 | 101 + `error/session_limit_reached` 事件 + close 1008 | 上游明确回满员且换台耗尽（与改造前直连 pipeline 完全一致） |
+| 不可达 / 无候选 | **HTTP 403 握手失败** | 连不上、首帧超时、或注册表里没有可用实例 |
+
+> **WS 阶段没有 HTTP 503**。Starlette 在 `accept()` 之前 close 只回 HTTP 403，
+> close code 送不到浏览器——这是既有事实，别把 503 写进前端的期望。
+
+换台是**静默**的：console 先与上游握手、验首帧，上游满员就换下一台，浏览器看不到
+中间态。换台次数 `LB_FAILOVER_ATTEMPTS`（默认 2，不含首次）。
+
+### 11.4 REST 错误码（`/v1/audio/*`）
+
+反代面用 pipeline 风格的错误体 `{"error":{"code","message","retryable"}}`，
+**不用** console 的 `{code,message,detail,requestId}` 信封——保持 OpenAI 兼容面的
+调用方不改。
+
+| 情况 | 状态码 | `error.code` |
+|---|---|---|
+| 上游 2xx/4xx/5xx | 原样 | 原样（声纹的 401/403/404/503 也原样） |
+| 上游连不上 | 502 | `upstream_unreachable` |
+| 上游超时 | 504 | `upstream_timeout` |
+| 无可用实例 | 503 | `no_available_instance` |
+| 请求体超限 | 413 | `request_too_large` |
+| LB 未启用（`off`） | 501 | `lb_disabled` |
+
+上传体积闸由**代理自己**判（`LB_AUDIO_MAX_BYTES`，默认 11 MiB = 声纹 10 MiB +
+1 MiB multipart 余量）：中间件对这三条上传路径豁免，413 的错误体全网只有这一处
+产生，形状不会打架。上传必须带 `content-length`（超限时上游一个字节都收不到）。
+
+### 11.5 灰度与回滚
+
+灰度分两步，本期交付的是第二步：
+
+1. 先上 `CONSOLE_LB_MODE=proxy`（8765 仍 publish）→ 验证：浏览器同源
+   `/v1/realtime` 能连上、`POST /v1/audio/transcriptions` 返回 200。
+2. 再删 publish 条目（本次）→ 验证：宿主机 `curl :8765` 拒绝连接，
+   `:8000/v1/audio/*` 仍然 200。
+
+| 症状 | 回滚动作 |
+|---|---|
+| 语音链路整体不通 | `CONSOLE_LB_MODE=off` + 恢复 `SPEECH_TO_SPEECH_URL` + 恢复 8765 publish（三处一起） |
+| 只有 `/v1/audio/*` 不通 | 看实例页的 `capabilities` 列与 `capability_issues`：声纹返回 503 说明该实例没配 `VOICEPRINT_API_KEY` |
+| 想临时直连 8765 | 本地调试用 `docker-compose.local.yml`；交付形态别开 publish，否则安全收敛失效 |
+
+### 11.6 单盒形态的已知点
+
+- **冷启动窗口**：容器里 console 先于 pipeline 起来（supervisord priority 10 < 20），
+  pipeline 加载模型期间注册表里还没有 `online` 实例，语音请求会拿到
+  503 `no_available_instance`（改造前是连不上 8765，性质相同）。pipeline 起来后
+  巡检会在 `INSTANCE_RECOVER_THRESHOLD` 次成功后把它恢复成 `online`。
+- **单盒形态不广告 WebRTC**：`/api/config` 的 `rtc` 仍以 `SPEECH_TO_SPEECH_URL` 是否
+  钉死为准（`demo_config_service.py:38`），清空 pin 后前端只给 WebSocket 一个选项。
+  这是有意的：pipeline 的 ICE 候选是容器内地址，远程浏览器本来就连不上。proxy 模式
+  的 `/api/calls` 选台转发在服务端已就绪（`calls_service.forward_selected`），
+  多机部署且 ICE 可达时可直接启用。
+- **`/api/session` 的 connect_url 是容器内回环**（`ws://127.0.0.1:8765/v1/realtime`），
+  浏览器不可直连。单盒部署的语音入口是同源 `/v1/realtime`，不是 demo 面的
+  `/api/session`。
+- **能力指纹只驻留内存**：重启后要等一轮探测（`LB_CAPABILITY_INTERVAL_S`，默认 30s，
+  启动时另探一轮）才知道各实例有没有声纹/情感。声纹能力探测返回 401/403 是
+  "路由存在"的免费信号——console 不持有声纹 key。
+

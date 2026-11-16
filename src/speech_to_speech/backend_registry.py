@@ -13,6 +13,7 @@ from speech_to_speech.arguments_classes.chat_completions_language_model_argument
     ChatCompletionsLanguageModelHandlerArguments,
 )
 from speech_to_speech.arguments_classes.chat_tts_arguments import ChatTTSHandlerArguments
+from speech_to_speech.arguments_classes.cosyvoice_tts_arguments import CosyVoiceTTSHandlerArguments
 from speech_to_speech.arguments_classes.drama3_tts_arguments import Drama3TTSHandlerArguments
 from speech_to_speech.arguments_classes.facebookmms_tts_arguments import FacebookMMSTTSHandlerArguments
 from speech_to_speech.arguments_classes.faster_whisper_stt_arguments import (
@@ -596,6 +597,19 @@ TTS_BACKENDS = build_backend_registry(
             ),
             config_prefix="omnivoice",
             required_extra="omnivoice",
+        ),
+        BackendSpec(
+            "cosyvoice2",
+            "tts",
+            CosyVoiceTTSHandlerArguments,
+            _simple_handler_factory(
+                "speech_to_speech.TTS.cosyvoice_handler",
+                "CosyVoiceTTSHandler",
+                setup_should_listen=True,
+                context_kwargs=True,
+            ),
+            config_prefix="cosyvoice_tts",
+            required_extra="cosyvoice2",
         ),
         BackendSpec(
             "pocket",

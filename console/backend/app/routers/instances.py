@@ -11,9 +11,10 @@ from app.deps import DbSession
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.instance_metric_repository import InstanceMetricRepository
 from app.repositories.instance_repository import InstanceRepository
+from app.repositories.proxy_metric_repository import ProxyMetricRepository
 from app.repositories.version_repository import VersionRepository
 from app.schemas.common import ok
-from app.schemas.instance import WINDOWS, HangupRequest, metric_point
+from app.schemas.instance import WINDOWS, HangupRequest, metric_point, proxy_metric_point
 from app.services import instance_monitor, instance_probe, instances_service
 
 router = APIRouter(prefix="/api/v1", tags=["instances"])
@@ -139,12 +140,26 @@ def metrics(
     instance_id: str,
     db: DbSession,
     window: str = "1h",
+    kind: str = "slots",
     user: CurrentUser = Depends(require_operator),
 ):
     if window not in WINDOWS:
         raise ApiError("invalid_request", f"window must be one of {sorted(WINDOWS)}", 400)
     _registry_row(db, instance_id)
     since = datetime.now(UTC) - timedelta(seconds=WINDOWS[window])
+    if kind == "proxy":
+        # 数据面代理采样（spec §6.2/§7）：与槽位采样分表，所以单独一条读路径。
+        rows = ProxyMetricRepository(db).window(instance_id, since=since)
+        return ok(
+            {
+                "instance_id": instance_id,
+                "window": window,
+                "kind": "proxy",
+                "points": [proxy_metric_point(row) for row in rows],
+            }
+        )
+    if kind != "slots":
+        raise ApiError("invalid_request", "kind must be one of ['proxy', 'slots']", 400)
     rows = InstanceMetricRepository(db).window(instance_id, since=since)
     return ok(
         {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { message } from 'ant-design-vue'
 import { reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -41,6 +42,8 @@ function fail(caught: unknown): void {
   if (err.code === 'duplicate_name') errors.value = { ...errors.value, name: `errors.${key}` }
   else if (err.code === 'duplicate_registry') errors.value = { ...errors.value, registry: `errors.${key}` }
   else banner.value = t(`errors.${key}`)
+  // spec §5.3：服务端失败同时给「内联错误条 + toast」双反馈，弹窗不关闭。
+  message.error(t('overview.toast.serverError', { message: err.message }))
 }
 
 async function save(): Promise<void> {

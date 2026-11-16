@@ -1,0 +1,19 @@
+# 实例注册表的声明式 seed（spec 2026-11-16 §7；console/backend/app/services/instance_seed.py）。
+#
+# 交付形态（docker-compose.yml）：console 与 pipeline 同容器（supervisord 双进程），
+# 所以本机 pipeline 的地址是**容器内的回环** 127.0.0.1:8765。8765 不再 publish 到
+# 宿主机，console 是唯一数据面入口：浏览器走同源 /v1/realtime，ASR/TTS/声纹/情感走
+# 同源 /v1/audio/*，都由 console 按本文件选台后转发。
+#
+# 换机器部署要改的只有 base_url（填宿主机或内网可达地址）。多机部署时在这里追加
+# 别的 pipeline 盒，或者直接在 console 的实例页增删——DB 是真相源，seed 只做幂等
+# upsert，且永不覆盖 enabled / drain_requested（运维开关优先于 seed）。
+#
+# seed 只在 console 启动时应用一次；运行期的增删请走实例页或 API。
+instances:
+  - id: local-pipeline
+    base_url: http://127.0.0.1:8765
+    weight: 1
+    labels:
+      role: local
+      compose: docker-compose.yml

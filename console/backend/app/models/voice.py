@@ -25,7 +25,8 @@ class Voice(Base):
     source: Mapped[str] = mapped_column(String(16), nullable=False)
     backend: Mapped[str] = mapped_column(String(16), nullable=False)
     language: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
+    # 迁移 0003 建了 ix_voices_status；模型需声明同名索引，避免 alembic check 漂移。
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", index=True)
 
     audio_relpath: Mapped[str | None] = mapped_column(String(255), nullable=True)
     audio_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

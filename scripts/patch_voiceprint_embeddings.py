@@ -99,6 +99,17 @@ NEW_BLOCK = '''
 
 
 def main() -> None:
+    import os
+
+    # Legacy compatibility layer. When the image contains the source module
+    # api/openai_realtime/voiceprint_routes.py, create_app() already mounts the
+    # endpoints and this string injection must be skipped to avoid duplicates.
+    source_module = (
+        "/usr/src/app/src/speech_to_speech/api/openai_realtime/voiceprint_routes.py"
+    )
+    if os.path.isfile(source_module):
+        print("SOURCE MODULES PRESENT - patch skipped (mount_voiceprint)")
+        return
     with open(TARGET, encoding="utf-8") as f:
         content = f.read()
     if "_vp_embeddings" in content:

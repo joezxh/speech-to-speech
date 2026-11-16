@@ -21,7 +21,10 @@ USER root
 COPY scripts/patch_pipeline_rest.py /tmp/patch_pipeline_rest.py
 RUN python3 /tmp/patch_pipeline_rest.py && rm /tmp/patch_pipeline_rest.py
 
-# 端点自检：确认补丁已生效，避免镜像被复用时静默缺失
-RUN grep -q "rest_transcriptions" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
-    && grep -q "rest_speech" /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \
-    && echo "ASR/TTS REST endpoints baked OK"
+# 端点自检：同时接受源码模块（新版）与构建期补丁（旧基座）两种形态
+RUN API=/usr/src/app/src/speech_to_speech/api/openai_realtime \
+    && ( grep -q "rest_transcriptions" "$API/websocket_router.py" \
+         || grep -q "ASR_PATH" "$API/audio_services.py" 2>/dev/null ) \
+    && ( grep -q "rest_speech" "$API/websocket_router.py" \
+         || grep -q "TTS_PATH" "$API/audio_services.py" 2>/dev/null ) \
+    && echo "ASR/TTS REST endpoints present OK"

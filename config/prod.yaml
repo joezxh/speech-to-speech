@@ -9,6 +9,13 @@
 # repo path is resolved in code (vad_handler.py) and falls back to the in-repo
 # `silero-vad/` directory on Windows. Container deploys (docker-compose.*.yml)
 # use CLI flags, NOT this file, so this change does not affect them.
+#
+# 独立服务（ASR / TTS / 声纹 / 情感）不在本文件声明：顶层键是严格白名单，
+# 新增 services: 段会被 config.py:validate_config 判为 Unknown field。
+# 它们的开关与端点配置全部来自 config/prod.env 的同名环境变量，由
+# create_app() 在启动时挂载；本文件只保留权重路径的 {env: NAME} 联动。
+# 参照部署：docker-compose.voiceprint.yml（声纹，方案 C）与
+# D:/work/mediation_platform/mediation-deploy/ser（emotion2vec_plus_large，情感）。
 schema_version: 1
 
 blocks:
@@ -38,14 +45,15 @@ blocks:
       # 0.6B instead of the 1.7B checkpoint: on this box the 1.7B measured
       # RTF 0.57 (median over 312 final calls), i.e. ~2.9 s of STT for a 5 s
       # utterance. Both checkpoints sit in `cache/`, so this needs no download.
-      qwen3_asr_model_name: cache/qwen3-asr-0.6b-hf
+      qwen3_asr_model_name: {env: S2S_ASR_MODEL_DIR}
       # Spelled out rather than `auto`: a silent fallback to CPU or fp32 is the
       # difference between sub-second and multi-second transcription.
       qwen3_asr_device: cuda
       qwen3_asr_torch_dtype: bfloat16
-      # Forced Chinese: `auto` makes the model spend extra tokens on language ID
-      # and run a second `decode(parsed)` pass per turn.
-      qwen3_asr_language: zh
+      # Auto language detection — Qwen3-ASR emits an ISO-639-1 language_code
+      # (zh/en/ja/ko/th/vi/...) with each Transcription. Downstream TTS handlers
+      # (qwen3, cosyvoice2) use it for auto voice/language selection.
+      qwen3_asr_language: auto
       # 256 (the default) let two calls in the metrics log run 47 s and 53 s for
       # 12 characters. 128 still covers the p50 (30-60 chars) with headroom.
       qwen3_asr_gen_max_new_tokens: 128
@@ -54,11 +62,11 @@ blocks:
     kind: llm
     backend: chat-completions
     settings:
-      model_name: Qwen3-8B
-      responses_api_base_url: http://192.168.40.30/v1-openai
+      model_name: qwen3.8-27b
+      responses_api_base_url: http://llm-uve484oav7pue2sw.cn-beijing.maas.aliyuncs.com/compatible-mode/v1
       # Streaming map, not a string. A missing variable is a hard error at
       # resolve time — there is no fallback to the default.
-      responses_api_api_key: {env: GPUSTACK_API_KEY}
+      responses_api_api_key: {env: LLM_API_KEY}
       responses_api_stream: true
       # Empty string means "send no reasoning_effort"; null would be different.
       responses_api_reasoning_effort: ""
@@ -70,9 +78,10 @@ blocks:
     kind: tts
     backend: qwen3
     settings:
-      qwen3_tts_model_name: cache/qwen3-tts-model
+      qwen3_tts_model_name: {env: S2S_TTS_MODEL_DIR}
       qwen3_tts_backend: torch
       qwen3_tts_device: cuda
+      qwen3_tts_language: auto
       qwen3_tts_non_streaming_mode: false
       qwen3_tts_streaming_chunk_size: 4
 

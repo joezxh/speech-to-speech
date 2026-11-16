@@ -93,14 +93,13 @@ def builtin_model_cards() -> tuple[ModelCard, ...]:
             weight_format="safetensors",
             backend_name="cosyvoice2",
             repo_id="FunAudioLLM/CosyVoice2-0.5B",
-            status="planned",
+            status="available",
             notes=(
                 "MiniCPM-o 4.5 同源组件，非 MiniCPM 品牌独立模型；"
                 "同时承担 spec §6.4 路径 L 的 Breeze 替代位。"
                 "官方代码仓库 LICENSE 为 Apache-2.0；权重许可已获取。"
                 "项目定位为演示开源项目，商用部署所需的相关许可由实际应用方自行申请。"
-                "status=planned 仅因适配层尚未实现（Spec B），不再是许可 gate。"
-                "本仓 TTS/cosyvoice_handler.py 存在但未注册。"
+                "backend_registry.py 已注册 cosyvoice2 后端，handler 位于 TTS/cosyvoice_handler.py。"
             ),
         ),
         ModelCard(

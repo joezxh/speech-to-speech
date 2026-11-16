@@ -259,3 +259,12 @@ console/backend/data/
 # 本地部署 env（含第三方 LLM API Key，禁止入库）
 .env.thirdparty
 .env.thirdparty.tmp
+/.agents/
+/.claude/
+/.codebuddy/
+/.github/
+/.jbeval/
+/.pytest-tmp-root/
+/.qoder/
+/.superpowers/
+/agent/

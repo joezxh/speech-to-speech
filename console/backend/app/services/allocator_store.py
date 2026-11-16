@@ -25,8 +25,10 @@ class AllocatorStore(Protocol):
     def upsert_runtime(self, state: RuntimeState) -> None: ...
     def reserve(self, instance_id: str, session_id: str, ttl_s: int) -> bool: ...
     def release(self, session_id: str) -> None: ...
+    def hold(self, session_id: str, instance_id: str) -> None: ...
     def expire_pending(self) -> list[str]: ...
     def pending_count(self, instance_id: str) -> int: ...
+    def occupied_count(self) -> int: ...
     def begin_once(self, dedupe_key: str, window_s: int) -> str | None: ...
     def remember_grant(self, dedupe_key: str, grant: dict) -> None: ...
     def grant_for(self, dedupe_key: str) -> dict | None: ...
@@ -59,6 +61,9 @@ class InMemoryAllocatorStore:
         self._lock = threading.Lock()
         # session_id -> (instance_id, 单调过期时刻)
         self._pending: dict[str, tuple[str, float]] = {}
+        # session_id -> instance_id：会话已建立的占位。不靠 TTL 回收，随会话结束
+        # release（spec §5.3）——pending 的 TTL 只有 60s，远短于一次会话。
+        self._held: dict[str, str] = {}
         # dedupe_key -> 首次看到的单调时刻（spec §8.5：缺省 cookie+10s 时间桶）
         self._begun: dict[str, float] = {}
         self._grants: dict[str, dict] = {}
@@ -89,17 +94,30 @@ class InMemoryAllocatorStore:
         instance_monitor.registry._states[state.instance_id] = state
 
     def pending_count(self, instance_id: str) -> int:
+        """该实例上被本机占住的槽位数。
+
+        pending（已预留未连接）与 held（会话已建立）都占槽位，两者都要从 free 里扣。
+        """
         with self._lock:
-            return sum(1 for iid, _ in self._pending.values() if iid == instance_id)
+            return sum(1 for iid, _ in self._pending.values() if iid == instance_id) + sum(
+                1 for iid in self._held.values() if iid == instance_id
+            )
+
+    def occupied_count(self) -> int:
+        """本机占住的槽位总数（pending + held）。"""
+        with self._lock:
+            return len(self._pending) + len(self._held)
 
     def reserve(self, instance_id: str, session_id: str, ttl_s: int) -> bool:
         state = instance_monitor.registry.get(instance_id)
         if state is None:
             return False
         with self._lock:
-            pending = sum(1 for iid, _ in self._pending.values() if iid == instance_id)
-            # 占用 = 实例报的 in_use + 本机未反映的 pending；effective_free 已扣
-            # stuck，这里只剩 pending 需要再扣（spec §6.2）。
+            pending = sum(1 for iid, _ in self._pending.values() if iid == instance_id) + sum(
+                1 for iid in self._held.values() if iid == instance_id
+            )
+            # 占用 = 实例报的 in_use + 本机未反映的 pending/held；effective_free 已扣
+            # stuck，这里只剩本机占位需要再扣（spec §6.2）。
             if state.pool is None or pending >= max(0, state.pool.size - state.pool.in_use - state.pool.stuck):
                 return False
             self._pending[session_id] = (instance_id, time.monotonic() + ttl_s)
@@ -107,6 +125,13 @@ class InMemoryAllocatorStore:
 
     def release(self, session_id: str) -> None:
         with self._lock:
+            self._pending.pop(session_id, None)
+            self._held.pop(session_id, None)
+
+    def hold(self, session_id: str, instance_id: str) -> None:
+        """把预留转成会话期占位：不再靠 TTL 回收，随会话结束 release（spec §5.3）。"""
+        with self._lock:
+            self._held[session_id] = instance_id
             self._pending.pop(session_id, None)
 
     def expire_pending(self) -> list[str]:

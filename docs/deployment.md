@@ -136,6 +136,15 @@ docker compose -f <所用compose文件> exec pipeline \
 
 也可从外部用 OpenAI Realtime SDK 连接 `ws://<server>:8765/v1/realtime`。
 
+> **交付形态例外**：`docker-compose.yml`（console + pipeline 同容器的交付形态）已
+> 取消 8765 的 publish，外部入口只有 console `:8000`：实时链路走
+> `ws://<server>:8000/v1/realtime`，ASR / TTS / 声纹 / 情感走
+> `http://<server>:8000/v1/audio/*`（spec 2026-11-16；详见
+> `docs/console-service.md` §11）。容器内仍可用
+> `docker compose exec pipeline speech-to-speech talk --url ws://127.0.0.1:8765/v1/realtime`
+> 自测。其余 compose（local / cu130 / gpustack / thirdparty / voiceprint 等）保持
+> publish 不变。
+
 ---
 
 ## 7. 注意事项

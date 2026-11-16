@@ -1,49 +1,81 @@
 import { describe, expect, it } from 'vitest'
 
-import { layoutTopo } from './topoLayout'
+import { layoutTopo, type TopoInput } from './topoLayout'
 
-const full = layoutTopo({
+const input: TopoInput = {
   cluster: 'default',
+  registry: 'consul://h:8500',
+  policy: 'least',
+  sessions: 9,
   machines: [
     { host: 'host1', online: true },
     { host: 'host2', online: false }
   ],
   instances: [
-    { id: 'pipe-a', status: 'online', host: 'host1' },
-    { id: 'pipe-b', status: 'degraded', host: 'host1' },
-    { id: 'pipe-c', status: 'offline', host: 'host2' }
+    { id: 'pipe-a', status: 'online', host: 'host1', inUse: 2, size: 4 },
+    { id: 'pipe-b', status: 'degraded', host: 'host1', inUse: 0, size: 4 },
+    { id: 'pipe-c', status: 'offline', host: 'host2', inUse: 0, size: 8 }
   ]
-})
+}
+const full = layoutTopo(input)
 
-describe('layoutTopo', () => {
-  it('stacks the four layers in prototype order', () => {
-    expect(full.layers.map((layer) => layer.key)).toEqual(['cluster', 'lb', 'machine', 'instance'])
-    expect(full.layers.map((layer) => layer.nodes.length)).toEqual([1, 1, 2, 3])
+describe('layoutTopo (prototype topoSVG horizontal geometry)', () => {
+  it('uses the horizontal LB → machine rows → instance chips geometry', () => {
+    expect(full.width).toBe(980)
+    expect(full.lb.x).toBe(40)
+    expect(full.lb.w).toBe(180)
+    expect(full.lb.h).toBe(76)
+    expect(full.machines.map((m) => m.y)).toEqual([26, 106])
+    expect(full.machines[0].chips.map((c) => c.x)).toEqual([560, 692])
+    expect(full.machines[1].chips.map((c) => c.x)).toEqual([560])
   })
 
-  it('spreads sibling nodes evenly and keeps y constant per layer', () => {
-    const machines = full.layers[2].nodes
-    expect(machines[0].x).toBeCloseTo(900 / 3)
-    expect(machines[1].x).toBeCloseTo((900 / 3) * 2)
-    expect(new Set(machines.map((n) => n.y)).size).toBe(1)
+  it('carries only real metadata (no mock role / ver / util / rpm)', () => {
+    expect(full.lb).toMatchObject({
+      cluster: 'default',
+      registry: 'consul://h:8500',
+      policy: 'least',
+      sessions: 9
+    })
+    expect(full.machines[0].instanceCount).toBe(2)
+    expect(full.machines[0].onlineCount).toBe(1)
+    expect(full.machines[0].chips[0]).toMatchObject({ label: 'pipe-a', inUse: 2, size: 4 })
   })
 
-  it('maps status to tones: online=ok, degraded=warn, everything else=bad', () => {
-    expect(full.layers[2].nodes.map((n) => n.tone)).toEqual(['ok', 'bad'])
-    expect(full.layers[3].nodes.map((n) => n.tone)).toEqual(['ok', 'warn', 'bad'])
+  it('maps statuses to ok / warn / draining / bad tones', () => {
+    expect(full.machines.map((m) => m.tone)).toEqual(['ok', 'bad'])
+    expect(full.machines[0].chips.map((c) => c.tone)).toEqual(['ok', 'warn'])
+    const draining = layoutTopo({
+      ...input,
+      instances: [{ id: 'pipe-x', status: 'draining', host: 'host1' }]
+    })
+    expect(draining.machines[0].chips[0].tone).toBe('draining')
   })
 
-  it('wires cluster→lb, lb→machine, machine→instance edges', () => {
-    expect(full.edges).toHaveLength(1 + 2 + 3)
-    expect(full.edges[0]).toEqual({ from: 'cluster:default', to: 'lb:console' })
-    expect(full.edges.some((e) => e.from === 'machine:host2' && e.to === 'instance:pipe-c')).toBe(true)
+  it('lights LB→machine edges and derives chip flow from real in_use', () => {
+    expect(full.edges).toHaveLength(5)
+    const lbEdges = full.edges.filter((e) => e.d.startsWith('M220'))
+    expect(lbEdges).toHaveLength(2)
+    expect(lbEdges.every((e) => e.flow)).toBe(true)
+    const chipEdges = full.edges.filter((e) => e.d.startsWith('M510'))
+    expect(chipEdges).toHaveLength(3)
+    expect(chipEdges.map((e) => e.flow)).toEqual([true, true, false])
   })
 
-  it('keeps an empty cluster renderable with muted placeholders', () => {
-    const empty = layoutTopo({ cluster: 'gray-01', machines: [], instances: [] })
-    expect(empty.layers[2].nodes).toEqual([
-      { id: 'machine:empty', kind: 'machine', label: '', x: 450, y: 232, tone: 'muted' }
-    ])
-    expect(empty.layers[3].nodes.every((n) => n.tone === 'muted')).toBe(true)
+  it('keeps an empty cluster renderable with LB only', () => {
+    const empty = layoutTopo({ ...input, machines: [], instances: [] })
+    expect(empty.empty).toBe(true)
+    expect(empty.machines).toEqual([])
+    expect(empty.edges).toEqual([])
+    expect(empty.height).toBe(430)
+  })
+
+  it('grows the canvas with machine rows', () => {
+    const many = layoutTopo({
+      ...input,
+      machines: Array.from({ length: 8 }, (_, i) => ({ host: `h${i}`, online: true })),
+      instances: []
+    })
+    expect(many.height).toBe(8 * 80 + 30)
   })
 })

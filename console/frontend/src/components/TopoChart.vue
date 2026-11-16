@@ -1,44 +1,42 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 
-import type { TopoLayout, TopoNode, TopoTone } from '@/utils/topoLayout'
+import type { TopoLayout, TopoTone } from '@/utils/topoLayout'
 
 /**
- * 拓扑渲染（spec §5.2-8）：节点=圆角矩形+状态点+标签，边=直线；
- * 机器节点可点/可键盘激活，跳部署参数页由父组件决定（emit machine）。
+ * 拓扑渲染（原型 topoSVG）：左侧 LB 盒 → 机器行 → 右侧 Pipeline 实例 chip。
+ * 机器可点/可键盘激活，跳部署参数页由父组件决定（emit machine）。
  * 颜色一律走 --s2s-* 变量，本文件已进 hex-ban ratchet。
  */
 const props = defineProps<{ layout: TopoLayout }>()
 const emit = defineEmits<{ machine: [host: string] }>()
 const { t } = useI18n()
 
-const NODE_W = 128
-const NODE_H = 34
+const LB_W = 180
+const LB_H = 76
+const MX_X = 300
+const MX_W = 200
+const MX_H = 64
+const CHIP_W = 120
+const CHIP_H = 30
 
 const TONE_VAR: Record<TopoTone, string> = {
   ok: 'var(--s2s-color-success)',
   warn: 'var(--s2s-color-warning)',
+  draining: 'var(--s2s-color-warning)',
   bad: 'var(--s2s-color-danger)',
   muted: 'var(--s2s-color-muted)'
 }
 
-const nodeById = (id: string): TopoNode | undefined =>
-  props.layout.layers.flatMap((layer) => layer.nodes).find((node) => node.id === id)
+const POLICIES = ['least', 'rr', 'lat']
+const policyLabel = (policy: string): string =>
+  POLICIES.includes(policy) ? t(`overview.policy.${policy}`) : policy
 
-const edgePoints = () =>
-  props.layout.edges
-    .map((edge) => {
-      const from = nodeById(edge.from)
-      const to = nodeById(edge.to)
-      if (!from || !to) return null
-      return { x1: from.x, y1: from.y + NODE_H / 2, x2: to.x, y2: to.y - NODE_H / 2, key: `${edge.from}->${edge.to}` }
-    })
-    .filter((p): p is NonNullable<typeof p> => p !== null)
-
-function onMachine(node: TopoNode): void {
-  if (node.id === 'machine:empty') return
-  emit('machine', node.label)
-}
+const occupancy = (inUse: number | null, size: number | null): string =>
+  t('overview.topology.occupancy', {
+    inUse: inUse ?? '—',
+    size: size ?? '—'
+  })
 </script>
 
 <template>
@@ -48,32 +46,77 @@ function onMachine(node: TopoNode): void {
     role="img"
     :aria-label="t('overview.topology.title')"
   >
-    <line
-      v-for="edge in edgePoints()"
-      :key="edge.key"
-      :x1="edge.x1"
-      :y1="edge.y1"
-      :x2="edge.x2"
-      :y2="edge.y2"
-      class="topo__edge"
+    <path
+      v-for="(edge, index) in props.layout.edges"
+      :key="`edge-${index}`"
+      :d="edge.d"
+      :class="['topo__edge', { 'is-flow': edge.flow }]"
     />
-    <g v-for="layer in props.layout.layers" :key="layer.key">
-      <text :x="8" :y="layer.y - 14" class="topo__caption">{{ t(`overview.topology.${layer.key}Layer`) }}</text>
-      <g
-        v-for="node in layer.nodes"
-        :key="node.id"
-        :transform="`translate(${node.x - NODE_W / 2}, ${node.y - NODE_H / 2})`"
-        :class="['topo__node', `is-${node.kind}`]"
-        :tabindex="node.kind === 'machine' && node.id !== 'machine:empty' ? 0 : undefined"
-        :role="node.kind === 'machine' && node.id !== 'machine:empty' ? 'button' : undefined"
-        :aria-label="node.kind === 'machine' && node.id !== 'machine:empty' ? node.label : undefined"
-        @click="node.kind === 'machine' && onMachine(node)"
-        @keydown.enter="node.kind === 'machine' && onMachine(node)"
-      >
-        <rect :width="NODE_W" :height="NODE_H" rx="8" class="topo__box" :stroke="TONE_VAR[node.tone]" />
-        <circle v-if="node.id !== `${node.kind}:empty`" cx="14" cy="17" r="4" :fill="TONE_VAR[node.tone]" />
-        <text x="26" y="22" class="topo__label">{{ node.label || '—' }}</text>
-      </g>
+
+    <!-- LB：集群名 / registry · policy / /v1/pool · 活跃会话 -->
+    <rect
+      class="topo__lb-box"
+      :x="props.layout.lb.x"
+      :y="props.layout.lb.y"
+      :width="LB_W"
+      :height="LB_H"
+      rx="10"
+    />
+    <text class="topo__t-lg" :x="props.layout.lb.x + 20" :y="props.layout.lb.y + 30">
+      {{ props.layout.lb.cluster || '—' }}
+    </text>
+    <text class="topo__t-sm" :x="props.layout.lb.x + 20" :y="props.layout.lb.y + 50">
+      {{ props.layout.lb.registry || '—' }} · {{ policyLabel(props.layout.lb.policy) }}
+    </text>
+    <text class="topo__t-sm" :x="props.layout.lb.x + 20" :y="props.layout.lb.y + 66">
+      {{ t('overview.topology.poolSessions', { n: props.layout.lb.sessions ?? '—' }) }}
+    </text>
+
+    <!-- 空集群：LB 之下给空态文案，不留白也不画假机器 -->
+    <text v-if="props.layout.empty" class="topo__empty" :x="MX_X" :y="props.layout.lb.y + 40">
+      {{ t('overview.topology.empty') }}
+    </text>
+
+    <!-- 机器行 + 实例 chip -->
+    <g
+      v-for="machine in props.layout.machines"
+      :key="machine.id"
+      class="topo__machine"
+      :data-machine="machine.host"
+      role="button"
+      tabindex="0"
+      :aria-label="machine.host"
+      @click="emit('machine', machine.host)"
+      @keydown.enter="emit('machine', machine.host)"
+    >
+      <rect class="topo__mx-box" :x="MX_X" :y="machine.y" :width="MX_W" :height="MX_H" rx="8" />
+      <text class="topo__t-md" :x="MX_X + 14" :y="machine.y + 24">{{ machine.host }}</text>
+      <text class="topo__t-sm" :x="MX_X + 14" :y="machine.y + 42">
+        {{ t('overview.topology.machineMeta', { n: machine.instanceCount, m: machine.onlineCount }) }}
+      </text>
+      <circle
+        :cx="MX_X + MX_W - 14"
+        :cy="machine.y + 20"
+        r="4"
+        :fill="TONE_VAR[machine.tone]"
+      />
+    </g>
+
+    <g v-for="chip in props.layout.machines.flatMap((m) => m.chips)" :key="chip.id">
+      <rect
+        class="topo__chip"
+        :class="`is-${chip.tone}`"
+        :x="chip.x"
+        :y="chip.y"
+        :width="CHIP_W"
+        :height="CHIP_H"
+        rx="6"
+        :stroke="TONE_VAR[chip.tone]"
+      />
+      <text class="topo__t-sm" :x="chip.x + 8" :y="chip.y + 13">{{ chip.label }}</text>
+      <text class="topo__t-sm" :x="chip.x + 8" :y="chip.y + 25">
+        {{ occupancy(chip.inUse, chip.size) }}
+      </text>
     </g>
   </svg>
 </template>
@@ -81,40 +124,85 @@ function onMachine(node: TopoNode): void {
 <style scoped lang="less">
 .topo {
   width: 100%;
+  height: auto;
+  display: block;
+
+  text {
+    font-family: var(--s2s-font-mono);
+    fill: var(--s2s-color-text);
+  }
+
+  &__t-sm {
+    font-size: 9.5px;
+    fill: var(--s2s-color-muted);
+  }
+
+  &__t-md {
+    font-size: 11.5px;
+  }
+
+  &__t-lg {
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  &__lb-box {
+    fill: var(--s2s-color-surface-2);
+    stroke: var(--s2s-color-accent);
+    stroke-width: 1.4;
+  }
+
+  &__mx-box {
+    fill: var(--s2s-color-surface-2);
+    stroke: var(--s2s-color-border);
+  }
+
+  &__chip {
+    fill: var(--s2s-color-surface-2);
+    stroke-width: 1;
+  }
 
   &__edge {
     stroke: var(--s2s-color-border);
-    stroke-width: 1.5;
+    stroke-width: 1.2;
+    fill: none;
+
+    &.is-flow {
+      stroke: var(--s2s-color-accent);
+      stroke-dasharray: 5 5;
+      animation: topo-dash 1.4s linear infinite;
+    }
   }
 
-  &__caption {
-    fill: var(--s2s-color-muted);
-    font-family: var(--s2s-font-mono);
-    font-size: 11px;
-  }
-
-  &__box {
-    fill: var(--s2s-color-surface-2);
-    stroke-width: 1.5;
-  }
-
-  &__label {
-    fill: var(--s2s-color-text);
-    font-family: var(--s2s-font-mono);
-    font-size: 12px;
-  }
-
-  &__node.is-machine {
+  &__machine {
     cursor: pointer;
 
-    &:hover .topo__box {
+    &:hover .topo__mx-box {
       stroke: var(--s2s-color-accent);
     }
 
-    &:focus-visible .topo__box {
+    &:focus-visible .topo__mx-box {
       stroke: var(--s2s-color-accent);
       stroke-width: 2.5;
     }
+  }
+
+  &__empty {
+    fill: var(--s2s-color-muted);
+    font-family: var(--s2s-font-mono);
+    font-size: 12px;
+  }
+}
+
+@keyframes topo-dash {
+  to {
+    stroke-dashoffset: -10;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topo__edge.is-flow {
+    animation: none;
   }
 }
 </style>

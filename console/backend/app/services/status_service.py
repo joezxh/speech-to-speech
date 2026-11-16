@@ -10,7 +10,7 @@ from sqlalchemy import text
 from app.config import allocator, auth, console
 from app.repositories.instance_repository import InstanceRepository
 from app.repositories.version_repository import VersionRepository
-from app.services import catalog_service, pool, process_probe, validator_service
+from app.services import catalog_service, instance_monitor, pool, process_probe, validator_service
 
 
 def _db_ok(db) -> bool:
@@ -48,6 +48,12 @@ def snapshot(db, profile: str) -> dict[str, Any]:
             os.environ.get("S2S_INTERNAL_TOKEN", ""),
         )
     )
+    # 数据面负载均衡的现状（spec §7）：模式、可用上游数、可用能力并集。
+    states = instance_monitor.snapshot().values()
+    healthy = [
+        s for s in states if s.enabled and s.status in ("online", "degraded")
+    ]
+    capabilities = sorted({c for s in states for c in s.capabilities})
     return {
         "profile": profile,
         "version": int(latest.version) if latest else None,
@@ -62,4 +68,7 @@ def snapshot(db, profile: str) -> dict[str, Any]:
         "seedConfigured": bool(allocator.seed_path.strip()),
         "consoleId": allocator.resolved_console_id,
         "secretsConsistent": bool(secrets_consistent),
+        "lbMode": console.lb_mode,
+        "lbUpstreams": len(healthy),
+        "lbCapabilities": capabilities,
     }

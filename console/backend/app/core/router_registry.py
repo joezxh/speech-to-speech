@@ -10,6 +10,7 @@ def register_api_routers(app: FastAPI) -> None:
     because the SPA catch-all is registered after this call returns.
     """
     from app.routers import (  # noqa: PLC0415 - import cycle avoidance
+        audio_proxy,
         auth,
         catalog,
         clusters,
@@ -55,5 +56,7 @@ def register_api_routers(app: FastAPI) -> None:
     for router in DEMO_ROUTERS:
         app.include_router(router)
 
-    # /v1 反代最后注册：它只开两条精确路径，不和 /api 抢前缀。
+    # /v1 反代最后注册：它只开精确路径，不和 /api 抢前缀。
     app.include_router(realtime.router)
+    # ASR/TTS/声纹/情感的反代面（spec §5.4）。路径前缀与上面不重叠。
+    app.include_router(audio_proxy.router)
