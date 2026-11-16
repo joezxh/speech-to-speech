@@ -1,371 +1,267 @@
 <script setup lang="ts">
+// Task 12（2026-11-17 原型对齐计划）：机器管理页按原型重写（§4.5）。
+// 告警条 / 搜索+两按钮 / 12 列机器表（mtbl）/ 内联展开负载清单（svcrow）/
+// 新增两步模态 + 三步测试面板 / 编辑模态。观测面板（模型运行时/轮次/日志）保留。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
-import { AppError } from '@/api/client'
-import { getInstances, postInstanceAction } from '@/api/instances'
-import ConfirmDialog from '@/components/ConfirmDialog.vue'
+import PBadge from '@/components/proto/PBadge.vue'
+import PDot from '@/components/proto/PDot.vue'
+import PDrawer from '@/components/proto/PDrawer.vue'
+import type { PColumn } from '@/components/proto/PTable.vue'
+import MachineFormModal from '@/components/proto/MachineFormModal.vue'
+import MachineTestPanel from '@/components/proto/MachineTestPanel.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
 import InstanceCard from '@/components/InstanceCard.vue'
 import LogAnalysisCard from '@/components/LogAnalysisCard.vue'
 import LogPanel from '@/components/LogPanel.vue'
 import RuntimeGrid from '@/components/RuntimeGrid.vue'
 import TurnLatencyPanel from '@/components/TurnLatencyPanel.vue'
-import { useConfirm } from '@/composables/useConfirm'
-import { usePolling } from '@/composables/usePolling'
-import { useAuthStore } from '@/stores/auth'
+import { AppError } from '@/api/client'
+import type { MachineDetail } from '@/api/machines'
+import { getInstances } from '@/api/instances'
 import { useConsoleStore } from '@/stores/console'
 import { useLogsStore } from '@/stores/logs'
+import { useMachineStore } from '@/stores/machine'
 import { useRuntimeStore } from '@/stores/runtime'
-import type { InstanceRow, InstanceSnapshot } from '@/types/api'
-import { hostOf } from '@/utils/host'
-import { capacityPercent, statusColor } from '@/utils/instances-view'
+import type { InstanceSnapshot } from '@/types/api'
+import { filterMachines, vramSummary, workloadTags } from './machines.viewmodel'
 
+const { t } = useI18n()
+const route = useRoute()
 const consoleStore = useConsoleStore()
 const runtime = useRuntimeStore()
 const logs = useLogsStore()
-const auth = useAuthStore()
-const router = useRouter()
-const route = useRoute()
-const { t } = useI18n()
-const {
-  open: confirmOpen,
-  title: confirmTitle,
-  content: confirmContent,
-  ask: askConfirm,
-  answer: answerConfirm
-} = useConfirm()
+const store = useMachineStore()
 
-const snapshot = ref<InstanceSnapshot | null>(null)
+// 拓扑下钻（?host=）映射为初始搜索词：host 命中机器 ID 或地址均可（Task 12 保留语义）。
+const query = ref(String(route.query.host ?? ''))
+watch(
+  () => route.query.host,
+  (host) => {
+    if (host) query.value = String(host)
+  }
+)
 const error = ref('')
-const actionError = ref<AppError | null>(null)
+const instanceSnapshot = ref<InstanceSnapshot | null>(null)
+const expanded = ref<string | null>(null)
+const formOpen = ref(false)
+const formMode = ref<'create' | 'edit'>('create')
+const formTarget = ref<MachineDetail | null>(null)
+const testTarget = ref<MachineDetail | null>(null)
 
-// 机器级状态的展示键：与 unit 级 (idle/active/…) 无关，来自 registry 巡检推导。
-// 展示译、比较仍用原值（§8.4）。
-const STATUS_KEYS: Record<string, string> = {
-  unknown: 'machines.status.unknown',
-  online: 'machines.status.online',
-  degraded: 'machines.status.degraded',
-  offline: 'machines.status.offline',
-  draining: 'machines.status.draining'
+const DOT_STATE: Record<string, 'ok' | 'warn' | 'draining' | 'bad'> = {
+  ok: 'ok',
+  pending_register: 'warn',
+  draining: 'draining',
+  unreachable: 'bad'
 }
-const statusLabel = (status: string) => (STATUS_KEYS[status] ? t(STATUS_KEYS[status]) : status)
+const dotState = (state: string): 'ok' | 'warn' | 'draining' | 'bad' => DOT_STATE[state] ?? 'warn'
 
-// badge 只吃 antd 的四个状态色，把 statusColor 的橙/蓝并到 processing/warning。
-const BADGE_STATUS: Record<string, 'success' | 'warning' | 'error' | 'processing' | 'default'> = {
-  green: 'success',
-  orange: 'warning',
-  red: 'error',
-  blue: 'processing',
-  default: 'default'
-}
-const badgeStatus = (status: string) => BADGE_STATUS[statusColor(status)] ?? 'default'
+const rows = computed(() => filterMachines(store.machines, query.value))
 
-// drain/undrain/probe 需要 operator 及以上；后端 require_operator 兜底，前端只是少摆按钮。
-const canOperate = computed(() => auth.user?.role === 'operator' || auth.user?.role === 'admin')
-const instances = computed(() => snapshot.value?.instances ?? [])
-const summary = computed(() => snapshot.value?.summary ?? null)
-
-// 拓扑下钻（Task 11）写入 ?host=：只影响这张表，其余页面逻辑不动（spec §6 决议③）。
-const hostFilter = computed(() => String(route.query.host ?? ''))
-const visibleInstances = computed(() =>
-  hostFilter.value ? instances.value.filter((row) => hostOf(row.base_url) === hostFilter.value) : instances.value
+// 告警条：心跳超时（>60s 无 last_seen 更新）与未绑定实例提示由后端字段推导。
+const staleMachines = computed(() =>
+  store.machines.filter((m) => {
+    if (!m.lastSeen) return true
+    return Date.now() - new Date(m.lastSeen).getTime() > 60_000
+  })
 )
 
-function clearHostFilter(): void {
-  void router.replace({ name: 'machines', query: { ...route.query, host: undefined } })
+const columns: PColumn[] = [
+  { key: 'machineId', label: t('machines.admin.columns.machine'), width: 190, sticky: 'start', cls: 'mono' },
+  { key: 'role', label: t('machines.admin.columns.role'), width: 80 },
+  { key: 'gpu', label: t('machines.admin.columns.gpu'), width: 110 },
+  { key: 'state', label: t('machines.admin.columns.state'), width: 130 },
+  { key: 'registryMode', label: t('machines.admin.columns.registry'), width: 80 },
+  { key: 'agentVersion', label: t('machines.admin.columns.agentVersion'), width: 110, cls: 'mono' },
+  { key: 'lastSeen', label: t('machines.admin.columns.lastSeen'), width: 170 },
+  { key: 'workloads', label: t('machines.admin.columns.workloads'), width: 240 },
+  { key: 'vram', label: t('machines.admin.columns.vram'), width: 150 },
+  { key: 'clusterId', label: t('machines.admin.columns.cluster'), width: 110 },
+  { key: 'addr', label: t('machines.admin.columns.addr'), width: 140, cls: 'mono' },
+  { key: 'actions', label: t('machines.admin.columns.actions'), width: 200, sticky: 'end' }
+]
+
+function toggleExpand(id: string): void {
+  expanded.value = expanded.value === id ? null : id
+}
+
+function openCreate(): void {
+  formMode.value = 'create'
+  formTarget.value = null
+  formOpen.value = true
+}
+
+function openEdit(machine: MachineDetail): void {
+  formMode.value = 'edit'
+  formTarget.value = machine
+  formOpen.value = true
+}
+
+function openTest(machine: MachineDetail): void {
+  testTarget.value = machine
+}
+
+async function remove(machine: MachineDetail): Promise<void> {
+  if (!window.confirm(t('machines.admin.confirmDelete', { id: machine.machineId }))) return
+  try {
+    await store.remove(machine.machineId)
+  } catch (caught) {
+    error.value = caught instanceof AppError ? caught.message : t('machines.admin.deleteFailed')
+  }
 }
 
 async function poll(): Promise<void> {
+  await store.fetch()
   try {
-    snapshot.value = await getInstances(consoleStore.profile)
-    error.value = ''
-  } catch (caught) {
-    snapshot.value = null
-    error.value = caught instanceof AppError ? caught.message : t('machines.statusUnreadable')
+    instanceSnapshot.value = await getInstances(consoleStore.profile)
+  } catch {
+    instanceSnapshot.value = null
   }
 }
 
-const { active, start: startInstances, stop: stopInstances, refresh } = usePolling(poll, 5000)
-
-/**
- * 两个端点各有各的节奏，但只有一个「暂停」按钮：停一半会让徽标说谎。
- * `/instances` 说容器，`/runtime/models` 说模型，一起刷新一起停。
- */
-function startAll(): void {
-  startInstances()
-  runtime.startPolling(consoleStore.profile)
-}
-
-function stopAll(): void {
-  stopInstances()
-  runtime.stopPolling()
-}
-
-watch(() => consoleStore.profile, startAll, { immediate: true })
-
-/**
- * §3.9.1 第 4 条：页签切走就停。console 与 pipeline 同容器，一个被遗忘的
- * 后台标签页每 5s 跑一次 `nvidia-smi` 加一次日志尾读，是这个面板唯一可能
- * 伤到语音的地方。
- */
-function onVisibility(): void {
-  if (document.hidden) stopAll()
-  else startAll()
-}
-
-document.addEventListener('visibilitychange', onVisibility)
-
-onBeforeUnmount(() => {
-  document.removeEventListener('visibilitychange', onVisibility)
-  stopAll()
-})
-
-async function runAction(row: InstanceRow, action: 'drain' | 'undrain' | 'probe'): Promise<void> {
-  if (action !== 'probe') {
-    const confirmed = await askConfirm({
-      title:
-        action === 'drain'
-          ? t('machines.confirm.drainTitle', { id: row.instance_id })
-          : t('machines.confirm.undrainTitle', { id: row.instance_id }),
-      content:
-        action === 'drain' ? t('machines.confirm.drainContent') : t('machines.confirm.undrainContent')
-    })
-    if (!confirmed) return
-  }
-  actionError.value = null
-  try {
-    await postInstanceAction(row.instance_id, action)
-    await refresh()
-  } catch (caught) {
-    actionError.value = caught instanceof AppError ? caught : new AppError('unknown', t('machines.actionFailed'))
-  }
-}
-
-// 「趋势」独立成页：只跳转到负载均衡菜单下的趋势页并带上这台实例。
-function goTrends(row: InstanceRow): void {
-  void router.push({ name: 'instance-trends', query: { id: row.instance_id } })
-}
+const pollTimer = setInterval(poll, 5000)
+watch(() => consoleStore.profile, poll, { immediate: true })
+onBeforeUnmount(() => clearInterval(pollTimer))
 </script>
 
 <template>
-  <div class="instances">
-    <div class="instances__bar">
-      <a-badge :status="active ? 'processing' : 'default'" :text="active ? t('machines.poll.every5s') : t('machines.poll.paused')" />
-      <a-button size="small" @click="active ? stopAll() : startAll()">
-        {{ active ? t('machines.poll.pause') : t('machines.poll.resume') }}
-      </a-button>
+  <div class="machines-page">
+    <!-- 告警条 -->
+    <div v-if="staleMachines.length" class="note">
+      {{ t('machines.admin.alertStale', { ids: staleMachines.map((m) => m.machineId).join(', ') }) }}
     </div>
 
+    <!-- 搜索 + 两按钮 -->
+    <div class="rowline">
+      <input v-model="query" class="fin" style="max-width: 260px" :placeholder="t('machines.admin.searchPlaceholder')" />
+      <span class="spacer"></span>
+      <button type="button" class="btn" @click="store.acceptAutoRegister({ clusterId: 'default' })">
+        {{ t('machines.admin.autoRegister') }}
+      </button>
+      <button type="button" class="btn primary" @click="openCreate">{{ t('machines.admin.newMachine') }}</button>
+    </div>
+
+    <ErrorBanner v-if="store.error" :error="new AppError('unknown', store.error)" />
+
+    <!-- 12 列机器表（mtbl），行点击展开负载清单 -->
+    <div class="tscroll">
+      <table class="tbl mtbl">
+        <thead>
+          <tr>
+            <th v-for="col in columns" :key="col.key" :class="col.cls" :style="col.width ? { width: col.width + 'px' } : {}">
+              {{ col.label }}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <template v-for="row in rows" :key="row.machineId">
+            <tr class="clickable" @click="toggleExpand(row.machineId)">
+              <td class="mono">
+                <PDot :state="dotState(row.state)" />
+                {{ row.machineId }}
+              </td>
+              <td>{{ row.role }}</td>
+              <td>{{ row.gpu || '—' }}</td>
+              <td>
+                <PBadge kind="equal" :text="t(`machines.status.${row.state}`)" />
+              </td>
+              <td>{{ t(`machines.admin.registry.${row.registryMode === 'auto' ? 'auto' : 'manual'}`) }}</td>
+              <td>{{ row.agentVersion || '—' }}</td>
+              <td>{{ row.lastSeen || '—' }}</td>
+              <td>
+                <span class="wls">
+                  <span v-for="tag in workloadTags(row.workloads)" :key="tag.kind" class="tag" :class="`wl-${tag.kind}`">
+                    {{ tag.kind }} ×{{ tag.count }}
+                  </span>
+                </span>
+              </td>
+              <td>
+                <template v-if="vramSummary(row.workloads, row.gpuTotalGb).totalGb > 0">
+                  <div class="bar">
+                    <i
+                      :style="{
+                        width: Math.min(100, vramSummary(row.workloads, row.gpuTotalGb).pct) + '%'
+                      }"
+                    ></i>
+                  </div>
+                  <small>{{ vramSummary(row.workloads, row.gpuTotalGb).usedGb }} / {{ row.gpuTotalGb }} GB</small>
+                </template>
+                <template v-else>—</template>
+              </td>
+              <td>{{ row.clusterId || '—' }}</td>
+              <td>{{ row.addr || '—' }}</td>
+              <td @click.stop>
+                <button type="button" class="btn sm" @click="openTest(row)">{{ t('machines.test.start') }}</button>
+                <button type="button" class="btn sm" @click="openEdit(row)">{{ t('machines.form.edit') }}</button>
+                <button type="button" class="btn sm ghost" @click="remove(row)">{{ t('machines.form.delete') }}</button>
+              </td>
+            </tr>
+            <!-- 内联展开：负载清单 + 汇总行 -->
+            <tr v-if="expanded === row.machineId" class="svcrow">
+              <td :colspan="columns.length">
+                <div class="svc-sum">
+                  <span>{{ t('machines.admin.workloadSum', { n: row.workloads.length, used: vramSummary(row.workloads, row.gpuTotalGb).usedGb, total: row.gpuTotalGb ?? 0 }) }}</span>
+                </div>
+                <table class="tbl">
+                  <thead>
+                    <tr>
+                      <th>{{ t('machines.admin.workloadCols.kind') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.model') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.listen') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.publicAddr') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.vramGb') }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="wl in row.workloads" :key="`${wl.kind}-${wl.port}`">
+                      <td><span class="tag" :class="`wl-${wl.kind}`">{{ wl.kind }}</span></td>
+                      <td class="mono">{{ wl.model || '—' }}</td>
+                      <td class="mono">{{ wl.listen || '—' }}</td>
+                      <td class="mono">{{ wl.publicAddr || '—' }}</td>
+                      <td>{{ wl.vramGb != null ? `${wl.vramGb} GB` : '—' }}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </td>
+            </tr>
+          </template>
+          <tr v-if="!rows.length">
+            <td :colspan="columns.length" style="text-align: center; color: var(--s2s-color-faint)">
+              {{ t('machines.admin.empty') }}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- 三步测试面板（抽屉） -->
+    <PDrawer :open="testTarget !== null" :title="t('machines.test.title')" @close="testTarget = null">
+      <MachineTestPanel
+        v-if="testTarget"
+        :machine-id="testTarget.machineId"
+        :addr="testTarget.addr"
+      />
+    </PDrawer>
+
+    <!-- 新增/编辑两步模态 -->
+    <MachineFormModal :open="formOpen" :mode="formMode" :machine="formTarget" @close="formOpen = false" />
+
+    <!-- 观测面板（保留既有能力） -->
     <RuntimeGrid :snapshot="runtime.snapshot" :loading="runtime.loading" :error="runtime.error" />
-
-    <ErrorBanner :error="actionError" />
-
-    <!--
-      注册表非空才有多实例视图；单实例 legacy 直连时 snapshot 不带 summary/instances，
-      下面的卡片/表格/趋势整段跳过，InstanceCard 继续说容器与会话池。
-    -->
-    <section v-if="summary" class="instances__summary">
-      <div class="instances__grid">
-        <div class="instances__cell">
-          <span class="instances__k">{{ t('machines.summary.total') }}</span>
-          <span class="instances__v">{{ summary.instances_total }}</span>
-        </div>
-        <div class="instances__cell">
-          <span class="instances__k">{{ t('machines.summary.statusSplit') }}</span>
-          <span class="instances__v">
-            {{ summary.online }} / {{ summary.degraded }} / {{ summary.offline }} /
-            {{ summary.draining }}
-          </span>
-        </div>
-        <div class="instances__cell">
-          <span class="instances__k">{{ t('machines.summary.slots') }}</span>
-          <span class="instances__v">
-            {{ summary.slots_total }} / {{ summary.slots_in_use }} / {{ summary.slots_free }}
-          </span>
-        </div>
-        <div class="instances__cell">
-          <span class="instances__k">{{ t('machines.summary.pendingGrants') }}</span>
-          <span class="instances__v">{{ summary.pending_grants }}</span>
-        </div>
-      </div>
-    </section>
-
-    <a-alert
-      v-if="hostFilter"
-      class="instances__hostfilter"
-      type="info"
-      show-icon
-      closable
-      :message="t('machines.hostFilter', { host: hostFilter })"
-      @close="clearHostFilter"
-    />
-
-    <a-table
-      v-if="instances.length"
-      class="instances__table"
-      size="small"
-      row-key="instance_id"
-      :pagination="false"
-      :data-source="visibleInstances"
-      :scroll="{ x: 900 }"
-      :columns="[
-        { title: t('machines.columns.instance'), key: 'instance_id', width: 180 },
-        { title: t('machines.columns.status'), key: 'status', width: 110 },
-        { title: t('machines.columns.capacity'), key: 'capacity', width: 140 },
-        { title: t('machines.columns.slots'), key: 'slots', width: 110 },
-        { title: t('machines.columns.weight'), dataIndex: 'weight', key: 'weight', width: 70 },
-        { title: t('machines.columns.probe'), key: 'probe', width: 110 },
-        { title: t('machines.columns.actions'), key: 'actions', width: 210 }
-      ]"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'instance_id'">
-          <a @click="goTrends(record)">{{ record.instance_id }}</a>
-          <div class="instances__url">{{ record.base_url }}</div>
-        </template>
-        <template v-else-if="column.key === 'status'">
-          <a-badge :status="badgeStatus(record.status)" :text="statusLabel(record.status)" />
-          <div v-if="record.declared_mismatch" class="instances__warn">{{ t('machines.declaredMismatch') }}</div>
-          <div v-else-if="record.last_error" class="instances__err" :title="record.last_error">
-            {{ record.last_error }}
-          </div>
-        </template>
-        <template v-else-if="column.key === 'capacity'">
-          <a-progress
-            :percent="capacityPercent(record)"
-            :stroke-color="statusColor(record.status)"
-            size="small"
-            :format="() => t('machines.slotUnit', { count: record.size ?? '—' })"
-          />
-        </template>
-        <template v-else-if="column.key === 'slots'">
-          {{ record.in_use ?? '—' }} / {{ record.free ?? '—' }}
-          <span v-if="record.stuck"> · {{ t('machines.stuckCount', { count: record.stuck }) }}</span>
-        </template>
-        <template v-else-if="column.key === 'probe'">
-          {{ record.probe_ms ?? '—' }}
-          <span v-if="record.p95_probe_ms != null" class="instances__p95">
-            p95 {{ record.p95_probe_ms }}
-          </span>
-        </template>
-        <template v-else-if="column.key === 'actions'">
-          <a-space>
-            <a-button size="small" @click="goTrends(record)">{{ t('machines.actions.trends') }}</a-button>
-            <template v-if="canOperate">
-              <a-button
-                v-if="!record.drain_requested"
-                size="small"
-                @click="runAction(record, 'drain')"
-              >
-                {{ t('machines.actions.drain') }}
-              </a-button>
-              <a-button v-else size="small" @click="runAction(record, 'undrain')">{{ t('machines.actions.undrain') }}</a-button>
-              <a-button size="small" @click="runAction(record, 'probe')">{{ t('machines.actions.probe') }}</a-button>
-            </template>
-          </a-space>
-        </template>
-      </template>
-    </a-table>
-
-    <InstanceCard :snapshot="snapshot" :error="error" />
-
-    <!--
-      同一列、固定顺序：轮次面板先说「整体多慢」，日志面板给细文，归纳卡给结论。
-      归纳结果必须挨着它基于的那个日志窗口；两块的时间窗各自独立、不联动。
-    -->
+    <InstanceCard :snapshot="instanceSnapshot" :error="error" />
     <TurnLatencyPanel />
-    <LogPanel
-      :live="logs.live"
-      @follow="logs.setLive($event)"
-      @refresh="logs.reload()"
-      @analyze="logs.analyze()"
-    />
-    <LogAnalysisCard
-      :analysis="logs.analysis"
-      :pending="logs.pending"
-      :error="logs.analysisError"
-      @retry="logs.analyze()"
-    />
-
-    <ConfirmDialog
-      :open="confirmOpen"
-      :title="confirmTitle"
-      :content="confirmContent"
-      danger
-      @answer="answerConfirm"
-    />
+    <LogPanel :live="logs.live" @follow="logs.setLive($event)" @refresh="logs.reload()" @analyze="logs.analyze()" />
+    <LogAnalysisCard :analysis="logs.analysis" :pending="logs.pending" :error="logs.analysisError" @retry="logs.analyze()" />
   </div>
 </template>
 
 <style scoped lang="less">
-.instances {
+.machines-page {
   display: flex;
   flex-direction: column;
   gap: 12px;
-
-  &__bar {
-    align-items: center;
-    display: flex;
-    gap: 12px;
-  }
-
-  &__summary {
-    background: #171b26;
-    border: 1px solid #1c2130;
-    border-radius: 8px;
-    padding: 10px 12px;
-  }
-
-  &__grid {
-    display: grid;
-    gap: 8px 16px;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  }
-
-  &__cell {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-
-  &__k {
-    color: #8b93a7;
-    font-size: 12px;
-  }
-
-  &__v {
-    font-size: 13px;
-  }
-
-  &__url {
-    color: #8b93a7;
-    font-size: 12px;
-  }
-
-  &__warn {
-    color: #f59e0b;
-    font-size: 12px;
-  }
-
-  &__err {
-    color: #ff6a75;
-    font-size: 12px;
-    max-width: 180px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  &__p95 {
-    color: #8b93a7;
-    font-size: 12px;
-    margin-left: 6px;
-  }
-}
-
-.instances__hostfilter {
-  margin-bottom: 8px;
 }
 </style>

@@ -5,14 +5,14 @@ import { describe, expect, it } from 'vitest'
 
 const source = readFileSync(join(__dirname, 'InstancesView.vue'), 'utf8')
 
+// Task 12 重写后 host 下钻的语义保留：?host= 进搜索词，命中机器表（filterMachines）。
 describe('InstancesView host drilldown (spec §6 决议③)', () => {
-  it('reads route.query.host and feeds it to the table datasource', () => {
+  it('reads route.query.host and feeds it into the search', () => {
     expect(source).toContain('route.query.host')
-    expect(source).toContain('visibleInstances')
-    expect(source).toContain(':data-source="visibleInstances"')
+    expect(source).toContain('filterMachines')
   })
 
-  it('keeps the unfiltered rows computed intact', () => {
-    expect(source).toContain('const instances = computed(() => snapshot.value?.instances ?? [])')
+  it('keeps watching the query so topology clicks always land', () => {
+    expect(source).toContain('() => route.query.host')
   })
 })
