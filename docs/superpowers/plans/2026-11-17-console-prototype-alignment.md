@@ -143,11 +143,11 @@ def secret_keys_filtered(values: dict) -> dict               # 密钥类键不�
 
 - Consumes：`renderer_service.render_yaml` + `layout_service.locate`（设计 §7.2.3：**复用，不新写渲染器**）；机器的 `profile`（`param_machine.profile`，回落 `param_cluster.baseline_profile`）。
 
-- [ ] **Step 1: 写失败测试** —— 用例：同一机器重复渲染版本号递增、内容不变时 etag 稳定、密钥键被过滤、profile 回落集群默认、YAML 含机器级草稿叠加值（draft 为空时等于 live 渲染）。
-- [ ] **Step 2:** 跑测试 → FAIL。
-- [ ] **Step 3: 实现**（draft 叠加逻辑：live 渲染后按 `param_machine_draft` 覆盖对应键）。
-- [ ] **Step 4:** 跑测试 → PASS。
-- [ ] **Step 5: Commit** `feat(console): agent 目标配置渲染与版本管理（复用 profile 渲染器）`
+- [x] **Step 1: 写失败测试** —— 用例：同一机器重复渲染版本号递增、内容不变时 etag 稳定、密钥键被过滤、profile 回落集群默认、YAML 含机器级草稿叠加值（draft 为空时等于 live 渲染）。
+- [x] **Step 2:** 跑测试 → FAIL。
+- [x] **Step 3: 实现**（draft 叠加逻辑：live 渲染后按 `param_machine_draft` 覆盖对应键）。
+- [x] **Step 4:** 跑测试 → PASS。
+- [x] **Step 5: Commit** `feat(console): agent 目标配置渲染与版本管理（复用 profile 渲染器）`
 
 ### Task 6: agent 配置面（A2/A3/A4）+ 票据化 turn-latency 入口预留
 
