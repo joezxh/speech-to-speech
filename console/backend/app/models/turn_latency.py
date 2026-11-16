@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String
+from sqlalchemy import DateTime, Float, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, utcnow
@@ -35,6 +35,12 @@ class TurnLatencyRow(Base):
     # 否则 alembic check 会把它当成「待删除索引」的漂移。
     logged_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
     raw_offset: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # 0010 扩列：既有表没有机器维度，per-machine TTFT 无处落（spec §7.1）。
+    # 重建语义收窄为「重放只还原本机行」：agent 上报行的 raw_offset 恒 0，
+    # 远端行的 machine_id 非空、删表即失，由 agent 下一窗口重新上报补回。
+    machine_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    instance_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    audio_duration_s: Mapped[float | None] = mapped_column(Float, nullable=True)
     ingested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )

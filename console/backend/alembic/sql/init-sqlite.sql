@@ -223,3 +223,240 @@ CREATE INDEX ix_param_proxy_metric_observed_at ON param_proxy_metric (observed_a
 
 UPDATE alembic_version SET version_num='0008_proxy_metrics' WHERE alembic_version.version_num = '0007_comments';
 
+-- Running upgrade 0008_proxy_metrics -> 0009_db_registry_and_config
+
+CREATE TABLE param_config (
+    id INTEGER NOT NULL,
+    config_key VARCHAR(128) NOT NULL,
+    value VARCHAR(1024) DEFAULT '' NOT NULL,
+    value_type VARCHAR(16) DEFAULT 'str' NOT NULL,
+    section VARCHAR(32) DEFAULT 'console' NOT NULL,
+    description VARCHAR(255) DEFAULT '' NOT NULL,
+    restart_required BOOLEAN DEFAULT '0' NOT NULL,
+    version INTEGER DEFAULT '1' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_config_key UNIQUE (config_key)
+);
+
+CREATE TABLE param_instance_runtime (
+    id INTEGER NOT NULL,
+    instance_id VARCHAR(64) NOT NULL,
+    status VARCHAR(16) DEFAULT 'unknown' NOT NULL,
+    pool_size INTEGER,
+    in_use INTEGER,
+    stuck INTEGER,
+    probe_ms INTEGER,
+    capabilities JSON DEFAULT '[]' NOT NULL,
+    capability_issues JSON DEFAULT '{}' NOT NULL,
+    consecutive_failures INTEGER DEFAULT '0' NOT NULL,
+    consecutive_successes INTEGER DEFAULT '0' NOT NULL,
+    last_error VARCHAR(255) DEFAULT '' NOT NULL,
+    probe_history JSON DEFAULT '[]' NOT NULL,
+    reserved INTEGER DEFAULT '0' NOT NULL,
+    observed_at DATETIME NOT NULL,
+    observed_by VARCHAR(64) DEFAULT '' NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_instance_runtime_instance_id UNIQUE (instance_id)
+);
+
+CREATE TABLE param_allocator_lease (
+    lease_key VARCHAR(128) NOT NULL,
+    instance_id VARCHAR(64) NOT NULL,
+    state VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    expires_at DATETIME,
+    console_id VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (lease_key)
+);
+
+CREATE INDEX ix_param_allocator_lease_instance_id ON param_allocator_lease (instance_id);
+
+CREATE INDEX ix_param_allocator_lease_state ON param_allocator_lease (state);
+
+CREATE INDEX ix_param_allocator_lease_expires_at ON param_allocator_lease (expires_at);
+
+UPDATE alembic_version SET version_num='0009_db_registry_and_config' WHERE alembic_version.version_num = '0008_proxy_metrics';
+
+-- Running upgrade 0009_db_registry_and_config -> 0010_console_lb_backbone
+
+CREATE TABLE param_machine (
+    id INTEGER NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    cluster_id VARCHAR(64) DEFAULT '' NOT NULL,
+    profile VARCHAR(64),
+    addr VARCHAR(255) DEFAULT '' NOT NULL,
+    role VARCHAR(16) DEFAULT 'agent' NOT NULL,
+    gpu VARCHAR(64) DEFAULT '' NOT NULL,
+    gpu_total_gb FLOAT,
+    version VARCHAR(64) DEFAULT '' NOT NULL,
+    state VARCHAR(16) DEFAULT 'pending_register' NOT NULL,
+    registry_mode VARCHAR(16) DEFAULT 'manual' NOT NULL,
+    agent_version VARCHAR(64) DEFAULT '' NOT NULL,
+    protocol_version INTEGER DEFAULT '1' NOT NULL,
+    agent_caps JSON DEFAULT '[]' NOT NULL,
+    token_hash VARCHAR(64),
+    register_code_hash VARCHAR(64),
+    last_seen_at DATETIME,
+    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_machine_machine_id UNIQUE (machine_id),
+    CONSTRAINT uq_param_machine_token_hash UNIQUE (token_hash),
+    CONSTRAINT uq_param_machine_register_code_hash UNIQUE (register_code_hash)
+);
+
+CREATE INDEX ix_param_machine_cluster_id ON param_machine (cluster_id);
+
+CREATE TABLE param_machine_workload (
+    id INTEGER NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    kind VARCHAR(16) DEFAULT 'pipeline' NOT NULL,
+    engine VARCHAR(64) DEFAULT '' NOT NULL,
+    model VARCHAR(128) DEFAULT '' NOT NULL,
+    port INTEGER,
+    listen_addr VARCHAR(64) DEFAULT '' NOT NULL,
+    public_addr VARCHAR(64) DEFAULT '' NOT NULL,
+    vram_gb FLOAT,
+    health_path VARCHAR(255) DEFAULT '' NOT NULL,
+    health_interval_s INTEGER DEFAULT '30' NOT NULL,
+    note VARCHAR(255) DEFAULT '' NOT NULL,
+    state VARCHAR(16) DEFAULT '' NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_machine_workload_machine_id ON param_machine_workload (machine_id);
+
+CREATE TABLE param_machine_config (
+    id INTEGER NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    param_key VARCHAR(128) NOT NULL,
+    actual_value VARCHAR(1024) DEFAULT '' NOT NULL,
+    config_version INTEGER DEFAULT '0' NOT NULL,
+    observed_at DATETIME NOT NULL,
+    reported_by VARCHAR(64) DEFAULT 'agent' NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_machine_config_key UNIQUE (machine_id, param_key)
+);
+
+CREATE INDEX ix_param_machine_config_machine_id ON param_machine_config (machine_id);
+
+CREATE TABLE param_machine_draft (
+    id INTEGER NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    param_key VARCHAR(128) NOT NULL,
+    value VARCHAR(1024) DEFAULT '' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_machine_draft_key UNIQUE (machine_id, param_key)
+);
+
+CREATE INDEX ix_param_machine_draft_machine_id ON param_machine_draft (machine_id);
+
+CREATE TABLE param_agent_config_version (
+    machine_id VARCHAR(64) NOT NULL,
+    config_version INTEGER NOT NULL,
+    yaml_hash VARCHAR(64) DEFAULT '' NOT NULL,
+    yaml_text TEXT NOT NULL,
+    rendered_at DATETIME NOT NULL,
+    PRIMARY KEY (machine_id, config_version)
+);
+
+CREATE TABLE param_token_metric (
+    id INTEGER NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    workload_id INTEGER,
+    observed_at DATETIME NOT NULL,
+    input_tokens INTEGER DEFAULT '0' NOT NULL,
+    output_tokens INTEGER DEFAULT '0' NOT NULL,
+    responses INTEGER DEFAULT '0' NOT NULL,
+    audio_duration_s FLOAT,
+    window_s INTEGER DEFAULT '0' NOT NULL,
+    reported_by VARCHAR(64) DEFAULT 'agent' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_token_metric_machine_id ON param_token_metric (machine_id);
+
+CREATE TABLE param_lb_rule (
+    id INTEGER NOT NULL,
+    name VARCHAR(64) NOT NULL,
+    priority INTEGER DEFAULT '100' NOT NULL,
+    match_type VARCHAR(16) DEFAULT 'default' NOT NULL,
+    match_value VARCHAR(255) DEFAULT '' NOT NULL,
+    target_kind VARCHAR(16) DEFAULT 'instance' NOT NULL,
+    target_value VARCHAR(255) DEFAULT '' NOT NULL,
+    share_pct INTEGER,
+    sticky_ttl_s INTEGER,
+    enabled BOOLEAN DEFAULT '1' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_lb_rule_name UNIQUE (name)
+);
+
+CREATE TABLE param_lb_affinity (
+    affinity_key VARCHAR(128) NOT NULL,
+    machine_id VARCHAR(64),
+    instance_id VARCHAR(64),
+    rule_id INTEGER,
+    created_at DATETIME NOT NULL,
+    expires_at DATETIME,
+    PRIMARY KEY (affinity_key)
+);
+
+CREATE INDEX ix_param_lb_affinity_machine_id ON param_lb_affinity (machine_id);
+
+CREATE INDEX ix_param_lb_affinity_expires_at ON param_lb_affinity (expires_at);
+
+CREATE TABLE param_lb_route_log (
+    id INTEGER NOT NULL,
+    at DATETIME NOT NULL,
+    session_key VARCHAR(128) DEFAULT '' NOT NULL,
+    rule_id INTEGER,
+    matched BOOLEAN DEFAULT '0' NOT NULL,
+    instance_id VARCHAR(64),
+    sticky_hit BOOLEAN DEFAULT '0' NOT NULL,
+    is_canary BOOLEAN DEFAULT '0' NOT NULL,
+    input_tokens INTEGER DEFAULT '0' NOT NULL,
+    output_tokens INTEGER DEFAULT '0' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_lb_route_log_at ON param_lb_route_log (at);
+
+CREATE TABLE param_release (
+    id INTEGER NOT NULL,
+    version VARCHAR(64) NOT NULL,
+    profile_version VARCHAR(64),
+    cluster_id VARCHAR(64) DEFAULT '' NOT NULL,
+    status VARCHAR(16) DEFAULT 'draft' NOT NULL,
+    stage VARCHAR(32) DEFAULT '' NOT NULL,
+    rollout_pct INTEGER DEFAULT '0' NOT NULL,
+    nodes JSON DEFAULT '[]' NOT NULL,
+    changes JSON DEFAULT '[]' NOT NULL,
+    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id)
+);
+
+ALTER TABLE turn_latency ADD COLUMN machine_id VARCHAR(64);
+
+ALTER TABLE turn_latency ADD COLUMN instance_id VARCHAR(64);
+
+ALTER TABLE turn_latency ADD COLUMN audio_duration_s FLOAT;
+
+ALTER TABLE param_instance ADD COLUMN machine_id VARCHAR(64);
+
+ALTER TABLE param_cluster ADD COLUMN baseline_profile VARCHAR(64) DEFAULT 'prod' NOT NULL;
+
+UPDATE alembic_version SET version_num='0010_console_lb_backbone' WHERE alembic_version.version_num = '0009_db_registry_and_config';
+

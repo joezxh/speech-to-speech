@@ -212,7 +212,33 @@ COMMENT ON TABLE "param_instance" IS 'Pipeline 实例注册表，运维开关与
 
 COMMENT ON TABLE "param_instance_metric" IS '实例状态与分配计数采样；计数为窗口增量而非累计值，空值表示不可得';
 
+COMMENT ON TABLE "param_instance_runtime" IS '实例运行时状态：健康五态、槽位占用、能力指纹与占位数，跨控制台副本共享';
+
+COMMENT ON TABLE "param_allocator_lease" IS '选台占位租约明细：预留待连接的租约与已建立会话的占用都占槽位';
+
 COMMENT ON TABLE "param_proxy_metric" IS '数据面代理采样：按实例与服务记录成功数与失败原因，成功数为窗口增量';
+
+COMMENT ON TABLE "param_config" IS '控制台配置项登记表：库中的值优先于环境变量，改完数秒内生效';
+
+COMMENT ON TABLE "param_machine" IS '机器实体：agent 注册与心跳的落点，实例挂载与机器状态的单一来源';
+
+COMMENT ON TABLE "param_machine_workload" IS '机器负载声明：心跳清单全量覆盖，按机器与负载类型对齐';
+
+COMMENT ON TABLE "param_machine_config" IS '机器实际生效配置，与配置档期望值比对得出漂移数';
+
+COMMENT ON TABLE "param_machine_draft" IS '机器级待下发草稿：配置档渲染后按本表覆盖对应键';
+
+COMMENT ON TABLE "param_agent_config_version" IS 'agent 目标配置下发快照，按机器保留最近若干版';
+
+COMMENT ON TABLE "param_token_metric" IS '机器与负载的 token 增量时序，计数为窗口增量而非累计值';
+
+COMMENT ON TABLE "param_lb_rule" IS '负载均衡路由规则，按优先级升序首条命中生效';
+
+COMMENT ON TABLE "param_lb_affinity" IS '会话亲和记录：命中粘性键则跳过规则评估直接选台';
+
+COMMENT ON TABLE "param_lb_route_log" IS '路由决策记账，只追加，用于命中率与规则命中统计';
+
+COMMENT ON TABLE "param_release" IS '发布流水线台账：外部 CI 执行构建与验证，控制台只记录过程';
 
 COMMENT ON TABLE "param_version" IS '配置版本快照，创建后不可变；保存配置全文用于启动自检';
 
@@ -274,6 +300,8 @@ COMMENT ON COLUMN "param_cluster"."updated_at" IS '最近修改时间（UTC）';
 
 COMMENT ON COLUMN "param_cluster"."updated_by" IS '最近修改人';
 
+COMMENT ON COLUMN "param_cluster"."baseline_profile" IS '集群期望值基线绑定的配置档名，机器未指定 profile 时回落';
+
 COMMENT ON COLUMN "param_draft"."id" IS '主键标识';
 
 COMMENT ON COLUMN "param_draft"."profile" IS '配置档名，每档仅一份草稿';
@@ -309,6 +337,8 @@ COMMENT ON COLUMN "param_instance"."updated_at" IS '最近修改时间（UTC）'
 COMMENT ON COLUMN "param_instance"."updated_by" IS '最近修改人';
 
 COMMENT ON COLUMN "param_instance"."cluster_id" IS '所属集群名，软关联 param_cluster.name';
+
+COMMENT ON COLUMN "param_instance"."machine_id" IS '所属机器标识，软关联 param_machine.machine_id，空表示未绑定';
 
 COMMENT ON COLUMN "param_instance_metric"."id" IS '主键标识';
 
@@ -359,6 +389,280 @@ COMMENT ON COLUMN "param_proxy_metric"."fail_count" IS '本采样窗口内代理
 COMMENT ON COLUMN "param_proxy_metric"."fail_reason" IS '失败原因，空表示本窗口无失败';
 
 COMMENT ON COLUMN "param_proxy_metric"."duration_ms" IS '本窗口内平均耗时（毫秒）';
+
+COMMENT ON COLUMN "param_instance_runtime"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_instance_runtime"."instance_id" IS '实例标识，软关联 param_instance.instance_id';
+
+COMMENT ON COLUMN "param_instance_runtime"."status" IS '机器级健康状态：unknown、online、degraded、offline、draining';
+
+COMMENT ON COLUMN "param_instance_runtime"."pool_size" IS '实例池容量，不可得时为空';
+
+COMMENT ON COLUMN "param_instance_runtime"."in_use" IS '占用中的会话槽位数，不可得时为空';
+
+COMMENT ON COLUMN "param_instance_runtime"."stuck" IS '卡住的槽位数，不可得时为空';
+
+COMMENT ON COLUMN "param_instance_runtime"."probe_ms" IS '探活耗时（毫秒），不可得时为空';
+
+COMMENT ON COLUMN "param_instance_runtime"."capabilities" IS '能力指纹（JSON 数组），派生状态不落指标表';
+
+COMMENT ON COLUMN "param_instance_runtime"."capability_issues" IS '能力探测异常原因（JSON 对象），键为能力名';
+
+COMMENT ON COLUMN "param_instance_runtime"."consecutive_failures" IS '连续探测失败次数，达到阈值判定摘除';
+
+COMMENT ON COLUMN "param_instance_runtime"."consecutive_successes" IS '连续探测成功次数，达到阈值判定恢复';
+
+COMMENT ON COLUMN "param_instance_runtime"."last_error" IS '最近一次探测错误摘要';
+
+COMMENT ON COLUMN "param_instance_runtime"."probe_history" IS '最近若干次探活耗时（JSON 数组），用于分位数';
+
+COMMENT ON COLUMN "param_instance_runtime"."reserved" IS '本实例上的占位数，预留与会话占用之和，选台时按它原子判定';
+
+COMMENT ON COLUMN "param_instance_runtime"."observed_at" IS '状态采集时间（UTC）';
+
+COMMENT ON COLUMN "param_instance_runtime"."observed_by" IS '采集方标识，未配置时取主机名';
+
+COMMENT ON COLUMN "param_allocator_lease"."lease_key" IS '租约标识，主键；控制台自生成的预留键';
+
+COMMENT ON COLUMN "param_allocator_lease"."instance_id" IS '实例标识，软关联 param_instance.instance_id';
+
+COMMENT ON COLUMN "param_allocator_lease"."state" IS '租约状态：pending 表示已预留待连接，held 表示会话已建立';
+
+COMMENT ON COLUMN "param_allocator_lease"."expires_at" IS '预留的回收时刻（UTC），会话占用为空';
+
+COMMENT ON COLUMN "param_allocator_lease"."console_id" IS '占住该槽位的控制台副本标识';
+
+COMMENT ON COLUMN "param_allocator_lease"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_allocator_lease"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_config"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_config"."config_key" IS '配置项键，全局唯一；只允许登记在册的键';
+
+COMMENT ON COLUMN "param_config"."value" IS '配置项值，按字符串存，配合 value_type 解释';
+
+COMMENT ON COLUMN "param_config"."value_type" IS '值类型：str、int、float 或 bool';
+
+COMMENT ON COLUMN "param_config"."section" IS '配置分区：app、console、allocator、demo 或 bootstrap';
+
+COMMENT ON COLUMN "param_config"."description" IS '配置项说明';
+
+COMMENT ON COLUMN "param_config"."restart_required" IS '是否需要重启控制台才生效';
+
+COMMENT ON COLUMN "param_config"."version" IS '写入版本号，单调递增';
+
+COMMENT ON COLUMN "param_config"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_config"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_config"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_machine"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_machine"."machine_id" IS '机器标识，全局唯一，注册 seed 的幂等键';
+
+COMMENT ON COLUMN "param_machine"."cluster_id" IS '所属集群名，软关联 param_cluster.name';
+
+COMMENT ON COLUMN "param_machine"."profile" IS '机器专用配置档名，空表示回落集群基线档';
+
+COMMENT ON COLUMN "param_machine"."addr" IS '机器地址，用于面板展示与连通性提示';
+
+COMMENT ON COLUMN "param_machine"."role" IS '机器角色：agent、gateway 或 canary';
+
+COMMENT ON COLUMN "param_machine"."gpu" IS '显卡型号描述';
+
+COMMENT ON COLUMN "param_machine"."gpu_total_gb" IS '显存总量（GB），不可得时为空';
+
+COMMENT ON COLUMN "param_machine"."version" IS '部署版本描述';
+
+COMMENT ON COLUMN "param_machine"."state" IS '机器状态：pending_register、ok、warn、draining 或 bad';
+
+COMMENT ON COLUMN "param_machine"."registry_mode" IS '注册方式：auto 表示自动注册，manual 表示手工建档';
+
+COMMENT ON COLUMN "param_machine"."agent_version" IS 'agent 程序版本，来自最近一次心跳';
+
+COMMENT ON COLUMN "param_machine"."protocol_version" IS '心跳协议版本号';
+
+COMMENT ON COLUMN "param_machine"."agent_caps" IS 'agent 能力清单（JSON 数组）';
+
+COMMENT ON COLUMN "param_machine"."token_hash" IS '机器令牌哈希，明文只下发一次';
+
+COMMENT ON COLUMN "param_machine"."register_code_hash" IS '一次性注册码哈希，注册成功后失效';
+
+COMMENT ON COLUMN "param_machine"."last_seen_at" IS '最近一次心跳时间（UTC），空表示从未注册成功';
+
+COMMENT ON COLUMN "param_machine"."created_by" IS '创建人';
+
+COMMENT ON COLUMN "param_machine"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_machine"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_machine"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_machine_workload"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_machine_workload"."machine_id" IS '所属机器标识，软关联 param_machine.machine_id';
+
+COMMENT ON COLUMN "param_machine_workload"."kind" IS '负载类型：pipeline、llm、video、jepa 或 embed';
+
+COMMENT ON COLUMN "param_machine_workload"."engine" IS '推理引擎描述';
+
+COMMENT ON COLUMN "param_machine_workload"."model" IS '负载使用的模型名';
+
+COMMENT ON COLUMN "param_machine_workload"."port" IS '监听端口，不可得时为空';
+
+COMMENT ON COLUMN "param_machine_workload"."listen_addr" IS '容器内实际监听地址，不用于实例匹配';
+
+COMMENT ON COLUMN "param_machine_workload"."public_addr" IS '对外可达地址，控制台用它反查实例归属';
+
+COMMENT ON COLUMN "param_machine_workload"."vram_gb" IS '声明显存占用（GB）';
+
+COMMENT ON COLUMN "param_machine_workload"."health_path" IS '健康检查路径';
+
+COMMENT ON COLUMN "param_machine_workload"."health_interval_s" IS '健康检查间隔（秒）';
+
+COMMENT ON COLUMN "param_machine_workload"."note" IS '备注说明';
+
+COMMENT ON COLUMN "param_machine_workload"."state" IS '负载状态描述，空表示未探测';
+
+COMMENT ON COLUMN "param_machine_workload"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_machine_config"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_machine_config"."machine_id" IS '所属机器标识，软关联 param_machine.machine_id';
+
+COMMENT ON COLUMN "param_machine_config"."param_key" IS '配置项键，与机器组成唯一键';
+
+COMMENT ON COLUMN "param_machine_config"."actual_value" IS '机器上报的实际值，按字符串存';
+
+COMMENT ON COLUMN "param_machine_config"."config_version" IS '上报时机器持有的配置版本号';
+
+COMMENT ON COLUMN "param_machine_config"."observed_at" IS '观测时间（UTC）';
+
+COMMENT ON COLUMN "param_machine_config"."reported_by" IS '上报方标识，通常为 agent';
+
+COMMENT ON COLUMN "param_machine_draft"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_machine_draft"."machine_id" IS '所属机器标识，软关联 param_machine.machine_id';
+
+COMMENT ON COLUMN "param_machine_draft"."param_key" IS '配置项键，与机器组成唯一键';
+
+COMMENT ON COLUMN "param_machine_draft"."value" IS '待下发的覆盖值，按字符串存';
+
+COMMENT ON COLUMN "param_machine_draft"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_machine_draft"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_agent_config_version"."machine_id" IS '机器标识，联合主键之一';
+
+COMMENT ON COLUMN "param_agent_config_version"."config_version" IS '配置版本号，联合主键之一，按机器递增';
+
+COMMENT ON COLUMN "param_agent_config_version"."yaml_hash" IS '下发全文的摘要，agent 用于比对';
+
+COMMENT ON COLUMN "param_agent_config_version"."yaml_text" IS '下发全文快照，用于排障与回溯';
+
+COMMENT ON COLUMN "param_agent_config_version"."rendered_at" IS '渲染时间（UTC）';
+
+COMMENT ON COLUMN "param_token_metric"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_token_metric"."machine_id" IS '所属机器标识，软关联 param_machine.machine_id';
+
+COMMENT ON COLUMN "param_token_metric"."workload_id" IS '所属负载标识，软关联 param_machine_workload.id';
+
+COMMENT ON COLUMN "param_token_metric"."observed_at" IS '窗口起点时间（UTC）';
+
+COMMENT ON COLUMN "param_token_metric"."input_tokens" IS '本窗口输入 token 增量';
+
+COMMENT ON COLUMN "param_token_metric"."output_tokens" IS '本窗口输出 token 增量';
+
+COMMENT ON COLUMN "param_token_metric"."responses" IS '本窗口响应次数增量';
+
+COMMENT ON COLUMN "param_token_metric"."audio_duration_s" IS '本窗口音频时长（秒），不可得时为空';
+
+COMMENT ON COLUMN "param_token_metric"."window_s" IS '统计窗口长度（秒）';
+
+COMMENT ON COLUMN "param_token_metric"."reported_by" IS '上报方标识，通常为 agent';
+
+COMMENT ON COLUMN "param_lb_rule"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_lb_rule"."name" IS '规则名，全局唯一';
+
+COMMENT ON COLUMN "param_lb_rule"."priority" IS '优先级，数值小者先评估';
+
+COMMENT ON COLUMN "param_lb_rule"."match_type" IS '匹配类型：user_signed、tenant_tag、header 或 default';
+
+COMMENT ON COLUMN "param_lb_rule"."match_value" IS '匹配值，default 类型为空';
+
+COMMENT ON COLUMN "param_lb_rule"."target_kind" IS '目标类型：instance、machine 或 strategy';
+
+COMMENT ON COLUMN "param_lb_rule"."target_value" IS '目标值，按目标类型解释';
+
+COMMENT ON COLUMN "param_lb_rule"."share_pct" IS '分流百分比，非分流规则为空';
+
+COMMENT ON COLUMN "param_lb_rule"."sticky_ttl_s" IS '粘性保持时长（秒），非粘性规则为空';
+
+COMMENT ON COLUMN "param_lb_rule"."enabled" IS '是否启用，停用后不参与评估';
+
+COMMENT ON COLUMN "param_lb_rule"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_lb_rule"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_lb_rule"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_lb_affinity"."affinity_key" IS '会话派生键，主键';
+
+COMMENT ON COLUMN "param_lb_affinity"."machine_id" IS '粘住的机器标识，软关联 param_machine.machine_id';
+
+COMMENT ON COLUMN "param_lb_affinity"."instance_id" IS '粘住的实例标识，软关联 param_instance.instance_id';
+
+COMMENT ON COLUMN "param_lb_affinity"."rule_id" IS '产生该亲和的规则标识';
+
+COMMENT ON COLUMN "param_lb_affinity"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_lb_affinity"."expires_at" IS '过期时间（UTC），过期后不再粘住';
+
+COMMENT ON COLUMN "param_lb_route_log"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_lb_route_log"."at" IS '决策时间（UTC）';
+
+COMMENT ON COLUMN "param_lb_route_log"."session_key" IS '会话派生键';
+
+COMMENT ON COLUMN "param_lb_route_log"."rule_id" IS '命中的规则标识，未命中为空';
+
+COMMENT ON COLUMN "param_lb_route_log"."matched" IS '是否命中规则';
+
+COMMENT ON COLUMN "param_lb_route_log"."instance_id" IS '最终选中的实例标识';
+
+COMMENT ON COLUMN "param_lb_route_log"."sticky_hit" IS '是否由粘性亲和直接命中';
+
+COMMENT ON COLUMN "param_lb_route_log"."is_canary" IS '是否命中灰度目标';
+
+COMMENT ON COLUMN "param_lb_route_log"."input_tokens" IS '本轮输入 token 数';
+
+COMMENT ON COLUMN "param_lb_route_log"."output_tokens" IS '本轮输出 token 数';
+
+COMMENT ON COLUMN "param_release"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_release"."version" IS '发布版本名';
+
+COMMENT ON COLUMN "param_release"."profile_version" IS '关联的配置版本号，软关联 param_version.version，未产出时为空';
+
+COMMENT ON COLUMN "param_release"."cluster_id" IS '目标集群名，软关联 param_cluster.name';
+
+COMMENT ON COLUMN "param_release"."status" IS '发布状态：draft、building、staging、canary、rolling、current 或 rolled_back';
+
+COMMENT ON COLUMN "param_release"."stage" IS '当前阶段说明';
+
+COMMENT ON COLUMN "param_release"."rollout_pct" IS '灰度百分比';
+
+COMMENT ON COLUMN "param_release"."nodes" IS '涉及节点清单（JSON 数组）';
+
+COMMENT ON COLUMN "param_release"."changes" IS '变更清单（JSON 数组）';
+
+COMMENT ON COLUMN "param_release"."created_by" IS '创建人';
+
+COMMENT ON COLUMN "param_release"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_version"."id" IS '主键标识';
 
@@ -412,9 +716,15 @@ COMMENT ON COLUMN "turn_latency"."hold_ms" IS '保持等待耗时（毫秒）';
 
 COMMENT ON COLUMN "turn_latency"."logged_at" IS '日志写入时间（UTC）';
 
-COMMENT ON COLUMN "turn_latency"."raw_offset" IS '原始日志偏移量，重建时用于定位';
+COMMENT ON COLUMN "turn_latency"."raw_offset" IS '原始日志偏移量，重建时用于定位；agent 上报行恒为 0';
 
 COMMENT ON COLUMN "turn_latency"."ingested_at" IS '入库时间（UTC）';
+
+COMMENT ON COLUMN "turn_latency"."machine_id" IS '采集机器标识，软关联 param_machine.machine_id，空表示控制台本机';
+
+COMMENT ON COLUMN "turn_latency"."instance_id" IS '采集实例标识，软关联 param_instance.instance_id';
+
+COMMENT ON COLUMN "turn_latency"."audio_duration_s" IS '本轮音频时长（秒），合成实时率的分子，缺键时为空';
 
 COMMENT ON COLUMN "voices"."id" IS '音色标识';
 
@@ -480,6 +790,243 @@ CREATE INDEX ix_param_proxy_metric_service ON param_proxy_metric (service);
 CREATE INDEX ix_param_proxy_metric_observed_at ON param_proxy_metric (observed_at);
 
 UPDATE alembic_version SET version_num='0008_proxy_metrics' WHERE alembic_version.version_num = '0007_comments';
+
+-- Running upgrade 0008_proxy_metrics -> 0009_db_registry_and_config
+
+CREATE TABLE param_config (
+    id SERIAL NOT NULL,
+    config_key VARCHAR(128) NOT NULL,
+    value VARCHAR(1024) DEFAULT '' NOT NULL,
+    value_type VARCHAR(16) DEFAULT 'str' NOT NULL,
+    section VARCHAR(32) DEFAULT 'console' NOT NULL,
+    description VARCHAR(255) DEFAULT '' NOT NULL,
+    restart_required BOOLEAN DEFAULT '0' NOT NULL,
+    version INTEGER DEFAULT '1' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_config_key UNIQUE (config_key)
+);
+
+CREATE TABLE param_instance_runtime (
+    id SERIAL NOT NULL,
+    instance_id VARCHAR(64) NOT NULL,
+    status VARCHAR(16) DEFAULT 'unknown' NOT NULL,
+    pool_size INTEGER,
+    in_use INTEGER,
+    stuck INTEGER,
+    probe_ms INTEGER,
+    capabilities JSON DEFAULT '[]' NOT NULL,
+    capability_issues JSON DEFAULT '{}' NOT NULL,
+    consecutive_failures INTEGER DEFAULT '0' NOT NULL,
+    consecutive_successes INTEGER DEFAULT '0' NOT NULL,
+    last_error VARCHAR(255) DEFAULT '' NOT NULL,
+    probe_history JSON DEFAULT '[]' NOT NULL,
+    reserved INTEGER DEFAULT '0' NOT NULL,
+    observed_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    observed_by VARCHAR(64) DEFAULT '' NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_instance_runtime_instance_id UNIQUE (instance_id)
+);
+
+CREATE TABLE param_allocator_lease (
+    lease_key VARCHAR(128) NOT NULL,
+    instance_id VARCHAR(64) NOT NULL,
+    state VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    console_id VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (lease_key)
+);
+
+CREATE INDEX ix_param_allocator_lease_instance_id ON param_allocator_lease (instance_id);
+
+CREATE INDEX ix_param_allocator_lease_state ON param_allocator_lease (state);
+
+CREATE INDEX ix_param_allocator_lease_expires_at ON param_allocator_lease (expires_at);
+
+UPDATE alembic_version SET version_num='0009_db_registry_and_config' WHERE alembic_version.version_num = '0008_proxy_metrics';
+
+-- Running upgrade 0009_db_registry_and_config -> 0010_console_lb_backbone
+
+CREATE TABLE param_machine (
+    id SERIAL NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    cluster_id VARCHAR(64) DEFAULT '' NOT NULL,
+    profile VARCHAR(64),
+    addr VARCHAR(255) DEFAULT '' NOT NULL,
+    role VARCHAR(16) DEFAULT 'agent' NOT NULL,
+    gpu VARCHAR(64) DEFAULT '' NOT NULL,
+    gpu_total_gb FLOAT,
+    version VARCHAR(64) DEFAULT '' NOT NULL,
+    state VARCHAR(16) DEFAULT 'pending_register' NOT NULL,
+    registry_mode VARCHAR(16) DEFAULT 'manual' NOT NULL,
+    agent_version VARCHAR(64) DEFAULT '' NOT NULL,
+    protocol_version INTEGER DEFAULT '1' NOT NULL,
+    agent_caps JSON DEFAULT '[]' NOT NULL,
+    token_hash VARCHAR(64),
+    register_code_hash VARCHAR(64),
+    last_seen_at TIMESTAMP WITH TIME ZONE,
+    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_machine_machine_id UNIQUE (machine_id),
+    CONSTRAINT uq_param_machine_token_hash UNIQUE (token_hash),
+    CONSTRAINT uq_param_machine_register_code_hash UNIQUE (register_code_hash)
+);
+
+CREATE INDEX ix_param_machine_cluster_id ON param_machine (cluster_id);
+
+CREATE TABLE param_machine_workload (
+    id SERIAL NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    kind VARCHAR(16) DEFAULT 'pipeline' NOT NULL,
+    engine VARCHAR(64) DEFAULT '' NOT NULL,
+    model VARCHAR(128) DEFAULT '' NOT NULL,
+    port INTEGER,
+    listen_addr VARCHAR(64) DEFAULT '' NOT NULL,
+    public_addr VARCHAR(64) DEFAULT '' NOT NULL,
+    vram_gb FLOAT,
+    health_path VARCHAR(255) DEFAULT '' NOT NULL,
+    health_interval_s INTEGER DEFAULT '30' NOT NULL,
+    note VARCHAR(255) DEFAULT '' NOT NULL,
+    state VARCHAR(16) DEFAULT '' NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_machine_workload_machine_id ON param_machine_workload (machine_id);
+
+CREATE TABLE param_machine_config (
+    id SERIAL NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    param_key VARCHAR(128) NOT NULL,
+    actual_value VARCHAR(1024) DEFAULT '' NOT NULL,
+    config_version INTEGER DEFAULT '0' NOT NULL,
+    observed_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    reported_by VARCHAR(64) DEFAULT 'agent' NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_machine_config_key UNIQUE (machine_id, param_key)
+);
+
+CREATE INDEX ix_param_machine_config_machine_id ON param_machine_config (machine_id);
+
+CREATE TABLE param_machine_draft (
+    id SERIAL NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    param_key VARCHAR(128) NOT NULL,
+    value VARCHAR(1024) DEFAULT '' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_machine_draft_key UNIQUE (machine_id, param_key)
+);
+
+CREATE INDEX ix_param_machine_draft_machine_id ON param_machine_draft (machine_id);
+
+CREATE TABLE param_agent_config_version (
+    machine_id VARCHAR(64) NOT NULL,
+    config_version INTEGER NOT NULL,
+    yaml_hash VARCHAR(64) DEFAULT '' NOT NULL,
+    yaml_text TEXT NOT NULL,
+    rendered_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (machine_id, config_version)
+);
+
+CREATE TABLE param_token_metric (
+    id SERIAL NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    workload_id INTEGER,
+    observed_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    input_tokens INTEGER DEFAULT '0' NOT NULL,
+    output_tokens INTEGER DEFAULT '0' NOT NULL,
+    responses INTEGER DEFAULT '0' NOT NULL,
+    audio_duration_s FLOAT,
+    window_s INTEGER DEFAULT '0' NOT NULL,
+    reported_by VARCHAR(64) DEFAULT 'agent' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_token_metric_machine_id ON param_token_metric (machine_id);
+
+CREATE TABLE param_lb_rule (
+    id SERIAL NOT NULL,
+    name VARCHAR(64) NOT NULL,
+    priority INTEGER DEFAULT '100' NOT NULL,
+    match_type VARCHAR(16) DEFAULT 'default' NOT NULL,
+    match_value VARCHAR(255) DEFAULT '' NOT NULL,
+    target_kind VARCHAR(16) DEFAULT 'instance' NOT NULL,
+    target_value VARCHAR(255) DEFAULT '' NOT NULL,
+    share_pct INTEGER,
+    sticky_ttl_s INTEGER,
+    enabled BOOLEAN DEFAULT '1' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_lb_rule_name UNIQUE (name)
+);
+
+CREATE TABLE param_lb_affinity (
+    affinity_key VARCHAR(128) NOT NULL,
+    machine_id VARCHAR(64),
+    instance_id VARCHAR(64),
+    rule_id INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    PRIMARY KEY (affinity_key)
+);
+
+CREATE INDEX ix_param_lb_affinity_machine_id ON param_lb_affinity (machine_id);
+
+CREATE INDEX ix_param_lb_affinity_expires_at ON param_lb_affinity (expires_at);
+
+CREATE TABLE param_lb_route_log (
+    id SERIAL NOT NULL,
+    at TIMESTAMP WITH TIME ZONE NOT NULL,
+    session_key VARCHAR(128) DEFAULT '' NOT NULL,
+    rule_id INTEGER,
+    matched BOOLEAN DEFAULT '0' NOT NULL,
+    instance_id VARCHAR(64),
+    sticky_hit BOOLEAN DEFAULT '0' NOT NULL,
+    is_canary BOOLEAN DEFAULT '0' NOT NULL,
+    input_tokens INTEGER DEFAULT '0' NOT NULL,
+    output_tokens INTEGER DEFAULT '0' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_lb_route_log_at ON param_lb_route_log (at);
+
+CREATE TABLE param_release (
+    id SERIAL NOT NULL,
+    version VARCHAR(64) NOT NULL,
+    profile_version VARCHAR(64),
+    cluster_id VARCHAR(64) DEFAULT '' NOT NULL,
+    status VARCHAR(16) DEFAULT 'draft' NOT NULL,
+    stage VARCHAR(32) DEFAULT '' NOT NULL,
+    rollout_pct INTEGER DEFAULT '0' NOT NULL,
+    nodes JSON DEFAULT '[]' NOT NULL,
+    changes JSON DEFAULT '[]' NOT NULL,
+    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id)
+);
+
+ALTER TABLE turn_latency ADD COLUMN machine_id VARCHAR(64);
+
+ALTER TABLE turn_latency ADD COLUMN instance_id VARCHAR(64);
+
+ALTER TABLE turn_latency ADD COLUMN audio_duration_s FLOAT;
+
+ALTER TABLE param_instance ADD COLUMN machine_id VARCHAR(64);
+
+ALTER TABLE param_cluster ADD COLUMN baseline_profile VARCHAR(64) DEFAULT 'prod' NOT NULL;
+
+UPDATE alembic_version SET version_num='0010_console_lb_backbone' WHERE alembic_version.version_num = '0009_db_registry_and_config';
 
 COMMIT;
 

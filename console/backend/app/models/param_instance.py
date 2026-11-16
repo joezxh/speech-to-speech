@@ -30,3 +30,6 @@ class ParamInstance(Base):
     updated_by: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     # 集群归属（spec §2.2）：软关联 param_cluster.name，存量经 server_default 落 default。
     cluster_id: Mapped[str] = mapped_column(String(64), nullable=False, default="default", index=True)
+    # 0010 扩列：实例挂在机器下（spec §7.1）；心跳用 public_addr 反查 base_url 回填，
+    # 未命中的实例保持空（machines 页呈现为「未绑定实例」）。
+    machine_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

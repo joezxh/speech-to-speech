@@ -20,6 +20,8 @@ class ParamCluster(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     registry: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    # 0010 扩列：集群期望值基线绑到哪个 profile（spec §7.2.3 D1），回落顺序的兜底值。
+    baseline_profile: Mapped[str] = mapped_column(String(64), nullable=False, default="prod")
     policy: Mapped[str] = mapped_column(String(16), nullable=False, default="least")
     note: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
