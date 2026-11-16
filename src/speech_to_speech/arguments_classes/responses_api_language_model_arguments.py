@@ -40,7 +40,8 @@ class ResponsesApiLanguageModelHandlerArguments(LanguageModelBaseArguments):
         metadata={
             "help": "Reasoning effort for the OpenAI-compatible API. The Responses backend sends "
             "reasoning={'effort': <value>}; Chat Completions sends reasoning_effort. Default is 'none', "
-            "preserving the previous gpt-5.4-mini reasoning behavior."
+            "preserving the previous gpt-5.4-mini reasoning behavior. Pass an empty value to omit it for models "
+            "without reasoning support, such as gpt-4.1."
         },
     )
     responses_api_audio_max_tokens: int = field(
@@ -71,5 +72,15 @@ class ResponsesApiLanguageModelHandlerArguments(LanguageModelBaseArguments):
             "help": "Spoken message used when the upstream LLM endpoint is unavailable (HTTP 5xx, connection "
             "failure) instead of the generic provider-failure fallback. The upstream status code and response "
             "body are always logged regardless of this setting. Default is None (use the generic fallback)."
+        },
+    )
+    responses_api_request_timeout_s: float = field(
+        default=20.0,
+        metadata={
+            "help": "Timeout in seconds for each request to the OpenAI-compatible API, including warmup and history "
+            "compaction. It bounds every wait for data: the first response bytes and each gap between streamed "
+            "chunks; the connect timeout stays capped at 10s. The OpenAI SDK retries a timed-out turn request "
+            "twice, so a provider that never responds takes about 3x this value before the fallback reply. Raise "
+            "it for slow upstreams such as agent servers that run tools before replying. Default is 20.0."
         },
     )

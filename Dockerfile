@@ -129,6 +129,20 @@ EXPOSE 8000
 # 容器内 nltk 数据 CDN 可能连接挂起（SSRF 代理不快速失败），故用 timeout 硬上限兜底，失败不致命。
 RUN echo "[build] downloading nltk data (best-effort, timeout-guarded)" && \
     timeout 90 python -c "import nltk; [nltk.download(p, quiet=True) for p in ('punkt','punkt_tab','averaged_perceptron_tagger_eng')]" || true
+# Install packages
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        git \
+        libportaudio2 \
+        libsndfile1 \
+        python3 \
+        python3-pip \
+        python3-venv \
+    && rm -rf /var/lib/apt/lists/*
+# Install the latest pip alongside the distribution-managed copy.
+RUN python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed --upgrade pip \
+    && python3 -m pip install --no-cache-dir --break-system-packages "uv>=0.13.4"
 
 # faster-qwen3-tts 的 transformers-5.x 兼容补丁：MimiConfig 无 rope_theta，
 # torch TTS 后端加载时会 AttributeError。Mimi 是卷积 codec、不用 RoPE，兜底默认无副作用。

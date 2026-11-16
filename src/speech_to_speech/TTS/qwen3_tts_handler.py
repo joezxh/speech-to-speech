@@ -41,43 +41,9 @@ from speech_to_speech.pipeline.speculative_turns import SpeculativeTurnTracker
 from speech_to_speech.pipeline.transcript_logging import log_exception
 from speech_to_speech.pipeline.turn_latency import active_turn_latency_tracker, bind_active_turn_latency_tracker
 from speech_to_speech.utils.mlx_lock import MLXLockContext
-from speech_to_speech.utils.model_monitor import _truncate
 from speech_to_speech.utils.utils import resolve_device
 
 logger = logging.getLogger(__name__)
-
-
-def _patch_qwen_tts_rope_compat() -> None:
-    """Make Qwen3-TTS's RoPE registry patch compatible with transformers 5.15+.
-
-    ``qwen_tts`` registers ``ROPE_INIT_FUNCTIONS["default"]`` with a helper that
-    reads ``config.rope_theta``, but transformers 5.15+ removed that attribute
-    from ``MimiConfig``. Without this, TTS construction fails with
-    ``AttributeError: 'MimiConfig' object has no attribute 'rope_theta'``.
-    Override the initializer to fall back to the standard default (10000.0).
-    """
-    try:
-        import qwen_tts._transformers_compat as _compat
-        import torch
-        from transformers.modeling_rope_utils import ROPE_INIT_FUNCTIONS
-
-        def _safe_default_rope_parameters(config, device=None, seq_len=None, layer_type=None):
-            del seq_len, layer_type
-            base = getattr(config, "rope_theta", 10000.0)
-            partial_rotary_factor = getattr(config, "partial_rotary_factor", 1.0)
-            head_dim = getattr(config, "head_dim", None) or config.hidden_size // config.num_attention_heads
-            dim = int(head_dim * partial_rotary_factor)
-            inv_freq = 1.0 / (
-                base ** (torch.arange(0, dim, 2, dtype=torch.int64).to(device=device, dtype=torch.float) / dim)
-            )
-            return inv_freq, 1.0
-
-        _compat._default_rope_parameters = _safe_default_rope_parameters
-        ROPE_INIT_FUNCTIONS["default"] = _safe_default_rope_parameters
-    except Exception:
-        # Non-fatal: a future qwen_tts/transformers version may fix this upstream.
-        pass
-
 
 DEFAULT_MODEL = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
 DEFAULT_MLX_MODEL = "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-6bit"
@@ -219,9 +185,6 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
                 )
             self._setup_mlx(self.model_name)
         else:
-            # qwen_tts registers a RoPE initializer that breaks on transformers
-            # 5.15+ (MimiConfig has no rope_theta). Patch it before loading.
-            _patch_qwen_tts_rope_compat()
             # Only the torch backend places the model itself; qwentts.cpp (GGML) picks its own device.
             if self.faster_backend == "torch":
                 self.device = resolve_device(device, ("cuda",), "Qwen3-TTS torch backend")
@@ -608,9 +571,8 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
                     logger.warning("Qwen3-TTS backend warmup failed: %s", e)
 
         try:
-            with self.monitor.trace("TTS", self.model_name, input={"warmup": True}):
-                for _ in self._warmup_process("Hello, this is a warmup."):
-                    pass
+            for _ in self._warmup_process("Hello, this is a warmup."):
+                pass
             logger.info(f"{self.__class__.__name__} warmed up")
         except Exception as e:
             logger.warning(f"Warmup generation failed: {e}")
@@ -889,61 +851,33 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
         self._apply_session_voice_override(model_type, runtime_config, response)
 
         request_language = self._language_for_utterance(language_code, tts_input.selected_language)
-        logger.info("Qwen3-TTS language=%s (input_code=%s)", request_language, language_code)
 
         console.print(f"[green]ASSISTANT: {text}")
 
+        logger.info("Qwen3-TTS language=%s (input_code=%s)", request_language, language_code)
         store = getattr(self, "turn_latency_store", None)
         tracker = store.get_response(tts_input.response_key) if store else None
-        with bind_active_turn_latency_tracker(tracker):
-            with self.monitor.trace(
-                "TTS",
-                self.model_name,
-                input={
-                    "text": _truncate(text),
-                    "text_length": len(text),
-                    "language": request_language,
-                    "speaker": self.speaker,
-                    "model_type": model_type,
-                    "backend": self.backend,
-                    "device": getattr(self, "device", None),
-                },
-            ) as rec:
-                try:
-                    if self._has_voice_clone_reference():
-                        audio_iter = self._process_voice_clone(text, request_language)
-                    elif model_type == "custom_voice":
-                        audio_iter = self._process_custom_voice(text, request_language)
-                    elif model_type == "voice_design":
-                        audio_iter = self._process_voice_design(text, request_language)
-                    else:
-                        raise ValueError(
-                            "Qwen3-TTS Base model requires a voice-clone reference. "
-                            "Provide qwen3_tts_ref_audio or qwen3_tts_ref_spk, or use a CustomVoice/VoiceDesign model."
-                        )
-                    first_audio = True
-                    total_audio_bytes = 0
-                    for audio_chunk in audio_iter:
-                        if first_audio:
-                            # First audio block: this call's first byte (A.14).
-                            rec.mark_first_byte()
-                            self._log_first_audio_latency(tts_input)
-                            first_audio = False
-                        if isinstance(audio_chunk, (bytes, bytearray)):
-                            total_audio_bytes += len(audio_chunk)
-                        else:
-                            total_audio_bytes += getattr(audio_chunk, "nbytes", 0)
-                        yield audio_chunk
-                    rec.set_output(
-                        audio_bytes=total_audio_bytes,
-                        sample_rate=PIPELINE_SR,
-                        audio_duration_s=(
-                            round(total_audio_bytes / (PIPELINE_SR * 2), 3) if total_audio_bytes else 0.0
-                        ),
+        try:
+            with bind_active_turn_latency_tracker(tracker):
+                if self._has_voice_clone_reference():
+                    audio_iter = self._process_voice_clone(text, request_language)
+                elif model_type == "custom_voice":
+                    audio_iter = self._process_custom_voice(text, request_language)
+                elif model_type == "voice_design":
+                    audio_iter = self._process_voice_design(text, request_language)
+                else:
+                    raise ValueError(
+                        "Qwen3-TTS Base model requires a voice-clone reference. "
+                        "Provide qwen3_tts_ref_audio or qwen3_tts_ref_spk, or use a CustomVoice/VoiceDesign model."
                     )
-                except Exception as exc:
-                    rec.error = f"{type(exc).__name__}: {exc}"
-                    log_exception(logger, "Error during Qwen3-TTS generation", exc)
+                first_audio = True
+                for audio_chunk in audio_iter:
+                    if first_audio:
+                        self._log_first_audio_latency(tts_input)
+                        first_audio = False
+                    yield audio_chunk
+        except Exception as exc:
+            log_exception(logger, "Error during Qwen3-TTS generation", exc)
 
     def _log_first_audio_latency(self, tts_input: TTSInput) -> None:
         if tts_input.speech_stopped_at_s is None:

@@ -417,11 +417,21 @@ deployment that only runs the voice demo must not be blocked by the console.
   before playback starts), retaining identities even after audio/response done.
   This overrides the SDK's receipt-time interruption clock. Server VAD cancels
   the in-flight response; explicit interruptions use the SDK cancellation hook.
-  The local server currently accepts truncation events without changing its
-  conversation history; these client counts do not establish server-side truncation.
+  The server cuts the item's model history to the transcript heard in that
+  time; see [Interrupted replies](../src/speech_to_speech/api/openai_realtime/README.md#interrupted-replies).
+  After each truncate the client sends `conversation.item.retrieve`. The
+  reply's history row then strikes through the words never said, marked
+  Interrupted, and its bubble, while still on screen, draws the strike across
+  them (statically with reduced motion). Over WebRTC, where the server measures playback, the client
+  retrieves the items of the last two replies after each barge-in. Only an
+  item the server cut (status `incomplete`, or removed) changes its row.
   See the [Realtime interruption guidance](https://developers.openai.com/api/docs/guides/realtime-conversations#handling-interruptions).
 
 ## Credits
 
 - Backend: [huggingface/speech-to-speech](https://github.com/huggingface/speech-to-speech)
 - UI verbatim from `amir-tfrere/minimal-conversation-app-s2s-backend` (Pollen Robotics × Hugging Face)
+
+Choose **Language** on the conversation screen or in Settings to set transcription and response language. The choice persists across reloads and can change during a conversation; **Auto** restores automatic language selection. Language support depends on the configured speech backends.
+
+The demo checks backend language capabilities before connecting. When Auto is unsupported or discovery is unavailable, it preserves the backend default and disables switching back to Auto during that conversation. End the conversation to select backend defaults for the next one. Language changes while queued apply when the conversation starts.
