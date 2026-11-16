@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.repositories.token_metric_repository import TokenDelta, append_delta
 from app.db.base import utcnow
 from app.models.machine import ParamMachine
 from app.repositories.machine_repository import MachineRepository
@@ -174,6 +175,23 @@ def heartbeat(db: Session, token_machine_id: str, body: HeartbeatIn) -> dict:
     )
     bind_instances_by_public_addr(db, token_machine_id, body.workloads)
     _TOKEN_DIFFS[token_machine_id] = dict(body.tokens)
+    # Task 13：tokens{} 落库（单通道真值；instance_probe 的 /v1/usage 轮询不落库）。
+    if body.tokens:
+        append_delta(
+            db,
+            token_machine_id,
+            TokenDelta(
+                input_tokens=int(body.tokens.get("input_tokens") or 0),
+                output_tokens=int(body.tokens.get("output_tokens") or 0),
+                responses=int(body.tokens.get("responses") or 0),
+                audio_duration_s=(
+                    float(body.tokens["audio_duration_s"])
+                    if body.tokens.get("audio_duration_s") is not None
+                    else None
+                ),
+                window_s=int(body.tokens.get("window_s") or 0),
+            ),
+        )
 
     return {
         "accepted": True,
