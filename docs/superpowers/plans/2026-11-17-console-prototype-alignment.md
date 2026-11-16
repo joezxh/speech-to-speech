@@ -242,9 +242,9 @@ def auto_register(p: AutoRegisterIn, actor: str) -> AutoRegisterResult
 **Interfaces:**
 - 绑定规则（设计 §7.1）：用 `public_addr` 的 host:port 反查 `param_instance.base_url`；**不按 `listen` 匹配**；未命中保持 `machine_id=NULL` 并呈现"未绑定实例"。
 
-- [ ] **Step 1: 写失败测试** —— public_addr 命中绑定；listen 不参与匹配；未命中保持 NULL；手工绑定写入 `param_instance.machine_id`；`GET /instances` 响应含 `machine_id`。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): 实例按 public_addr 绑定机器`
+- [x] **Step 1: 写失败测试** —— public_addr 命中绑定；listen 不参与匹配；未命中保持 NULL；手工绑定写入 `param_instance.machine_id`；`GET /instances` 响应含 `machine_id`。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): 实例按 public_addr 绑定机器`
 
 ### Task 11: 前端原型外观层（prototype.less + 13 个 proto 组件 + useToast）
 
