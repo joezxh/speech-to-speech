@@ -58,6 +58,25 @@ class MachineCreate(BaseModel):
     gpu: str = Field(default="", max_length=64)
     gpuTotalGb: float | None = Field(default=None, ge=0)
     version: str = ""
+    registryMode: str = Field(default="manual", max_length=16)
+
+
+class RegisterTestIn(BaseModel):
+    """M8：三步注册测试（simulate=fail 演练"agent 不来"路径）。"""
+
+    machineId: str = Field(min_length=1, max_length=64)
+    addr: str = ""
+    clusterId: str = Field(default="", max_length=64)
+    profile: str | None = None
+    simulate: bool = False
+
+
+class AutoRegisterIn(BaseModel):
+    """M9：自动注册受理（不代 agent 完成注册）。"""
+
+    clusterId: str = Field(default="", max_length=64)
+    addr: str = ""
+    machineId: str | None = None
 
 
 class MachineUpdate(BaseModel):
@@ -204,6 +223,7 @@ def create_machine(db: Session, p: MachineCreate, actor: str) -> tuple[MachineOu
         gpu_total_gb=p.gpuTotalGb,
         version=p.version,
         state="pending_register",
+        registry_mode=p.registryMode,
         register_code_hash=hash_secret(register_code),
         created_by=actor,
         updated_by=actor,
@@ -268,3 +288,87 @@ def upsert_workloads(
         [{_WORKLOAD_COLUMNS[key]: value for key, value in item.model_dump().items()} for item in items],
     )
     return [_workload_out(row) for row in rows]
+
+
+# ---- M8 三步注册测试 / M9 自动注册 -----------------------------------------
+
+
+def _issue_register_code(db: Session, machine_id: str) -> str:
+    """签发（或重签）一次性注册码；旧码明文已不可得，重签即覆盖哈希。"""
+    register_code = secrets.token_urlsafe(REGISTER_CODE_BYTES)
+    row = _get_row(db, machine_id)
+    row.register_code_hash = hash_secret(register_code)
+    db.commit()
+    return register_code
+
+
+def register_test(db: Session, p: RegisterTestIn, actor: str) -> dict:
+    """三步注册测试（§7.2.2 M8）。步1 建档（幂等：已存在则重签注册码）；
+    步2/3 按当前库态评估——agent 是异步来的，本调用只报快照，前端可轮询。"""
+    register_code = ""
+    if MachineRepository(db).get(p.machineId) is None:
+        machine, register_code = create_machine(
+            db,
+            MachineCreate(
+                machineId=p.machineId,
+                addr=p.addr,
+                clusterId=p.clusterId,
+                profile=p.profile,
+            ),
+            actor=actor,
+        )
+    else:
+        register_code = _issue_register_code(db, p.machineId)
+        machine = _machine_out(db, _get_row(db, p.machineId))
+
+    token_issued = _get_row(db, p.machineId).token_hash is not None
+    heartbeat_seen = _get_row(db, p.machineId).last_seen_at is not None
+    step2_state = "fail" if p.simulate else ("pass" if token_issued else "pending")
+    step3_state = "fail" if p.simulate else ("pass" if heartbeat_seen else "pending")
+    row = _get_row(db, p.machineId)
+
+    steps = [
+        {
+            "key": "step1",
+            "label": "向注册中心登记",
+            "state": "pass",
+            "detail": {"machineId": machine.machineId, "state": machine.state},
+        },
+        {
+            "key": "step2",
+            "label": "已下发注册指令 —— 等待机器端 Agent 上报",
+            "state": step2_state,
+            "detail": {} if p.simulate else {"registerCode": register_code},
+        },
+        {
+            "key": "step3",
+            "label": "Agent 握手 · 心跳 · 版本上报",
+            "state": step3_state,
+            "detail": {
+                "agentVersion": row.agent_version,
+                "protocolVersion": row.protocol_version,
+                "lastSeen": machine.lastSeen,
+            },
+        },
+    ]
+    return {
+        "steps": steps,
+        "ok": all(step["state"] == "pass" for step in steps),
+        "register_code": register_code,
+    }
+
+
+def auto_register(db: Session, p: AutoRegisterIn, actor: str) -> dict:
+    """M9：模拟"机器自己来登记"。只做受理——生成注册码挂待接入（pending_register），
+    真实建档走 agent 首次注册。machine_id 缺省自动生成。"""
+    machine_id = p.machineId or f"auto-{secrets.token_hex(4)}"
+    machine, register_code = create_machine(
+        db,
+        MachineCreate(machineId=machine_id, addr=p.addr, clusterId=p.clusterId, registryMode="auto"),
+        actor=actor,
+    )
+    return {
+        "machineId": machine.machineId,
+        "registerCode": register_code,
+        "state": machine.state,
+    }

@@ -19,6 +19,7 @@ def register_api_routers(app: FastAPI) -> None:
         health,
         instances,
         logs,
+        machines,
         profiles,
         realtime,
         runtime,
@@ -41,6 +42,8 @@ def register_api_routers(app: FastAPI) -> None:
     # agent 面（spec 2026-11-17 §7.2.1）：register 匿名，heartbeat 用 machine token。
     # 必须在 SPA catch-all 之前注册（C11）。
     app.include_router(agent.router)
+    # 机器管理面（spec 2026-11-17 §7.2.2）：M1–M9，console:machine:* 权限码。
+    app.include_router(machines.router)
 
     from app.config import allocator as allocator_settings  # noqa: PLC0415 - 与本函数内既有延迟 import 同层
 
