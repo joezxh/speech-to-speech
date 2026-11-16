@@ -200,11 +200,11 @@ def tail_turn_latency(path: str, since_offset: int) -> tuple[int, list[dict]]  #
 **Interfaces:**
 - Produces：A5 按 `response_key+turn_revision` upsert，`machine_id`=token 所指机器、`instance_id`=空、`raw_offset=0`、`logged_at`=行内时间戳（解析规则与 `parse_line` 一致）；索引器对"已有 agent 心跳的机器"让位（落行 `machine_id` 置空）。
 
-- [ ] **Step 1: 写失败测试** —— 用例（Review Focus #2）：agent 行 upsert 覆盖旧值不产生重复 PK；同一机器上 agent 生效后索引器跳过；无 agent 机器索引器照常；重建重放只还原本机行（`machine_id` 空），远端行不被重放覆盖；agent 行 `raw_offset=0`、`logged_at` 取行内时间戳。
-- [ ] **Step 2:** 跑测试 → FAIL。
-- [ ] **Step 3: 实现**。
-- [ ] **Step 4:** 跑测试 → PASS。
-- [ ] **Step 5: Commit** `feat(console): agent turn-latency 上报与索引器单通道让位`
+- [x] **Step 1: 写失败测试** —— 用例（Review Focus #2）：agent 行 upsert 覆盖旧值不产生重复 PK；同一机器上 agent 生效后索引器跳过；无 agent 机器索引器照常；重建重放只还原本机行（`machine_id` 空），远端行不被重放覆盖；agent 行 `raw_offset=0`、`logged_at` 取行内时间戳。
+- [x] **Step 2:** 跑测试 → FAIL。
+- [x] **Step 3: 实现**。
+- [x] **Step 4:** 跑测试 → PASS。
+- [x] **Step 5: Commit** `feat(console): agent turn-latency 上报与索引器单通道让位`
 
 ---
 
