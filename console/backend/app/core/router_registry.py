@@ -10,6 +10,7 @@ def register_api_routers(app: FastAPI) -> None:
     because the SPA catch-all is registered after this call returns.
     """
     from app.routers import (  # noqa: PLC0415 - import cycle avoidance
+        agent,
         audio_proxy,
         auth,
         catalog,
@@ -37,6 +38,9 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(clusters.router)
     # 配置面（spec 2026-11-17 §6.1）：读给所有登录用户，写仅管理员。
     app.include_router(config.router)
+    # agent 面（spec 2026-11-17 §7.2.1）：register 匿名，heartbeat 用 machine token。
+    # 必须在 SPA catch-all 之前注册（C11）。
+    app.include_router(agent.router)
 
     from app.config import allocator as allocator_settings  # noqa: PLC0415 - 与本函数内既有延迟 import 同层
 

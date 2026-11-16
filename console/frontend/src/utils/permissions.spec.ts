@@ -16,13 +16,25 @@ describe('permission mirror', () => {
     expect(roleHasPermission('', 'console:cluster:query')).toBe(false)
   })
 
-  it('covers exactly the five cluster codes the backend registers', () => {
+  it('mirrors the machine codes the backend registers (2026-11-17 §7.3)', () => {
+    expect(roleHasPermission('operator', 'console:machine:query')).toBe(true)
+    expect(roleHasPermission('operator', 'console:machine:create')).toBe(false)
+    expect(roleHasPermission('admin', 'console:machine:update')).toBe(true)
+    expect(roleHasPermission('admin', 'console:agent:enroll')).toBe(true)
+  })
+
+  it('covers exactly the codes the backend registers', () => {
     expect(Object.keys(PERMISSION_ROLES).sort()).toEqual([
+      'console:agent:enroll',
       'console:cluster:create',
       'console:cluster:delete',
       'console:cluster:query',
       'console:cluster:switch',
-      'console:cluster:update'
+      'console:cluster:update',
+      'console:machine:create',
+      'console:machine:delete',
+      'console:machine:query',
+      'console:machine:update'
     ])
   })
 })

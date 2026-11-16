@@ -8,7 +8,12 @@ export const PERMISSION_ROLES: Record<string, readonly string[]> = {
   'console:cluster:switch': ['admin', 'operator'],
   'console:cluster:create': ['admin'],
   'console:cluster:update': ['admin'],
-  'console:cluster:delete': ['admin']
+  'console:cluster:delete': ['admin'],
+  'console:machine:query': ['admin', 'operator'],
+  'console:machine:create': ['admin'],
+  'console:machine:update': ['admin'],
+  'console:machine:delete': ['admin'],
+  'console:agent:enroll': ['admin', 'operator']
 }
 
 export function roleHasPermission(role: string, code: string): boolean {

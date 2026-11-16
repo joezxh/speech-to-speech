@@ -22,6 +22,13 @@ PERMISSION_ROLES: dict[str, frozenset[str]] = {
     "console:cluster:create": frozenset({"admin"}),
     "console:cluster:update": frozenset({"admin"}),
     "console:cluster:delete": frozenset({"admin"}),
+    # 机器管理（spec 2026-11-17 §7.3）：读给操作员，写仅管理员。
+    "console:machine:query": frozenset({"admin", "operator"}),
+    "console:machine:create": frozenset({"admin"}),
+    "console:machine:update": frozenset({"admin"}),
+    "console:machine:delete": frozenset({"admin"}),
+    # 仅登记（防打字错误占位）：agent 面不走角色，按 machine token 映射（§7.3）。
+    "console:agent:enroll": frozenset({"admin", "operator"}),
 }
 
 
