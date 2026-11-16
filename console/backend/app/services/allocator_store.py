@@ -1,8 +1,12 @@
 """AllocatorStore：Phase 2 的替换点（spec §13，签名冻结）。
 
-本期唯一实现 InMemoryAllocatorStore：单把 threading.Lock，与 console 单
-worker 约束一致（spec §16）。时间一律 time.monotonic，避免多实例机器间
-时钟偏差抖动租约（spec §8.3）。
+两个实现：
+- `InMemoryAllocatorStore`：单把 threading.Lock，与 console 单 worker 约束一致
+  （spec §16）。时间一律 time.monotonic，避免多实例机器间时钟偏差抖动租约。
+- `DbAllocatorStore`（spec 2026-11-17 §3.2）：占位落库，多副本共享余量；
+  时间用墙钟，因为跨进程要共享时间基准。
+
+Protocol 的方法集合冻结：两个实现都必须覆盖它（见 tests/unit/test_allocator_store.py）。
 """
 
 from __future__ import annotations

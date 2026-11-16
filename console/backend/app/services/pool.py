@@ -28,9 +28,14 @@ class PoolState:
     in_use: int = 0
     units: tuple[dict[str, Any], ...] = ()
     error: str = ""
+    # 从库里恢复的运行态没有 unit 明细，只有 stuck 的个数（spec 2026-11-17 §2.1）：
+    # 运行时状态表存的是聚合值。给了它就直接用，否则按 units 现算。
+    stuck_count: int | None = None
 
     @property
     def stuck(self) -> int:
+        if self.stuck_count is not None:
+            return self.stuck_count
         return sum(1 for unit in self.units if unit.get("state") in BAD_STATES)
 
     @property

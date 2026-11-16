@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from types import SimpleNamespace
 
@@ -453,7 +454,7 @@ def test_main_dispatches_legacy_modes_to_pipeline_commands(mode, command, monkey
     monkeypatch.setattr(sys, "argv", ["speech-to-speech", "--mode", mode, "--port", "9876"])
     monkeypatch.setattr(
         "speech_to_speech.s2s_pipeline.run_pipeline_command",
-        lambda selected_command, command_args: calls.append((selected_command, command_args)),
+        lambda selected_command, command_args, **_: calls.append((selected_command, command_args)),
     )
 
     main()
@@ -706,7 +707,7 @@ pipelines:
     monkeypatch.setitem(
         sys.modules,
         "speech_to_speech.configured_runtime",
-        SimpleNamespace(run_configured_command=lambda command, config: calls.append((command, config))),
+        SimpleNamespace(run_configured_command=lambda command, config, **_: calls.append((command, config))),
     )
     return path, calls
 
@@ -791,7 +792,7 @@ def test_name_requires_file(monkeypatch):
 def test_file_cli_hides_runtime_error(configured_cli, monkeypatch, capsys):
     path, _ = configured_cli
 
-    def fail(*_args):
+    def fail(*_args, **_kwargs):
         raise RuntimeError("provider SECRET_MARKER https://user:password@host")
 
     monkeypatch.setitem(
@@ -803,6 +804,25 @@ def test_file_cli_hides_runtime_error(configured_cli, monkeypatch, capsys):
     error = capsys.readouterr().err
     assert "SECRET_MARKER" not in error
     assert "password" not in error
+
+
+def test_file_cli_logs_runtime_traceback(configured_cli, monkeypatch, caplog):
+    path, _ = configured_cli
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("provider unavailable")
+
+    monkeypatch.setitem(
+        sys.modules, "speech_to_speech.configured_runtime", SimpleNamespace(run_configured_command=fail)
+    )
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "-f", str(path), "--name", "primary"])
+    with caplog.at_level(logging.ERROR, logger="speech_to_speech.cli"):
+        with pytest.raises(SystemExit, match="1"):
+            main()
+    failures = [record for record in caplog.records if record.name == "speech_to_speech.cli"]
+    assert failures, "the CLI must log the startup failure before exiting"
+    assert isinstance(failures[-1].exc_info[1], RuntimeError)
+    assert "RuntimeError: provider unavailable" in failures[-1].exc_text
 
 
 @pytest.mark.parametrize(

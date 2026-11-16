@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from collections.abc import Sequence
 from typing import Any, Literal
@@ -21,6 +22,8 @@ from speech_to_speech.pipeline.transcript_logging import (
     set_log_transcripts,
     warn_if_log_transcripts_enabled,
 )
+
+logger = logging.getLogger(__name__)
 
 Command = Literal["serve", "talk", "local", "models"]
 
@@ -287,6 +290,11 @@ def _run_file_command(command: Command, command_args: list[str], console_options
     except StartupError:
         parser.exit(1, "Startup failed: the Realtime server could not bind its port.\n")
     except Exception:
+        # The catch-all used to drop the exception entirely, so a startup failure looked
+        # the same whether the cause was a missing dependency, a bad backend setting or a
+        # provider outage. Log the traceback (with its __cause__/__context__ chain intact)
+        # before exiting; the exit message stays generic so it can be matched on.
+        logger.exception("Configured startup failed; check the selected backends and runtime resources.")
         parser.exit(1, "Configured startup failed; check the selected backends and runtime resources.\n")
 
 

@@ -193,8 +193,17 @@ $env:VITE_DEV_BACKEND="http://127.0.0.1:8001"; npm run dev
 
 ## 5. 配置项
 
-全部通过 `.env`（相对**进程 CWD**，即 `console/backend`）或同名环境变量读取；
-环境变量优先级高于 `.env`。
+配置项有**两个来源**：环境变量（`.env` 或同名环境变量，环境变量优先级高于 `.env`）
+与数据库配置表 `param_config`。
+
+- **库里的值优先**：库里有的键用库里的值，库里没有的键回退环境变量；
+- **env 只做首次播种与兜底**：首次启动把 env 的默认值写进配置表（只写缺失的键），
+  之后以表为准——改 `.env` 不影响已经在跑的实例，要改就改表；
+- **热生效**：除少数"启动期开关"外，改表后数秒内生效，不必重启控制台；
+- **密钥不进表**：`JWT_SECRET_KEY`、`USAGE_HASH_SECRET`、`S2S_*_TOKEN`、
+  `DEFAULT_ADMIN_PASSWORD`、demo 面的 `SERPER_API_KEY` / `LB_HF_TOKEN` 只走 env。
+
+详见 §5.4；接口见 §7。
 
 ### 5.1 三个硬前置
 
@@ -251,6 +260,52 @@ env 名一律走 `validation_alias`（前缀不统一，不能用 `env_prefix`�
 | `INSTANCE_METRIC_RETENTION_DAYS` | `7` | 指标采样行保留天数，巡检循环顺带清理更早的 |
 | `INSTANCE_QUEUE_ENABLED` | `false` | 本地满员队列。本期关闭：满则直接 503 `at_capacity` |
 | `INSTANCE_WEBRTC_HANGUP_ENABLED` | `false` | console 侧跨机挂断代理路由 `POST /instances/{id}/hangup` 的开关；关则该路径根本没注册 |
+
+上表每一项都可以在控制台里在线改（`PUT /api/v1/config`，§5.4）；其中
+`ALLOCATOR_MODE`、`INSTANCES_SEED_PATH`、`INSTANCE_WEBRTC_HANGUP_ENABLED` 是
+**启动期语义**，改完要重启控制台才生效。
+
+### 5.4 配置面：库优先、热生效
+
+设计定稿见 `docs/superpowers/specs/2026-11-17-console-db-backed-registry-and-config-design.md`。
+
+**登记表**：`console/backend/app/config/_schema.py` 列出每一个可在线修改的键
+（键名、env 名、类型、取值域、是否需重启、说明）。**只有登记在册的键能进表**——
+配置表是白名单，不是任意键值袋。
+
+登记表**从参数目录派生**：键集合、类型、取值域、说明的唯一真源是
+`docs/parameter-catalog.yaml` 的 `console_parameters` 段（控制台自己的运行开关，
+与 pipeline 部署参数那一段分开，不进部署页的参数树），`_schema.py` 只做翻译，
+不再手写第二份清单。两边漂移由 `console/backend/scripts/validate_catalog_schema.py`
+在 CI 里挡住（双向一致 + `choices` 与 `type` 相容 + env 名对得上 settings +
+默认值落在取值域内）。目录文件不可用时登记表为空，所有开关退回 env 默认值，
+控制台照常启动。
+
+**读**：调用点不变（`from app.config import console` 后照旧 `console.lb_mode`），
+取值改成库优先。进程内缓存 2s（TTL），本进程写完立即失效，其他副本数秒内跟上。
+**读库失败自动回退 env**，语音链路不中断。
+
+**写**：`PUT /api/v1/config`（管理员）。逐项校验类型与取值域，**任一项非法就整批
+拒绝**（400，一项都不落库）；写入留审计，`fields` 只记字段名不记值。
+
+| 端点 | 权限 | 说明 |
+|---|---|---|
+| `GET /api/v1/config` | 登录 | 全部配置项的有效值 + 来源（`db` / `env`）+ 类型 + 说明 + 是否需重启 |
+| `GET /api/v1/config/schema` | 登录 | 配置项元数据，供前端渲染表单 |
+| `PUT /api/v1/config` | 管理员 | 批量写入 |
+
+**生效边界**：
+
+| 类别 | 例子 | 生效 |
+|---|---|---|
+| 热生效 | 探针间隔与阈值、换台次数、各端点超时、上传闸、能力探测间隔、LB 模式、目录路径、音色/会话上限、演示面开关 | 数秒内 |
+| 需重启 | `ALLOCATOR_MODE`（是否起巡检任务）、`INSTANCES_SEED_PATH`（播种来源）、`INSTANCE_WEBRTC_HANGUP_ENABLED`（是否注册路由） | 重启控制台 |
+
+**状态接口**：`GET /api/v1/status` 增加 `configSource`（`db` / `env` / `mixed`）、
+`configDbOk`、`registryRuntimePersisted`——一眼能看出"改了 env 为什么没生效"。
+
+**迁移**：`alembic upgrade head` 会建 `param_config`；`param_instance_runtime`
+与 `param_allocator_lease` 见 §10.2 与 §11。
 
 ---
 
@@ -311,6 +366,11 @@ pipeline :8765
 | POST | `/api/v1/instances/{id}/undrain` | operator | 取消摘除（同上） |
 | POST | `/api/v1/instances/{id}/probe` | operator | 绕过 2s 缓存立即探测一轮 |
 | POST | `/api/v1/instances/{id}/hangup` | admin | 跨机代理实例侧 WebRTC 挂断；**默认不注册**，需 `INSTANCE_WEBRTC_HANGUP_ENABLED=true` |
+| POST | `/api/v1/instances` | admin | 在线纳管实例（不必改 seed + 重启） |
+| DELETE | `/api/v1/instances/{id}` | admin | 摘除实例：占位租约、运行时状态、声明数据一起清 |
+| GET | `/api/v1/config` | access token | 控制台配置面：全部有效值 + 来源（db/env）+ 是否需重启 |
+| GET | `/api/v1/config/schema` | access token | 配置项元数据（类型、取值域、说明），供前端渲染 |
+| PUT | `/api/v1/config` | admin | 批量写配置；任一项非法整批拒绝（400），写审计（只记字段名） |
 | GET | `/api/config` | 无 | demo 面配置（8 个键，不含密钥） |
 | WS | `/v1/realtime` | 无 | 反代到 pipeline；上游连不上时 close `1013` |
 | POST | `/v1/realtime/calls` | 无 | 转发 SDP |
@@ -347,7 +407,8 @@ pipeline 独立端点（`8765`，由 `create_app()` 直接挂载，非 console �
 | 实例页 `pool_unreachable` | pipeline 没起 / `PIPELINE_BASE_URL` 指错，两者都不影响其它页面 |
 | Vite 起在 3001 | 3000 被占用（本机常见），代理仍然正常，用打印出的端口即可 |
 | 前端能开、接口全 404/502 | Vite 代理目标不是 8000；设 `VITE_DEV_BACKEND` |
-| 改了 `.env` 没反应 | pydantic-settings 只在**启动时**读文件；热更新要重启进程 |
+| 改了 `.env` 没反应 | 配置以**数据库为准**（env 只做首次播种与兜底）；要改就改表或 `PUT /api/v1/config`，改完数秒内生效 |
+| 改了 `.env` 没反应，且配置页是空的 | 参数目录文件不在（`PARAM_CATALOG_PATH` 指错或挂载丢了）：配置项登记表派生自目录，目录不可用时登记表为空、所有开关退回 env 默认值；看启动日志的"参数目录不可用"告警 |
 | 实例行一直停在 `unknown` | 首轮巡检未跑（`ALLOCATOR_MODE=off` 时不起巡检任务），或 seed 落了库但 `enabled=false` |
 | `drain` 后仍拿到 grant | 看到的是已签发未领取的 pending（`INSTANCE_GRANT_TTL_S` 内不会消失），或 console 重启后忘了 `refresh_specs()` |
 | `POST …/hangup` 返回 404/405 | `INSTANCE_WEBRTC_HANGUP_ENABLED` 没开，路由根本没注册（默认关，spec §9.2；SPA catch-all 只注册 GET，故未挂载的 POST 返 405） |
@@ -367,6 +428,7 @@ pipeline 独立端点（`8765`，由 `create_app()` 直接挂载，非 console �
 | `console/backend/app/config/_bootstrap.py` | `DEFAULT_ADMIN_*` 三个变量的定义 |
 | `console/backend/app/services/bootstrap_service.py` | 首次启动建号的唯一实现 |
 | `console/backend/scripts/seed_admin.py` | 建号 / 改密脚本 |
+| `console/backend/scripts/validate_catalog_schema.py` | 参数目录 ↔ 配置项登记表的双向一致性闸（CI 跑，不通过非零退出） |
 | `console/backend/app/routers/auth.py` | 登录、刷新、`/me` |
 | `console/backend/app/core/spa.py` | SPA 托管与 `STATIC_DIR` 校验 |
 | `console/deploy/supervisord.conf` | 容器里两个进程的命令与日志路径 |
@@ -431,6 +493,18 @@ instances:
 | `instance_seed_conflict:{id}` | seed 与 DB 的 `base_url` 不一致（以 DB 为准） |
 | `usage_unavailable` | `/v1/usage` 读取失败；不参与健康判定，仅告警 |
 
+**在线纳管**（2026-11-17 起）：seed 不再是唯一入口。
+
+| 端点 | 权限 | 说明 |
+|---|---|---|
+| `POST /api/v1/instances` | 管理员 | 新增实例（`instance_id` / `base_url` / `weight` / `labels` / `cluster_id`）；巡检下一轮就会探它 |
+| `DELETE /api/v1/instances/{id}` | 管理员 | 摘除实例：占位租约、运行时状态、声明数据一起清 |
+
+**运行时状态落库**（2026-11-17 起）：巡检把观测结果写进 `param_instance_runtime`
+（健康五态、槽位占用、能力指纹、探测计数、失败计数）。控制台重启后直接读到上次的
+状态，不必等首轮探测；多副本共享同一份健康真相源（最后写入者胜，探测对象相同，
+覆盖无害）。`reserved`（占位数）归选台所有，巡检不碰它。
+
 ### 10.3 实例级状态机
 
 两层状态绝不混用：unit 级（idle/active/draining/stuck）原样来自 `/v1/pool`；机器级
@@ -465,9 +539,15 @@ stateDiagram-v2
 （Task 11）：`allocatorMode` / `instancesRegistered` / `seedConfigured` / `consoleId` /
 `secretsConsistent`（后者对上面这串密钥做一致性校验，任一为空或不匹配即 false）。
 
-多 console 无共享存储时，本机的乐观修正（`pending_local`）只防同机重复派发，看不见
-对端的 pending；实例是槽位的最终仲裁者，短期超发的唯一下场就是一次 503 换台，换台
-无可换则 `allocate` 返回 `None` → 调用方回 `503 at_capacity`（spec §8.4/§15 P1.6）。
+**共享存储（2026-11-17 起）**：多 console 指向**同一个数据库**时，选台占位落库
+（`param_allocator_lease` + `param_instance_runtime.reserved`），各副本共享同一份
+余量：占位判定用一条带条件的原子 UPDATE（`reserved < size - in_use - stuck`）看
+`rowcount`，两个副本不会各自看到"还有空位"而同时派发到同一台。
+DB 不可用时占位直接失败（选台回 503），**绝不用陈旧租约继续派发**——宁可少派不超发。
+
+多 console 各用各的库时，退回本机乐观修正（`pending_local`）：只防同机重复派发，
+看不见对端的 pending；实例是槽位的最终仲裁者，短期超发的唯一下场就是一次 503 换台，
+换台无可换则 `allocate` 返回 `None` → 调用方回 `503 at_capacity`（spec §8.4/§15 P1.6）。
 
 ### 10.6 部署前提（鉴权边界）
 
@@ -490,7 +570,11 @@ stateDiagram-v2
 
 console 以 `--workers 1` 运行（§1）：内存 `AllocatorStore` 与 `publish_flow_service` 的
 进程内锁同前提——多 worker 会让 grant 与发布状态在进程间不一致（spec §13/§16）。
-Phase 2 换 `PostgresAllocatorStore` 后此约束才放开。
+
+2026-11-17 起多了 `DbAllocatorStore`（占位落库，多副本共享余量），但**单 worker 约束
+不变**：进程内事务（去重、grant 缓存、满员队列、计数器）仍然只在进程内成立，
+`publish_flow_service` 的发布状态也一样。多副本要靠"一个副本一个盒子"来满足，
+不是靠多 worker。
 
 ---
 

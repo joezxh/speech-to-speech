@@ -8,13 +8,15 @@ from fastapi import APIRouter, Depends, Request
 from app.core.errors import ApiError
 from app.core.security import CurrentUser, require_admin, require_operator, require_user
 from app.deps import DbSession
+from app.repositories.allocator_lease_repository import AllocatorLeaseRepository
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.instance_metric_repository import InstanceMetricRepository
 from app.repositories.instance_repository import InstanceRepository
+from app.repositories.instance_runtime_repository import InstanceRuntimeRepository
 from app.repositories.proxy_metric_repository import ProxyMetricRepository
 from app.repositories.version_repository import VersionRepository
 from app.schemas.common import ok
-from app.schemas.instance import WINDOWS, HangupRequest, metric_point, proxy_metric_point
+from app.schemas.instance import WINDOWS, HangupRequest, InstanceCreate, metric_point, proxy_metric_point
 from app.services import instance_monitor, instance_probe, instances_service
 
 router = APIRouter(prefix="/api/v1", tags=["instances"])
@@ -56,6 +58,63 @@ def _audit(db, user, action: str, instance_id: str, fields: list[str], request_i
         fields=list(fields),
         request_id=request_id,
     )
+
+
+@router.post("/instances")
+def register_instance(
+    payload: InstanceCreate,
+    db: DbSession,
+    request: Request,
+    user: CurrentUser = Depends(require_admin),
+):
+    """在线纳管一台实例（spec 2026-11-17 §5.4）。
+
+    以前只能改 `instances.yaml` 再重启控制台；现在声明数据直接写库，
+    巡检下一轮就会探它，运行时状态落到 `param_instance_runtime`。
+    """
+    if InstanceRepository(db).get_by_instance_id(payload.instance_id):
+        raise ApiError("conflict", f"instance {payload.instance_id} is already registered", 409)
+    row = InstanceRepository(db).create(
+        instance_id=payload.instance_id,
+        base_url=payload.base_url.strip(),
+        weight=payload.weight,
+        max_sessions_hint=payload.max_sessions_hint,
+        labels=payload.labels,
+        cluster_id=payload.cluster_id,
+        updated_by=user.username,
+    )
+    _audit(db, user, "instance.register", payload.instance_id, ["base_url", "weight"], _request_id(request))
+    instance_monitor.invalidate()
+    return ok(
+        {
+            "instance_id": row.instance_id,
+            "base_url": row.base_url,
+            "weight": row.weight,
+            "cluster_id": row.cluster_id,
+            "enabled": row.enabled,
+            "drain_requested": row.drain_requested,
+        }
+    )
+
+
+@router.delete("/instances/{instance_id}")
+def remove_instance(
+    instance_id: str,
+    db: DbSession,
+    request: Request,
+    user: CurrentUser = Depends(require_admin),
+):
+    """摘掉一台实例：占位、运行时状态、声明数据一起清（spec 2026-11-17 §5.4）。
+
+    先清租约再删声明行——否则那个实例的槽位会一直被"占着"。
+    """
+    _registry_row(db, instance_id)
+    AllocatorLeaseRepository(db).delete_by_instance(instance_id)
+    InstanceRuntimeRepository(db).delete(instance_id)
+    InstanceRepository(db).delete(instance_id)
+    _audit(db, user, "instance.remove", instance_id, [], _request_id(request))
+    instance_monitor.invalidate()
+    return ok({"instance_id": instance_id, "removed": True})
 
 
 @router.post("/instances/{instance_id}/drain")

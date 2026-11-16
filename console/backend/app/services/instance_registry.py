@@ -31,9 +31,10 @@ class RuntimeState:
     consecutive_successes: int = 0
     last_error: str = ""
     probe_history: list[int] = field(default_factory=list)
-    # 能力指纹（spec §5.1）：派生状态，只驻留内存，不落库、不进 seed。
+    # 能力指纹（spec §5.1）：派生状态，不进 seed、不混进指标表。
     # 探测要花一次 HTTP 往返，且各实例的端点集合可能不同（声纹/情感是条件注册的），
     # 所以选台时要按能力过滤，否则会把请求发给没有该路由的机器。
+    # 2026-11-17 起落 `param_instance_runtime`：多副本共享 + 控制台重启不丢状态。
     capabilities: frozenset[str] = frozenset()
     capability_issues: dict[str, str] = field(default_factory=dict)
 
@@ -65,9 +66,17 @@ class InstanceRegistry:
         self._recover_threshold = max(1, recover_threshold)
         self._states: dict[str, RuntimeState] = {}
 
-    def sync(self, specs: list[tuple[str, str, int, bool, bool]]) -> None:
+    def sync(
+        self,
+        specs: list[tuple[str, str, int, bool, bool]],
+        runtime: dict[str, dict] | None = None,
+    ) -> None:
         """与注册表对齐：新增补 unknown，删除消失的，enabled/weight/drain 同步。
-        specs = [(instance_id, base_url, weight, enabled, drain_requested)]。"""
+        specs = [(instance_id, base_url, weight, enabled, drain_requested)]。
+
+        runtime 是从 `param_instance_runtime` 读回来的运行时状态（按 instance_id），
+        用来在控制台重启后直接恢复到上次的健康状态与能力指纹，而不必等首轮探测
+        （spec 2026-11-17 §2.1）。读不到就当没有——退化成"从 unknown 开始"。"""
         seen = set()
         for instance_id, base_url, weight, enabled, drain in specs:
             seen.add(instance_id)
@@ -76,6 +85,9 @@ class InstanceRegistry:
                 state = RuntimeState(instance_id=instance_id, base_url=base_url)
                 self._states[instance_id] = state
             state.base_url, state.weight, state.enabled = base_url, weight, enabled
+            payload = (runtime or {}).get(instance_id)
+            if payload:
+                self._restore_runtime(state, payload)
             if not enabled:
                 state.status = OFFLINE if state.pool is None else state.status
             if drain and state.status != OFFLINE:
@@ -84,6 +96,36 @@ class InstanceRegistry:
                 state.status = ONLINE if state.pool is not None else UNKNOWN
         for gone in [k for k in self._states if k not in seen]:
             del self._states[gone]
+
+    @staticmethod
+    def _restore_runtime(state: RuntimeState, payload: dict) -> None:
+        """把库里的运行时状态灌回内存态。
+
+        库里只有聚合值（size/in_use/stuck），没有 unit 明细，所以恢复出来的
+        PoolState 不带 units；stuck 用库里记的个数（pool.PoolState.stuck_count）。
+        """
+        status = payload.get("status")
+        if status:
+            state.status = status
+        size = payload.get("pool_size")
+        if size is None:
+            state.pool = None
+        else:
+            state.pool = PoolState(
+                reachable=True,
+                size=int(size),
+                in_use=int(payload.get("in_use") or 0),
+                units=(),
+                stuck_count=int(payload.get("stuck") or 0),
+            )
+        if payload.get("probe_ms") is not None:
+            state.probe_ms = int(payload["probe_ms"])
+        state.capabilities = frozenset(payload.get("capabilities") or ())
+        state.capability_issues = dict(payload.get("capability_issues") or {})
+        state.consecutive_failures = int(payload.get("consecutive_failures") or 0)
+        state.consecutive_successes = int(payload.get("consecutive_successes") or 0)
+        state.last_error = str(payload.get("last_error") or "")
+        state.probe_history = list(payload.get("probe_history") or ())
 
     def get(self, instance_id: str) -> RuntimeState | None:
         return self._states.get(instance_id)

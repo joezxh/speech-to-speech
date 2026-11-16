@@ -14,10 +14,10 @@ from typing import Any
 from loguru import logger
 from sqlalchemy.orm import Session
 
-from app.config import allocator
-from app.config import console
+from app.config import allocator, console
 from app.repositories.instance_metric_repository import InstanceMetricRepository
 from app.repositories.instance_repository import InstanceRepository
+from app.repositories.instance_runtime_repository import InstanceRuntimeRepository
 from app.services import capability_probe, instance_probe, proxy_counters
 from app.services.instance_registry import EVICTED, OFFLINE, ONLINE, RECOVERED, InstanceRegistry
 
@@ -38,8 +38,48 @@ def reset_for_tests() -> None:
 
 
 def refresh_specs(session: Session) -> None:
+    """把声明数据与运行时状态合并进注册表（spec 2026-11-17 §2.1）。
+
+    声明数据来自 `param_instance`，运行时状态来自 `param_instance_runtime`：
+    后者让控制台重启后直接恢复到上次的健康状态与能力指纹，不必等首轮探测。
+    运行时表读不到（迁移没跑、表被删）就当没有——退化成"从 unknown 开始"。
+    """
     rows = InstanceRepository(session).list_all()
-    registry.sync([(r.instance_id, r.base_url, r.weight, r.enabled, r.drain_requested) for r in rows])
+    runtime: dict[str, dict] = {}
+    try:
+        runtime = InstanceRuntimeRepository(session).payloads()
+    except Exception as exc:  # noqa: BLE001 - 运行时表不可读不该让整轮巡检失败
+        logger.warning("runtime state read failed, registry keeps its memory state: {}", exc)
+        session.rollback()
+    registry.sync(
+        [(r.instance_id, r.base_url, r.weight, r.enabled, r.drain_requested) for r in rows],
+        runtime,
+    )
+
+
+def _write_runtime(session: Session, state) -> None:
+    """把内存态落进 `param_instance_runtime`（多副本共享 + 重启不丢状态）。"""
+    pool = state.pool
+    try:
+        InstanceRuntimeRepository(session).upsert(
+            instance_id=state.instance_id,
+            observed_by=allocator.resolved_console_id,
+            status=state.status,
+            # 不可得就写 NULL（spec §5.2：offline 的实例绝不写 0）。
+            pool_size=pool.size if pool else None,
+            in_use=pool.in_use if pool else None,
+            stuck=pool.stuck if pool else None,
+            probe_ms=state.probe_ms,
+            capabilities=sorted(state.capabilities),
+            capability_issues=dict(state.capability_issues),
+            consecutive_failures=state.consecutive_failures,
+            consecutive_successes=state.consecutive_successes,
+            last_error=(state.last_error or "")[:255],
+            probe_history=list(state.probe_history),
+        )
+    except Exception as exc:  # noqa: BLE001 - 落库失败不该让整轮巡检失败
+        logger.warning("runtime state write failed for {}: {}", state.instance_id, exc)
+        session.rollback()
 
 
 def _write_metric(session: Session, instance_id: str, *, kind: str, counters: dict[str, int] | None = None) -> None:
@@ -87,14 +127,18 @@ def probe_all(session: Session) -> None:
             elif state.status == ONLINE and before == OFFLINE:
                 counters[_EDGE_COUNTERS[RECOVERED]] = 1
             _write_metric(session, instance_id, kind="state_change", counters=counters)
+        _write_runtime(session, state)
     _invalidate_cache()
 
 
-def apply_capabilities(reports: dict[str, capability_probe.CapabilityReport]) -> None:
+def apply_capabilities(
+    reports: dict[str, capability_probe.CapabilityReport], session: Session | None = None
+) -> None:
     """把能力指纹写进注册表（spec §5.1）。
 
-    能力是派生状态：只驻留内存，不落 `param_instance_metric`——那张表的列语义是
-    槽位（size/in_use/free/stuck），塞进代理/能力信息会让两套口径混在一张表里。
+    能力是派生状态：不落 `param_instance_metric`——那张表的列语义是槽位
+    （size/in_use/free/stuck），塞进代理/能力信息会让两套口径混在一张表里。
+    2026-11-17 起落 `param_instance_runtime`（独立表），多副本共享 + 重启不丢。
     """
     for instance_id, report in reports.items():
         state = registry.get(instance_id)
@@ -102,15 +146,17 @@ def apply_capabilities(reports: dict[str, capability_probe.CapabilityReport]) ->
             continue
         state.capabilities = report.available
         state.capability_issues = dict(report.issues)
+        if session is not None:
+            _write_runtime(session, state)
     _invalidate_cache()
 
 
-async def probe_capabilities_round() -> None:
+async def probe_capabilities_round(session: Session | None = None) -> None:
     """能力轮：与容量轮分开的一轮（spec §5.1）。
 
     容量轮是同步串行的（probe_all），再加两个同步探测会让一轮耗时变成
     N × (2s + 声纹 + 情感)，一台慢就推迟其余。能力探测走异步并发，单台超时独立，
-    且不写指标表。
+    且不写指标表（能力指纹落 `param_instance_runtime`）。
     """
     base_urls = [
         (instance_id, state.base_url) for instance_id, state in registry.snapshot().items()
@@ -120,7 +166,19 @@ async def probe_capabilities_round() -> None:
     reports = await capability_probe.probe_all_capabilities(
         base_urls, timeout=console.lb_capability_probe_timeout_s
     )
-    apply_capabilities(reports)
+    if session is not None:
+        apply_capabilities(reports, session)
+        return
+    from app.db.database import SessionLocal  # noqa: PLC0415 - 避免 import 环
+
+    own = SessionLocal()
+    try:
+        apply_capabilities(reports, own)
+    except Exception as exc:  # noqa: BLE001 - 能力落库失败不该杀掉能力轮
+        logger.warning("capability state write skipped: {}", exc)
+        own.rollback()
+    finally:
+        own.close()
 
 
 def sample_metrics(session: Session, counters: dict[str, int] | None = None) -> None:
@@ -218,7 +276,7 @@ async def run_forever() -> None:
             # 能力轮独立于容量轮：慢的一台不许拖住整轮（spec §5.1）。
             if time.monotonic() - last_capability >= console.lb_capability_interval_s:
                 last_capability = time.monotonic()
-                await probe_capabilities_round()
+                await probe_capabilities_round(session)
             ticks += 1
             if ticks * allocator.probe_interval_s >= allocator.usage_interval_s:
                 ticks = 0

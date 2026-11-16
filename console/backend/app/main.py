@@ -10,6 +10,7 @@ from app.config import allocator as allocator_settings
 from app.config import app as app_settings
 from app.config import console as console_settings
 from app.config import demo as demo_settings
+from app.config import store as config_store
 from app.core.errors import ApiError, api_error_handler
 from app.core.logging import configure_logging
 from app.core.router_registry import register_api_routers
@@ -44,6 +45,18 @@ async def _usage_sweeper() -> None:
 async def lifespan(app: FastAPI):
     session = SessionLocal()
     try:
+        # 配置面（spec 2026-11-17 §4.5）：首次启动把 env 默认值播种进配置表。
+        # 必须早于下面所有配置读取（分配器模式、LB 模式、演示面开关），否则
+        # 库里改过的值要等到下一次重启才生效。播种失败不挡启动——读路径会
+        # 静默回退 env 默认值（设计 §5.1）。
+        try:
+            seeded = config_store.seed_missing(session)
+            if seeded:
+                logger.info("config seeded: {} items", len(seeded))
+        except Exception as exc:  # noqa: BLE001 - a bad DB must not stop the API from booting
+            session.rollback()
+            logger.error("config seed skipped: {}", exc)
+
         # A fresh volume has no account and no registration page, so the image
         # would boot into a console nobody can sign in to. DEFAULT_ADMIN_*
         # seeds one; an empty password leaves the behaviour unchanged.

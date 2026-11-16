@@ -7,7 +7,8 @@ from typing import Any
 
 from sqlalchemy import text
 
-from app.config import allocator, auth, console
+from app.config import _schema, allocator, auth, console
+from app.config import store as config_store
 from app.repositories.instance_repository import InstanceRepository
 from app.repositories.version_repository import VersionRepository
 from app.services import catalog_service, instance_monitor, pool, process_probe, validator_service
@@ -71,4 +72,11 @@ def snapshot(db, profile: str) -> dict[str, Any]:
         "lbMode": console.lb_mode,
         "lbUpstreams": len(healthy),
         "lbCapabilities": capabilities,
+        # 配置面（spec 2026-11-17 §6.3）：配置值来自库还是 env、配置库是否可用。
+        "configSource": config_store.source_summary(),
+        "configDbOk": config_store.db_ok,
+        # 配置项登记表派生自参数目录；目录不可用时登记表为空，配置面整体退回 env。
+        "configCatalogOk": _schema.CATALOG_OK,
+        # 运行时注册表是否已落库（落库后控制台重启不丢状态）。
+        "registryRuntimePersisted": bool(db_ok),
     }

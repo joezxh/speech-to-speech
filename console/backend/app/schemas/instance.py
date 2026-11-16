@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.schemas.common import iso_utc
 
@@ -10,6 +10,20 @@ WINDOWS = {"1h": 3600, "6h": 21600, "24h": 86400, "7d": 604800}
 class HangupRequest(BaseModel):
     # 就是实例侧的 call_id：WebRTC 会话在 /v1/realtime/calls 里以它寻址。
     session_id: str
+
+
+class InstanceCreate(BaseModel):
+    """在线纳管一台实例（spec 2026-11-17 §5.4）。
+
+    以前只能改 seed 文件再重启；现在直接写库，巡检下一轮就会探它。
+    """
+
+    instance_id: str = Field(min_length=1, max_length=64)
+    base_url: str = Field(min_length=1, max_length=255)
+    weight: int = Field(default=1, ge=0, le=1000)
+    max_sessions_hint: int | None = Field(default=None, ge=0)
+    labels: dict[str, str] = Field(default_factory=dict)
+    cluster_id: str = Field(default="default", max_length=64)
 
 
 def metric_point(row) -> dict:

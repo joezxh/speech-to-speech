@@ -75,7 +75,7 @@ insensitive). In the container they come from `config/prod.env`.
 | `DATABASE_URL` | `sqlite:////app/data/console.sqlite3` | the `data/` volume; **the image does not migrate on boot** — run `alembic upgrade head` once per new database |
 | `RESTART_MODE` | `supervisor` | `noop` disables restarts (tests, CI) |
 | `PARAM_CONFIG_DIR` | `/app/config` | the only directory the console writes to |
-| `PARAM_CATALOG_PATH` | `/app/catalog/parameter-catalog.yaml` | mounted read-only from `docs/parameter-catalog.yaml` |
+| `PARAM_CATALOG_PATH` | `/app/catalog/parameter-catalog.yaml` | mounted read-only from `docs/parameter-catalog.yaml`. Also the source of the console's own config registry (`console_parameters` section) — without it the console still starts, but every switch falls back to its env default |
 | `STATIC_DIR` | `/app/console/static` | the built SPA; a missing directory fails at boot |
 | `PIPELINE_BASE_URL` | `http://127.0.0.1:8765` | loopback inside the container |
 | `PIPELINE_CONTAINER` | `speech-to-speech-local-pipeline-1` | label only: the container behind `PIPELINE_BASE_URL`, shown in the voice page's Settings |

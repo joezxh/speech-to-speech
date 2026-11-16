@@ -14,6 +14,7 @@ def register_api_routers(app: FastAPI) -> None:
         auth,
         catalog,
         clusters,
+        config,
         health,
         instances,
         logs,
@@ -34,6 +35,8 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(profiles.router)
     app.include_router(instances.router)
     app.include_router(clusters.router)
+    # 配置面（spec 2026-11-17 §6.1）：读给所有登录用户，写仅管理员。
+    app.include_router(config.router)
 
     from app.config import allocator as allocator_settings  # noqa: PLC0415 - 与本函数内既有延迟 import 同层
 

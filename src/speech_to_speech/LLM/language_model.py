@@ -392,7 +392,6 @@ class BaseLanguageModelHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 chunks.append(text_chunk(before))
             elif before.strip():
                 before = remove_unspeechable(before)
-                for s in sent_tokenize_preserving_markdown_code(before, sent_tokenize):
                 for s in sent_tokenize_preserving_markdown_code(before, safe_sent_tokenize):
                     ctx.sentence_batch.append(remove_markdown(s))
             if ctx.sentence_batch:

@@ -79,6 +79,46 @@ class InstanceRepository:
         self.session.refresh(row)
         return row
 
+    def create(
+        self,
+        *,
+        instance_id: str,
+        base_url: str,
+        weight: int = 1,
+        max_sessions_hint: int | None = None,
+        labels: dict | None = None,
+        cluster_id: str = "default",
+        updated_by: str = "console",
+    ) -> ParamInstance:
+        """在线纳管一台实例（spec 2026-11-17 §5.4）。
+
+        不再只能改 seed 文件 + 重启：声明数据直接写库，巡检下一轮就会探它。
+        """
+        row = ParamInstance(
+            instance_id=instance_id,
+            base_url=base_url,
+            weight=weight,
+            max_sessions_hint=max_sessions_hint,
+            labels_json=dict(labels or {}),
+            enabled=True,
+            drain_requested=False,
+            cluster_id=cluster_id,
+            updated_by=updated_by,
+        )
+        self.session.add(row)
+        self.session.commit()
+        self.session.refresh(row)
+        return row
+
+    def delete(self, instance_id: str) -> bool:
+        """摘掉一台实例的声明数据。"""
+        row = self.get_by_instance_id(instance_id)
+        if row is None:
+            return False
+        self.session.delete(row)
+        self.session.commit()
+        return True
+
     def cluster_counts(self) -> dict[str, int]:
         """每集群实例数：集群列表聚合与删除阻塞共用（spec §4.1/§4.2）。"""
         rows = self.session.execute(

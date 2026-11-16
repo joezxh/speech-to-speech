@@ -14,6 +14,27 @@
 #   - source_priority 按优先级从高到低排列，取值限定：
 #     response|session|yaml|clientset|env|compose_file|build_arg|code|code_constant|default
 
+#
+# 段二（console_parameters）：**控制台自身**的运行开关（探针节奏、LB 开关、
+# 路径、上限……）。`console/backend/app/config/_schema.py` 的登记表从本段派生，
+# `console/backend/scripts/validate_catalog_schema.py` 强制两边的键集合**双向
+# 一致**——本段加一项而登记表没加（或反过来），CI 就红。
+#
+# 本段与 `parameters` 段是两件事：
+#   - `parameters` 段是 **pipeline 部署参数**，进部署页的参数树；
+#   - `console_parameters` 段是**控制台进程自己的开关**，进控制台的配置面
+#     （`GET/PUT /api/v1/config`），不进参数树。
+#
+# 本段自己的字段约定：
+#   - stage = 控制台的配置分区（app / console / allocator / demo / bootstrap），
+#     name = 分区内的字段名；两者拼起来就是配置表 `param_config` 的键。
+#   - env = 播种与兜底用的环境变量名（密钥类不在本段，仍只走 env）。
+#   - effect = hot 表示改完数秒内生效；startup 表示要重启控制台才生效。
+#   - change_cost 与 effect 同义（seconds / restart）。
+#   - source_priority 比 `parameters` 段多了 db：控制台的配置**以数据库为准**，
+#     env 只负责首次播种与兜底。
+#   - what = 面向人的一句说明；minimum / maximum = 数值取值域（可选）。
+#
 schema: s2s-parameter-catalog-v1
 generated_from: "speech-to-speech-src@f2267d8"
 generated_at: "2026-10-23"
@@ -2988,7 +3009,948 @@ parameters:
     risk: "占用 GPU 显存，与 STT/TTS 争抢"
     source_ref: "arguments_classes/vad_arguments.py:vad_firered_use_gpu"
 
+# ───────────────── 控制台自身的配置项（控制台配置面，不进 pipeline 参数树）─────────────────
+console_parameters:
+  - stage: allocator
+    name: console_id
+    type: string
+    env: CONSOLE_ID
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "本控制台副本标识，指标里的采集方；留空取主机名"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.console_id"
 
+  - stage: allocator
+    name: fail_threshold
+    type: integer
+    env: INSTANCE_FAIL_THRESHOLD
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调大则摘除变慢，故障实例多接一段时间流量"
+    what: "连续失败几次判定摘除"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.fail_threshold"
 
+  - stage: allocator
+    name: grant_ttl_s
+    type: integer
+    env: INSTANCE_GRANT_TTL_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会让预留提前超时回收"
+    what: "预留租约存活秒数"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.grant_ttl_s"
 
+  - stage: allocator
+    name: metric_retention_days
+    type: integer
+    env: INSTANCE_METRIC_RETENTION_DAYS
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会提前清掉历史指标"
+    what: "指标采样保留天数"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.metric_retention_days"
 
+  - stage: allocator
+    name: mode
+    type: string
+    env: ALLOCATOR_MODE
+    choices: ["off", "local"]
+    required: false
+    source_priority: [db, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "切到 local 后才启用注册表选台"
+    what: "本地分配器模式：off 为单实例直连，local 为注册表选台"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.mode"
+
+  - stage: allocator
+    name: probe_interval_s
+    type: integer
+    env: INSTANCE_PROBE_INTERVAL_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会让探测流量变密"
+    what: "巡检轮询间隔（秒）"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.probe_interval_s"
+
+  - stage: allocator
+    name: probe_timeout_s
+    type: integer
+    env: INSTANCE_PROBE_TIMEOUT_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会把慢实例误判为故障"
+    what: "单次探活超时（秒）"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.probe_timeout_s"
+
+  - stage: allocator
+    name: queue_enabled
+    type: boolean
+    env: INSTANCE_QUEUE_ENABLED
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "打开后满员请求会排队而不是 503"
+    what: "是否启用本地满员队列"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.queue_enabled"
+
+  - stage: allocator
+    name: recover_threshold
+    type: integer
+    env: INSTANCE_RECOVER_THRESHOLD
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会让抖动实例过早回到池里"
+    what: "连续成功几次判定恢复"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.recover_threshold"
+
+  - stage: allocator
+    name: seed_path
+    type: string
+    env: INSTANCES_SEED_PATH
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: startup
+    exposure: ops
+    impact: platform
+    change_cost: restart
+    risk: "指错会覆盖数据库里的实例声明"
+    what: "声明式实例 seed 文件路径；留空则以数据库为唯一来源"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.seed_path"
+
+  - stage: allocator
+    name: usage_interval_s
+    type: integer
+    env: INSTANCE_USAGE_INTERVAL_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会让用量采样变密"
+    what: "用量采样间隔（秒）"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.usage_interval_s"
+
+  - stage: allocator
+    name: webrtc_hangup_enabled
+    type: boolean
+    env: INSTANCE_WEBRTC_HANGUP_ENABLED
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: startup
+    exposure: ops
+    impact: pipeline
+    change_cost: restart
+    risk: "打开后控制台会注册跨机挂断代理路由"
+    what: "是否注册跨机挂断代理路由"
+    source_ref: "console/backend/app/config/_allocator.py:AllocatorSettings.webrtc_hangup_enabled"
+
+  - stage: app
+    name: cors_origins
+    type: string
+    env: CORS_ORIGINS
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "允许的跨域来源，逗号分隔；留空表示不放开"
+    source_ref: "console/backend/app/config/_app.py:AppSettings.cors_origins"
+
+  - stage: app
+    name: env
+    type: string
+    env: ENV
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "运行环境标识，仅用于展示与日志"
+    source_ref: "console/backend/app/config/_app.py:AppSettings.env"
+
+  - stage: app
+    name: log_level
+    type: string
+    env: LOG_LEVEL
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "日志级别：debug、info、warning 或 error"
+    source_ref: "console/backend/app/config/_app.py:AppSettings.log_level"
+
+  - stage: app
+    name: max_body_bytes
+    type: integer
+    env: MAX_BODY_BYTES
+    choices: []
+    minimum: 1024
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "JSON 请求体上限（字节）"
+    source_ref: "console/backend/app/config/_app.py:AppSettings.max_body_bytes"
+
+  - stage: bootstrap
+    name: default_admin_role
+    type: string
+    env: DEFAULT_ADMIN_ROLE
+    choices: ["admin", "operator"]
+    required: false
+    source_priority: [db, env, default]
+    effect: startup
+    exposure: ops
+    impact: platform
+    change_cost: restart
+    risk: "只在首次启动生效"
+    what: "首次启动管理员角色"
+    source_ref: "console/backend/app/config/_bootstrap.py:BootstrapSettings.default_admin_role"
+
+  - stage: bootstrap
+    name: default_admin_username
+    type: string
+    env: DEFAULT_ADMIN_USERNAME
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: startup
+    exposure: ops
+    impact: platform
+    change_cost: restart
+    risk: "只在首次启动生效，改名不影响已建账号"
+    what: "首次启动创建的管理员用户名"
+    source_ref: "console/backend/app/config/_bootstrap.py:BootstrapSettings.default_admin_username"
+
+  - stage: console
+    name: data_dir
+    type: string
+    env: DATA_DIR
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "数据卷目录"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.data_dir"
+
+  - stage: console
+    name: lb_asr_timeout_s
+    type: float
+    env: LB_ASR_TIMEOUT_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调小会误杀慢的识别请求"
+    what: "ASR 上游超时（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_asr_timeout_s"
+
+  - stage: console
+    name: lb_audio_max_bytes
+    type: integer
+    env: LB_AUDIO_MAX_BYTES
+    choices: []
+    minimum: 1024
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调小会拒掉合法音频"
+    what: "音频上传上限（字节）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_audio_max_bytes"
+
+  - stage: console
+    name: lb_capability_interval_s
+    type: integer
+    env: LB_CAPABILITY_INTERVAL_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会让探测流量变密"
+    what: "能力指纹探测轮间隔（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_capability_interval_s"
+
+  - stage: console
+    name: lb_capability_probe_timeout_s
+    type: float
+    env: LB_CAPABILITY_PROBE_TIMEOUT_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "必须大于上游同步转发耗时，否则误判无能力"
+    what: "单实例能力探测超时（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_capability_probe_timeout_s"
+
+  - stage: console
+    name: lb_emotion_timeout_s
+    type: float
+    env: LB_EMOTION_TIMEOUT_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调小会误判情感上游不可用"
+    what: "情感上游超时（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_emotion_timeout_s"
+
+  - stage: console
+    name: lb_failover_attempts
+    type: integer
+    env: LB_FAILOVER_ATTEMPTS
+    choices: []
+    minimum: 0
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调大会在全满时拉长失败响应"
+    what: "上游满员或拒连时的换台重试次数（不含首次）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_failover_attempts"
+
+  - stage: console
+    name: lb_mode
+    type: string
+    env: CONSOLE_LB_MODE
+    choices: ["off", "proxy"]
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "切到 proxy 后控制台成为唯一数据面入口"
+    what: "数据面负载均衡模式：off 为直连，proxy 为控制台选台反代"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_mode"
+
+  - stage: console
+    name: lb_stateless_max_inflight
+    type: integer
+    env: LB_STATELESS_MAX_INFLIGHT
+    choices: []
+    minimum: 0
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调小会提前拒掉无状态请求"
+    what: "单实例无状态请求在途上限，0 为不限"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_stateless_max_inflight"
+
+  - stage: console
+    name: lb_tts_timeout_s
+    type: float
+    env: LB_TTS_TIMEOUT_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调小会误杀慢的合成请求"
+    what: "TTS 上游超时（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_tts_timeout_s"
+
+  - stage: console
+    name: lb_upstream_ready_timeout_s
+    type: float
+    env: LB_UPSTREAM_READY_TIMEOUT_S
+    choices: []
+    minimum: 0.1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调大则换台变慢，用户先感到卡"
+    what: "等待上游首帧的上限（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_upstream_ready_timeout_s"
+
+  - stage: console
+    name: lb_voiceprint_timeout_s
+    type: float
+    env: LB_VOICEPRINT_TIMEOUT_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调小会误判声纹上游不可用"
+    what: "声纹上游超时（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.lb_voiceprint_timeout_s"
+
+  - stage: console
+    name: log_dir
+    type: string
+    env: LOG_DIR
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "日志目录"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.log_dir"
+
+  - stage: console
+    name: model_metrics_log
+    type: string
+    env: MODEL_METRICS_LOG
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "模型指标日志路径"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.model_metrics_log"
+
+  - stage: console
+    name: param_catalog_path
+    type: string
+    env: PARAM_CATALOG_PATH
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "参数目录文件路径"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.param_catalog_path"
+
+  - stage: console
+    name: param_config_dir
+    type: string
+    env: PARAM_CONFIG_DIR
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "参数配置文件目录"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.param_config_dir"
+
+  - stage: console
+    name: pipeline_base_url
+    type: string
+    env: PIPELINE_BASE_URL
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "指错会探到别的机器，误判健康状态"
+    what: "本机 pipeline 地址，多机部署时指向被管实例"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.pipeline_base_url"
+
+  - stage: console
+    name: pipeline_container
+    type: string
+    env: PIPELINE_CONTAINER
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "pipeline 容器名，仅用于展示"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.pipeline_container"
+
+  - stage: console
+    name: pipeline_timeout_s
+    type: float
+    env: PIPELINE_TIMEOUT_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: pipeline
+    change_cost: seconds
+    risk: "调大则探针挂起，巡检轮次被拖慢"
+    what: "pipeline 探测超时（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.pipeline_timeout_s"
+
+  - stage: console
+    name: restart_mode
+    type: string
+    env: RESTART_MODE
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "noop 之后重启按钮不再真的重启进程"
+    what: "重启方式：supervisor 或 noop"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.restart_mode"
+
+  - stage: console
+    name: session_audio_max_bytes
+    type: integer
+    env: SESSION_AUDIO_MAX_BYTES
+    choices: []
+    minimum: 1024
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: session
+    change_cost: seconds
+    risk: "调小会拒掉合法会话"
+    what: "单次会话音频上限（字节）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.session_audio_max_bytes"
+
+  - stage: console
+    name: session_audio_max_seconds
+    type: float
+    env: SESSION_AUDIO_MAX_SECONDS
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: session
+    change_cost: seconds
+    risk: "调小会截断会话音频"
+    what: "单次会话音频上限（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.session_audio_max_seconds"
+
+  - stage: console
+    name: session_data_dir
+    type: string
+    env: SESSION_DATA_DIR
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "会话存档目录"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.session_data_dir"
+
+  - stage: console
+    name: session_record_enabled
+    type: boolean
+    env: SESSION_RECORD_ENABLED
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "打开即开始落盘用户音频，涉及合规"
+    what: "是否记录会话存档"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.session_record_enabled"
+
+  - stage: console
+    name: session_retention_days
+    type: integer
+    env: SESSION_RETENTION_DAYS
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会提前删掉会话存档"
+    what: "会话存档保留天数"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.session_retention_days"
+
+  - stage: console
+    name: session_retention_max_days
+    type: integer
+    env: SESSION_RETENTION_MAX_DAYS
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会让保留期永远达不到"
+    what: "会话存档保留上限（天）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.session_retention_max_days"
+
+  - stage: console
+    name: static_dir
+    type: string
+    env: STATIC_DIR
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "前端静态资源目录"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.static_dir"
+
+  - stage: console
+    name: supervisor_program
+    type: string
+    env: SUPERVISOR_PROGRAM
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "supervisor 管理的进程名"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.supervisor_program"
+
+  - stage: console
+    name: supervisor_socket
+    type: string
+    env: SUPERVISOR_SOCKET
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "supervisor 控制套接字路径"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.supervisor_socket"
+
+  - stage: console
+    name: verifier_mode
+    type: string
+    env: VERIFIER_MODE
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "校验器模式：reject 或其他"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.verifier_mode"
+
+  - stage: console
+    name: voice_data_dir
+    type: string
+    env: VOICE_DATA_DIR
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "音色数据目录"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.voice_data_dir"
+
+  - stage: console
+    name: voice_max_bytes
+    type: integer
+    env: VOICE_MAX_BYTES
+    choices: []
+    minimum: 1024
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会拒掉合法的长音频"
+    what: "单个音色音频上限（字节）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.voice_max_bytes"
+
+  - stage: console
+    name: voice_max_seconds
+    type: float
+    env: VOICE_MAX_SECONDS
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会截断音色，时长下限随之失效"
+    what: "单个音色时长上限（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.voice_max_seconds"
+
+  - stage: console
+    name: voice_min_seconds
+    type: float
+    env: VOICE_MIN_SECONDS
+    choices: []
+    minimum: 0
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调大到超过上限会让音色永远无法入库"
+    what: "单个音色时长下限（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.voice_min_seconds"
+
+  - stage: console
+    name: voice_precompute_concurrency
+    type: integer
+    env: VOICE_PRECOMPUTE_CONCURRENCY
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调大会抢占 GPU，拖慢语音链路"
+    what: "音色预取并发数"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.voice_precompute_concurrency"
+
+  - stage: console
+    name: voice_precompute_timeout_s
+    type: float
+    env: VOICE_PRECOMPUTE_TIMEOUT_S
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会让预取频繁失败"
+    what: "音色预取超时（秒）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.voice_precompute_timeout_s"
+
+  - stage: console
+    name: voice_retention_max_days
+    type: integer
+    env: VOICE_RETENTION_MAX_DAYS
+    choices: []
+    minimum: 1
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: ops
+    impact: platform
+    change_cost: seconds
+    risk: "调小会提前清掉未过期音色"
+    what: "音色保留上限（天）"
+    source_ref: "console/backend/app/config/_console.py:ConsoleSettings.voice_retention_max_days"
+
+  - stage: demo
+    name: load_balancer_url
+    type: string
+    env: LOAD_BALANCER_URL
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "外部负载均衡地址，留空则由控制台本地选台"
+    source_ref: "console/backend/app/config/_demo.py:DemoSettings.load_balancer_url"
+
+  - stage: demo
+    name: oauth_client_id
+    type: string
+    env: OAUTH_CLIENT_ID
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "登录用的 OAuth 客户端标识"
+    source_ref: "console/backend/app/config/_demo.py:DemoSettings.oauth_client_id"
+
+  - stage: demo
+    name: rtc_ice_servers
+    type: string
+    env: RTC_ICE_SERVERS
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: session
+    change_cost: seconds
+    risk: ""
+    what: "WebRTC 的 ICE 服务器列表"
+    source_ref: "console/backend/app/config/_demo.py:DemoSettings.rtc_ice_servers"
+
+  - stage: demo
+    name: space_id
+    type: string
+    env: SPACE_ID
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "演示空间标识"
+    source_ref: "console/backend/app/config/_demo.py:DemoSettings.space_id"
+
+  - stage: demo
+    name: speech_to_speech_url
+    type: string
+    env: SPEECH_TO_SPEECH_URL
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: platform
+    change_cost: seconds
+    risk: ""
+    what: "钉死的直连地址；留空表示走同源反代"
+    source_ref: "console/backend/app/config/_demo.py:DemoSettings.speech_to_speech_url"
+
+  - stage: demo
+    name: startup_greeting
+    type: string
+    env: STARTUP_GREETING
+    choices: []
+    required: false
+    source_priority: [db, env, default]
+    effect: hot
+    exposure: expert
+    impact: session
+    change_cost: seconds
+    risk: ""
+    what: "开场问候语"
+    source_ref: "console/backend/app/config/_demo.py:DemoSettings.startup_greeting"

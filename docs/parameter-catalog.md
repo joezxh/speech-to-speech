@@ -6,6 +6,12 @@
 > YAML 语法与校验语义以 [`configuration.md`](./configuration.md) 为准，本文不复制其内容。
 > 按**实际环境与现象**组织的参数组合手册（GPU 档位、边缘盒、噪声环境、弱网等）见
 > [`deployment-tuning-playbook.md`](./deployment-tuning-playbook.md)；单旋钮怎么改仍见 [`model-pipeline.md`](./model-pipeline.md) §6。
+>
+> **本文只覆盖 pipeline 部署参数。** 机器可读文件
+> [`parameter-catalog.yaml`](./parameter-catalog.yaml) 里另有一段 `console_parameters`：
+> 那是**控制台自己的运行开关**（探针节奏、LB 开关、路径、上限……），键集合与
+> `console/backend/app/config/_schema.py` 的登记表双向一致，由
+> `console/backend/scripts/validate_catalog_schema.py` 把关；它不进部署页的参数树。
 
 - 目录版本：`s2s-parameter-catalog-v1` / 人读版结构 `catalog-md-v2`
 - 覆盖范围：`speech-to-speech-src` 启动参数通道 + 会话运行时通道 + 容器编排 + 客户端

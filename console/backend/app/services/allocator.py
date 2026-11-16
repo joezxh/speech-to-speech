@@ -1,6 +1,12 @@
 """本地分配：选实例→签发 grant→兜底降级（spec §8）。
 
 只依赖 AllocatorStore 与 instance_registry，不直接碰 ORM（spec §4 依赖方向）。
+
+store 的实现按运行模式选（spec 2026-11-17 §3.2）：
+- `local` + 数据面 `proxy` → `DbAllocatorStore`：占位落库，多个控制台副本共享余量，
+  不会各自看到"还有空位"而同时派发到同一台；
+- 其余 → `InMemoryAllocatorStore`：单副本直连，行为与今天完全一致。
+两种实现都满足 `AllocatorStore` Protocol（签名冻结）。
 """
 
 from __future__ import annotations
@@ -11,18 +17,33 @@ import random
 from loguru import logger
 
 from app.config import allocator as settings
+from app.config import console
 from app.services import upstream_resolver
-from app.services.allocator_store import InMemoryAllocatorStore
+from app.services.allocator_store import AllocatorStore, InMemoryAllocatorStore
 from app.services.upstream_resolver import Allocation, grant_connect_url
 
 SESSION_PATH = "/v1/realtime"
-store = InMemoryAllocatorStore()
+
+
+def _build_store() -> AllocatorStore:
+    """按运行模式选 store（spec 2026-11-17 §3.2）。
+
+    这两个开关是启动期语义（`restart_required`）：改了要重启控制台才换实现。
+    """
+    if settings.mode == "local" and console.lb_mode == "proxy":
+        from app.services.db_allocator_store import DbAllocatorStore  # noqa: PLC0415 - 避免 import 环
+
+        return DbAllocatorStore(console_id=settings.resolved_console_id)
+    return InMemoryAllocatorStore()
+
+
+store: AllocatorStore = _build_store()
 _rng = random.Random()  # 测试里 monkeypatch allocator._rng = random.Random(42) 保证确定性
 
 __all__ = ["Allocation", "allocate", "drain_counters", "expire_task", "grant_connect_url", "pending_count", "store"]
 
 
-def _candidates(target: InMemoryAllocatorStore, exclude: set[str]) -> list[Allocation]:
+def _candidates(target: AllocatorStore, exclude: set[str]) -> list[Allocation]:
     # spec §8.2 四步在 upstream_resolver.rank_session 里：过滤 → free/capacity
     # 降序主排序 → 同分按 weight 加权随机。§6.2 的 pending_local 在那里扣
     # （RuntimeState.effective_free 不包含它）。
@@ -30,7 +51,7 @@ def _candidates(target: InMemoryAllocatorStore, exclude: set[str]) -> list[Alloc
 
 
 async def allocate(
-    session_id: str, *, store: InMemoryAllocatorStore | None = None, claim=None
+    session_id: str, *, store: AllocatorStore | None = None, claim=None
 ) -> dict | None:
     target = store if store is not None else globals()["store"]
     tried: set[str] = set()
@@ -69,6 +90,14 @@ def drain_counters() -> dict[str, int]:
 
 
 def pending_count() -> int:
+    """本机已签发未领取的 grant 数。
+
+    DB 版按本副本的 pending 租约统计（共享 store 的口径就是"本机"）；
+    内存版直接数自己的 pending 字典。
+    """
+    shared = getattr(store, "pending_total", None)
+    if callable(shared):
+        return shared()
     return len(store._pending)
 
 

@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit, urlunsplit
 
 from app.services import instance_monitor
-from app.services.allocator_store import InMemoryAllocatorStore
+from app.services.allocator_store import AllocatorStore
 
 SESSION_PATH = "/v1/realtime"
 
@@ -106,7 +106,7 @@ def _pick(tied: list[Allocation], rng) -> Allocation:
 
 def rank_session(
     *,
-    store: InMemoryAllocatorStore,
+    store: AllocatorStore,
     capability: str = "",
     exclude: frozenset[str] = frozenset(),
     rng=None,
@@ -147,7 +147,7 @@ def rank_session(
 
 def rank_stateless(
     *,
-    store: InMemoryAllocatorStore,
+    store: AllocatorStore,
     capability: str,
     exclude: frozenset[str] = frozenset(),
     rng=None,
