@@ -20,6 +20,10 @@ def test_registry_contains_the_registered_codes():
         "console:machine:update",
         "console:machine:delete",
         "console:agent:enroll",
+        # Token 观测与 LB 规则（spec 2026-11-17 §7.3，Task 14）
+        "console:token:query",
+        "console:lb:query",
+        "console:lb:rule:write",
     }
     assert PERMISSION_ROLES["console:cluster:switch"] == frozenset({"admin", "operator"})
     assert PERMISSION_ROLES["console:cluster:create"] == frozenset({"admin"})
