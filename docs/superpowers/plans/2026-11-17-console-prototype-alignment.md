@@ -227,11 +227,11 @@ def auto_register(p: AutoRegisterIn, actor: str) -> AutoRegisterResult
 
 - M8 三步真实语义按设计 §7.2.2 表：①建档+注册码（`state=pending_register`）②等 agent register ③等首个心跳；`simulate='fail'` → 第 2 步必败；第 1 步不会失败。
 
-- [ ] **Step 1: 写失败测试** —— 成功路径三步全 `ok` 且返回注册码；`simulate=fail` 第 2 步 `state='fail'`；M8 幂等（重复调用对同 `machine_id` 复用未消费注册码）；M9 只受理不代注册；集成测试覆盖 M1–M9 的权限码（无权限 → 403）与 404/409。
-- [ ] **Step 2:** 跑测试 → FAIL。
-- [ ] **Step 3: 实现** routers/machines.py（权限依赖用 `console:machine:*`）。
-- [ ] **Step 4:** 跑测试 → PASS。
-- [ ] **Step 5: Commit** `feat(console): 机器注册测试三步流与自动注册受理（M8/M9）`
+- [x] **Step 1: 写失败测试** —— 成功路径三步全 `ok` 且返回注册码；`simulate=fail` 第 2 步 `state='fail'`；M8 幂等（重复调用对同 `machine_id` 复用未消费注册码）；M9 只受理不代注册；集成测试覆盖 M1–M9 的权限码（无权限 → 403）与 404/409。
+- [x] **Step 2:** 跑测试 → FAIL。
+- [x] **Step 3: 实现** routers/machines.py（权限依赖用 `console:machine:*`）。
+- [x] **Step 4:** 跑测试 → PASS。
+- [x] **Step 5: Commit** `feat(console): 机器注册测试三步流与自动注册受理（M8/M9）`
 
 ### Task 10: 实例↔机器绑定
 
