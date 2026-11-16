@@ -58,5 +58,8 @@ export const TOKEN_ENFORCED_GLOBS: readonly string[] = [
   'src/views/TrafficView.vue',
   'src/components/NotImplemented.vue',
   'src/components/ClusterFormModal.vue',
-  'src/components/TopoChart.vue'
+  'src/components/TopoChart.vue',
+  // Task 11（原型对齐）：proto 外观层自建立之日起禁裸 hex。
+  'src/components/proto/**',
+  'src/composables/useToast.ts'
 ]

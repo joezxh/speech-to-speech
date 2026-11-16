@@ -1,6 +1,8 @@
-// @vitest-environment jsdom
+// @vitest-environment node
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+// 注意：`node:path` 在该 vitest 版本被误外置成浏览器 stub（join 变 undefined），
+// 裸 `path` 才能解析到 Node 内建（已实测）。
+import { join } from 'path'
 
 import { describe, expect, it } from 'vitest'
 
