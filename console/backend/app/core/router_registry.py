@@ -18,6 +18,7 @@ def register_api_routers(app: FastAPI) -> None:
         config,
         health,
         instances,
+        lb,
         logs,
         machines,
         profiles,
@@ -25,6 +26,7 @@ def register_api_routers(app: FastAPI) -> None:
         runtime,
         sessions,
         status,
+        tokens,
         traffic,
         turn_latency,
         voices,
@@ -60,6 +62,9 @@ def register_api_routers(app: FastAPI) -> None:
     # A.15/A.16: read-only side channels; no prefix overlap with anything above.
     app.include_router(logs.router)
     app.include_router(turn_latency.router)
+    # Token 观测（T1–T5）与 LB 策略/规则（L1–L6）：SPA catch-all 之前（C11）。
+    app.include_router(tokens.router)
+    app.include_router(lb.router)
 
     # The demo face is anonymous and unenveloped (A.13), so it goes last among the
     # API groups but still before the SPA catch-all.
