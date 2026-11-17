@@ -566,9 +566,9 @@ def rollback(release_id: str, actor: str) -> ReleaseOut                 # 连带
 
 - 阶段转移合法性：`building→staging→canary→rolling→current`；`rolled_back` 仅可从 `canary|rolling`；非法转移 → 409。
 
-- [ ] **Step 1: 写失败测试** —— 合法转移链；非法转移 409；R3b 覆盖阶段结论并记录 `artifact_ref`；rollback 触发 profile rollback 一次（mock）；`signature` 缺省放行但审计记录 `fields=['signature_absent']`；停留 30 分钟标 `pending_backfill`（用注入时钟测）。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): 发布台账与 CI 回填入口（console 只记账）`
+- [x] **Step 1: 写失败测试** —— 合法转移链；非法转移 409；R3b 覆盖阶段结论并记录 `artifact_ref`；rollback 触发 profile rollback 一次（mock）；`signature` 缺省放行但审计记录 `fields=['signature_absent']`；停留 30 分钟标 `pending_backfill`（用注入时钟测）。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): 发布台账与 CI 回填入口（console 只记账）`
 
 ### Task 25: 全局审计（R5/R6）
 
