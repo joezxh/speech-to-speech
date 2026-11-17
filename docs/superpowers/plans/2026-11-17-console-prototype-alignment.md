@@ -496,9 +496,9 @@ def drift(machine_id: str) -> DriftSummary             # actual 缺失 → '未�
 **Interfaces:**
 - Produces：`get_draft/clear_draft/put_draft(machine_id, patch, base_version, actor)`；**校验走 11-17 `config_service`**（类型/取值域/`restart_required`）；乐观锁：`base_version` 与当前不符 → 409 语义。
 
-- [ ] **Step 1: 写失败测试** —— 保存后可读、`updated_by/updated_at` 正确；非法值（取值域外）被 `config_service` 拒绝且不落库；`base_version` 过期 → 409；清除后行消失；审计 `action='machine.draft.set'`。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): 机器级草稿（复用 config_service 校验，乐观锁）`
+- [x] **Step 1: 写失败测试** —— 保存后可读、`updated_by/updated_at` 正确；非法值（取值域外）被 `config_service` 拒绝且不落库；`base_version` 过期 → 409；清除后行消失；审计 `action='machine.draft.set'`。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): 机器级草稿（复用 config_service 校验，乐观锁）`
 
 ### Task 22: 下发与回滚（D6）+ ack 快照消费
 
