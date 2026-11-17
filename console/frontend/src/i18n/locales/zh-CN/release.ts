@@ -1,5 +1,7 @@
 export default {
   loadFailed: '版本列表加载失败',
+  ledgerTitle: '发布台账',
+  pendingBackfill: '待回填',
   rollbackFailed: '回滚失败',
   rollbackConfirmTitle: '回滚到 v{version}',
   rollbackConfirmContent: '回滚会写入一个新版本并重启 pipeline，正在进行的语音会话会中断。',

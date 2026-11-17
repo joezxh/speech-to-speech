@@ -1,5 +1,7 @@
 export default {
   loadFailed: 'Failed to load version list',
+  ledgerTitle: 'Release ledger',
+  pendingBackfill: 'pending backfill',
   rollbackFailed: 'Rollback failed',
   rollbackConfirmTitle: 'Roll back to v{version}',
   rollbackConfirmContent: 'Rollback writes a new version and restarts the pipeline; in-progress voice sessions will be interrupted.',
