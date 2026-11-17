@@ -7,7 +7,6 @@ import { useRouter } from 'vue-router'
 import { api, AppError } from '@/api/client'
 import { clustersApi } from '@/api/clusters'
 import { listMachines } from '@/api/machines'
-import { releasesApi } from '@/api/releases'
 import ClusterFormModal from '@/components/ClusterFormModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -23,7 +22,7 @@ import { describeAlert } from '@/utils/error'
 import { DASH, formatTime } from '@/utils/format'
 import { hostOf } from '@/utils/host'
 import { layoutTopo } from '@/utils/topoLayout'
-import { eventRows, overviewKpis, topoRows, type AuditRow, type Instance, type LbStats, type Machine } from './overview.viewmodel'
+import { topoRows, type Instance, type Machine } from './overview.viewmodel'
 
 /**
  * 集群总览（spec §5.2，原型 renderOverview/clusterRows/topoSVG）：
@@ -138,40 +137,28 @@ async function loadClusterData(): Promise<void> {
 // /instances 探池耗时数秒时请求叠罗汉；卸载即清理。
 let refreshing = false
 let timer: number | undefined
-// Task 29 真值区：机器清单（M1）+ LB 命中率（L6）+ 最近事件（R5）。
+// Task 29 真值区（原型对齐后只留拓扑分组表；重复 KPI 与事件"日志"已按反馈删除）。
 const machines = ref<Machine[]>([])
-const lbStats = ref<LbStats>({ sticky_hit_rate: null, rules: [] })
-const recentEvents = ref<AuditRow[]>([])
 const machineInstances = computed<Instance[]>(() =>
-  (summary.value?.instances ?? []).map((row) => ({
+  instances.value.map((row) => ({
     instance_id: row.instance_id,
     base_url: row.base_url,
-    machine_id: (row as unknown as { machine_id?: string | null }).machine_id ?? null,
+    machine_id: row.machine_id ?? null,
     status: row.status ?? 'unknown',
   }))
 )
-const protoKpis = computed(() => overviewKpis(machines.value, machineInstances.value, lbStats.value, recentEvents.value))
 const protoTopo = computed(() => topoRows(machines.value, machineInstances.value))
-const protoEvents = computed(() => eventRows(recentEvents.value))
 
 async function refreshSafely(): Promise<void> {
   if (refreshing) return
   refreshing = true
   try {
     await loadClusterData()
-    const [machinesResult, statsResult] = await Promise.allSettled([
-      listMachines(),
-      api.get<{ sticky_hit_rate: number | null; rules: unknown[] }>('/lb/route-stats'),
-    ])
-    // 最近事件（R5）：审计列表；失败不阻塞。
-    if (machinesResult.status === 'fulfilled') machines.value = machinesResult.value.machines as unknown as Machine[]
-    if (statsResult.status === 'fulfilled') lbStats.value = statsResult.value as unknown as LbStats
-    try {
-      const audit = await api.get<{ items: AuditRow[] }>('/audit', { params: { pageSize: 8 } })
-      recentEvents.value = audit.items
-    } catch {
-      /* 保持上次值 */
-    }
+    const machinesResult = await listMachines().then(
+      (value) => value,
+      () => null
+    )
+    if (machinesResult) machines.value = machinesResult.machines as unknown as Machine[]
   } finally {
     refreshing = false
   }
@@ -274,14 +261,8 @@ const tableColumns = computed(() => [
       <a-alert v-for="alert in alerts" :key="alert" type="warning" show-icon :message="describeAlert(alert)" />
     </section>
 
-    <!-- Task 29 真值区：KPI（M1/L6）+ 拓扑分组（机器↔实例）+ 最近事件（R5）。 -->
+    <!-- Task 29 真值区（原型对齐后只留拓扑分组表；重复 KPI 与事件日志已删）。 -->
     <div class="overview__truth">
-      <div class="overview__kpis">
-        <div v-for="kpi in protoKpis" :key="kpi.key" class="truth-kpi">
-          <span class="truth-kpi__label">{{ kpi.label }}</span>
-          <strong class="truth-kpi__value">{{ kpi.value }}</strong>
-        </div>
-      </div>
       <table class="truth-topo">
         <thead><tr><th>machine</th><th>instances</th></tr></thead>
         <tbody>
@@ -291,12 +272,6 @@ const tableColumns = computed(() => [
           </tr>
         </tbody>
       </table>
-      <ol class="truth-events">
-        <li v-for="event in protoEvents" :key="event.id">
-          <span class="truth-events__at">{{ formatTime(event.at) }}</span>
-          <span class="truth-events__what">{{ event.actor }} · {{ event.action }} · {{ event.profile }}</span>
-        </li>
-      </ol>
     </div>
 
     <!-- ① KPI 四卡：机器 / 实例 / 活跃会话 / 错误率(5m)，随当前集群联动。 -->
@@ -437,21 +412,6 @@ const tableColumns = computed(() => [
   display: grid;
   gap: 12px;
 }
-.overview__kpis {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
-}
-.truth-kpi {
-  display: flex;
-  flex-direction: column;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.truth-kpi__value {
-  font-size: 20px;
-}
 .truth-topo {
   width: 100%;
   border-collapse: collapse;
@@ -461,14 +421,6 @@ const tableColumns = computed(() => [
   text-align: left;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
-}
-.truth-events {
-  margin: 0;
-  padding-left: 18px;
-}
-.truth-events__at {
-  opacity: 0.7;
-  margin-right: 8px;
 }
 .overview {
   display: flex;
