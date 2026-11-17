@@ -691,7 +691,7 @@ export function eventRows(a: AuditRow[]): EventRow[]      // 取最近 N=8
 - antd-free.spec：扫描 `src/views/**` 与八页引用的组件源码，断言无 `/<a-[a-z-]+/`、无 `from 'ant-design-vue'`；豁免清单：`LoginView`、`App.vue`。
 
 - [ ] **Step 1: 写失败测试** —— antd-free.spec 先跑：对当前树应 FAIL（列出不合规文件），该输出即本任务的清扫清单。
-- [ ] **Step 2:** 逐文件清扫（`a-form` 校验改自校验；`message.*` 改 `useToast().push(...)`）。
+- [ ] **Step 2: (未完成，清单见台账)** 逐文件清扫（`a-form` 校验改自校验；`message.*` 改 `useToast().push(...)`）。
 - [ ] **Step 3:** `npx vitest run src/styles/antd-free.spec.ts` PASS。
 - [ ] **Step 4:** `npm run build`、`npm run lint` 零 error；`npx vitest run` 全绿（基线 39 文件不回退）。
 - [ ] **Step 5: Commit** `feat(console-front): 八页子组件树 antd 清零`
