@@ -372,9 +372,9 @@ export function egressRoute(kind: string): 'lb' | 'direct'
 
 - 七张卡按设计 §4.3 逐条：KPI×4 / Token 卡（窗口 chip + 四格 + split + 口径黄条）/ 策略卡（含 token 策略四项与生效徽标）/ 规则表 / 趋势 SVG / 机器分布 / 负载出口 / 实例表（11 列，列宽横滚）。
 
-- [ ] **Step 1: 写失败测试** —— splitBar 输入 0 时 aPct=0；trendPath 峰值点取 y 最小；egressRoute pipeline→lb 其余→direct。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现（含删除 NotImplemented）→ **Step 4:** vitest + `npm run build` PASS；`npx vitest run src/components/NotImplemented.spec.ts` 若存在则同步删除。
-- [ ] **Step 5: Commit** `feat(console-front): 流量与路由页按原型重写（七卡，无占位）`
+- [x] **Step 1: 写失败测试** —— splitBar 输入 0 时 aPct=0；trendPath 峰值点取 y 最小；egressRoute pipeline→lb 其余→direct。
+- [x] **Step 2:** FAIL → **Step 3:** 实现（含删除 NotImplemented）→ **Step 4:** vitest + `npm run build` PASS；`npx vitest run src/components/NotImplemented.spec.ts` 若存在则同步删除。
+- [x] **Step 5: Commit** `feat(console-front): 流量与路由页按原型重写（七卡，无占位）`
 
 ---
 
