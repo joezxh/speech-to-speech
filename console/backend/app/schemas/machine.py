@@ -16,9 +16,17 @@ from app.services.machine_service import (
 class WorkloadsPut(BaseModel):
     workloads: list[WorkloadIn]
 
+
+class MachineDraftPut(BaseModel):
+    """D4：机器草稿保存；base_version 来自 GET draft 的 version（乐观锁）。"""
+
+    patch: dict[str, str]
+    base_version: int = 0
+
 __all__ = [
     "AutoRegisterIn",
     "MachineCreate",
+    "MachineDraftPut",
     "MachineUpdate",
     "RegisterTestIn",
     "WorkloadsPut",

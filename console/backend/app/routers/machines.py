@@ -13,7 +13,14 @@ from app.core.permissions import require_permission
 from app.core.security import CurrentUser
 from app.deps import DbSession
 from app.schemas.common import ok
-from app.schemas.machine import AutoRegisterIn, MachineCreate, MachineUpdate, RegisterTestIn, WorkloadsPut
+from app.schemas.machine import (
+    AutoRegisterIn,
+    MachineCreate,
+    MachineDraftPut,
+    MachineUpdate,
+    RegisterTestIn,
+    WorkloadsPut,
+)
 from app.services import machine_config_service, machine_service
 
 router = APIRouter(prefix="/api/v1/machines", tags=["machines"])
@@ -133,6 +140,45 @@ def drift_view(
         return ok(machine_config_service.drift(db, machine_id))
     except KeyError:
         raise ApiError("not_found", f"machine {machine_id} does not exist", 404) from None
+
+
+@router.get("/{machine_id}/draft")
+def get_draft(
+    machine_id: str,
+    db: DbSession,
+    user: CurrentUser = Depends(require_permission("console:machine:query")),
+):
+    """D3：机器草稿（values + version，version 供乐观锁）。"""
+    return ok(machine_config_service.get_draft(db, machine_id))
+
+
+@router.put("/{machine_id}/draft")
+def put_draft(
+    machine_id: str,
+    payload: MachineDraftPut,
+    db: DbSession,
+    user: CurrentUser = Depends(require_permission("console:machine:update")),
+):
+    """D4：保存草稿；非法值 400、base_version 过期 409。"""
+    try:
+        return ok(
+            machine_config_service.put_draft(
+                db, machine_id, payload.patch, base_version=payload.base_version, actor=user.username
+            )
+        )
+    except KeyError:
+        raise ApiError("not_found", f"machine {machine_id} does not exist", 404) from None
+
+
+@router.delete("/{machine_id}/draft")
+def clear_draft(
+    machine_id: str,
+    db: DbSession,
+    user: CurrentUser = Depends(require_permission("console:machine:update")),
+):
+    """D5：清除草稿。"""
+    machine_config_service.clear_draft(db, machine_id, actor=user.username)
+    return ok({"cleared": True})
 
 
 @router.post("/register-test")
