@@ -25,6 +25,7 @@ from app.services import (
     instance_seed,
     metering_service,
     publish_flow_service,
+    route_log_writer,
     turn_latency_indexer,
 )
 
@@ -39,6 +40,20 @@ async def _usage_sweeper() -> None:
             await asyncio.to_thread(metering_service.sweep)
         except Exception as exc:  # noqa: BLE001 - 一次 sweep 失败不该杀掉后台任务
             logger.warning("usage sweep failed: {}", exc)
+
+
+async def _route_log_flush_loop() -> None:
+    """Task 18：每 5s 批量落库路由记账；单轮失败不杀任务。"""
+    while True:
+        await asyncio.sleep(5.0)
+        try:
+            session = SessionLocal()
+            try:
+                route_log_writer.flush(session)
+            finally:
+                session.close()
+        except Exception as exc:  # noqa: BLE001 - 记账失败不影响数据面
+            logger.warning("route log flush failed: {}", exc)
 
 
 @asynccontextmanager
@@ -96,6 +111,9 @@ async def lifespan(app: FastAPI):
     # worker), reading the pipeline's own log file. It never blocks a request.
     indexer = asyncio.create_task(turn_latency_indexer.run_forever())
 
+    # Task 18：路由记账异步落库（submit 不阻塞选台；周期 flush 批量写）。
+    route_flush = asyncio.create_task(_route_log_flush_loop())
+
     # P1.2: resident instance monitor. Only when the allocator/registry feature
     # is configured — mode "off" with no seed keeps the task from starting.
     monitor: asyncio.Task | None = None
@@ -126,6 +144,9 @@ async def lifespan(app: FastAPI):
         indexer.cancel()
         with suppress(asyncio.CancelledError):
             await indexer
+        route_flush.cancel()
+        with suppress(asyncio.CancelledError):
+            await route_flush
         if sweeper is not None:
             sweeper.cancel()
             with suppress(asyncio.CancelledError):

@@ -308,6 +308,19 @@ async def _proxy_with_failover(websocket: WebSocket) -> None:
         allocator.store.hold(res_key, spec.instance_id)
         upstream_resolver.inflight_enter(spec.instance_id)
         proxy_counters.bump(spec.instance_id, "realtime", ok=True)
+        # Task 18：记账只入内存队列，绝不阻塞这条已建立的会话。
+        from app.services.route_log_writer import RouteLogEntry, submit  # noqa: PLC0415
+
+        submit(
+            RouteLogEntry(
+                session_key=decision.affinity_key if decision is not None else "anon",
+                rule_id=int(decision.rule_id) if decision is not None and decision.rule_id else None,
+                matched=bool(decision is not None and decision.rule_id is not None),
+                sticky_hit=bool(decision is not None and decision.sticky_hit),
+                is_canary=bool(decision is not None and decision.is_canary),
+                instance_id=spec.instance_id,
+            )
+        )
         if decision is not None and not decision.sticky_hit and decision.candidates.kind == "pinned_instance":
             from app.db.database import SessionLocal  # noqa: PLC0415
             from app.services.routing_service import remember_sticky_async  # noqa: PLC0415

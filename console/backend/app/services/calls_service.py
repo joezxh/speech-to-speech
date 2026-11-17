@@ -143,6 +143,17 @@ async def forward_selected(offer: bytes, *, keep_location: bool, request=None) -
             logger.warning("sdp handshake unreachable on {}: {}", target.instance_id, exc)
             continue
         if not is_full_response(last):
+            from app.services.route_log_writer import RouteLogEntry, submit  # noqa: PLC0415
+
+            submit(
+                RouteLogEntry(
+                    session_key=decision.affinity_key if decision is not None else "anon",
+                    rule_id=int(decision.rule_id) if decision is not None and decision.rule_id else None,
+                    matched=bool(decision is not None and decision.rule_id is not None),
+                    sticky_hit=bool(decision is not None and decision.sticky_hit),
+                    instance_id=target.instance_id,
+                )
+            )
             break
         logger.warning("lb failover: {} is full, trying another instance", target.instance_id)
         if decision is not None and decision.sticky_hit:

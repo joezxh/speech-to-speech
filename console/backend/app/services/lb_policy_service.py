@@ -125,20 +125,29 @@ def route_stats(db: Session, window_s: int, *, now: datetime | None = None) -> d
     if not logs:
         return {"rules": [], "sticky_hit_rate": None}
 
-    by_rule: dict[int, dict] = {}
+    by_rule: dict[int | None, dict] = {}
     sticky_hits = 0
+    route_decisions = 0
     for log in logs:
         if log.sticky_hit:
             sticky_hits += 1
-        if log.rule_id is None or not log.matched:
-            continue
-        row = by_rule.setdefault(log.rule_id, {"rule_id": log.rule_id, "matched": 0, "tokens": 0, "share_pct": 0.0})
-        row["matched"] += 1
+        if not log.matched:
+            # 未归因 token 计入"未匹配"桶（rule_id=None）；不进 sticky 分母。
+            pass
+        else:
+            route_decisions += 1
+        key = log.rule_id if log.matched else None
+        row = by_rule.setdefault(key, {"rule_id": key, "matched": 0, "tokens": 0, "share_pct": 0.0})
         row["tokens"] += log.input_tokens + log.output_tokens
+        if log.matched:
+            row["matched"] += 1
     grand = sum(row["tokens"] for row in by_rule.values()) or 1
     for row in by_rule.values():
         row["share_pct"] = round(row["tokens"] / grand * 100, 1)
+    # sticky_hit_rate = sticky / (sticky + 新建)：每条 matched 决策要么是 sticky
+    # 直连、要么是新选台；未归因（matched=False）行不进分母。
+    denominator = route_decisions
     return {
         "rules": sorted(by_rule.values(), key=lambda r: -r["matched"]),
-        "sticky_hit_rate": round(sticky_hits / len(logs), 4),
+        "sticky_hit_rate": round(sticky_hits / denominator, 4) if denominator else None,
     }

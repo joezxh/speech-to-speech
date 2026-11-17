@@ -110,7 +110,8 @@ def test_route_stats_counts_matches_and_sticky(db_session):
     rules = {row["rule_id"]: row for row in result["rules"]}
     assert rules[7]["matched"] == 2
     assert rules[7]["tokens"] == 40
-    assert result["sticky_hit_rate"] == 0.3333  # 1/3，四位小数
+    # Task 18 口径：sticky/(sticky+新建)=1/2，未匹配行不进分母。
+    assert result["sticky_hit_rate"] == 0.5
 
 
 def test_rule_crud_priority_unique_and_match_value_required(db_session):
