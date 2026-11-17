@@ -71,7 +71,7 @@ export default {
     warn: '降级',
     draining: '排空中',
     bad: '故障',
-    muted: '无数据'
+    muted: '待接入'
   },
   actions: {
     create: '新增集群',

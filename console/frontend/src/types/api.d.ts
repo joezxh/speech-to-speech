@@ -131,6 +131,8 @@ export interface ClusterRow {
   note: string
   machines_total: number
   machines_online: number
+  /** 注册了但 agent 未上线（pending_register）的机器数；用于区分「待接入」与「故障」。 */
+  machines_pending?: number
   instances_total: number
   healthy: boolean
   updated_at: string

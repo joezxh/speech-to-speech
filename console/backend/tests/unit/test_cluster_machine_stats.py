@@ -57,15 +57,15 @@ def _instance(db_session, instance_id: str, cluster: str, base_url: str, status:
 
 
 def test_machine_registered_in_cluster_counts_even_without_instances(db_session):
-    _machine(db_session, "node-a01", "default", state="online")
+    _machine(db_session, "node-a01", "default", state="ok")
     stats = cluster_service.instance_host_stats(db_session, "default")
     assert stats["machines_total"] == 1, "集群里注册了机器但还没实例 → 机器数应为 1 而非 0"
-    assert stats["machines_online"] == 1
+    assert stats["machines_online"] == 1, "机器在线态是 'ok'（注册/心跳后），不是 'online'"
 
 
 def test_machine_and_instance_same_host_dedup(db_session):
-    # 同一集群：实例（host=10.0.0.1）+ 机器行（public_addr 命中同 host）→ 只算一台。
-    _machine(db_session, "node-a01", "default", state="online")
+    # 同一集群：实例（host=10.0.0.1）+ 机器行（addr 命中同 host）→ 只算一台。
+    _machine(db_session, "node-a01", "default", state="ok")
     _instance(db_session, "pipe-a", "default", "http://10.0.0.1:8765")
     stats = cluster_service.instance_host_stats(db_session, "default")
     assert stats["machines_total"] == 1
@@ -77,9 +77,10 @@ def test_offline_machine_counts_total_but_not_online(db_session):
     stats = cluster_service.instance_host_stats(db_session, "default")
     assert stats["machines_total"] == 1
     assert stats["machines_online"] == 0
+    assert stats["machines_pending"] == 1, "待接入计数单独透出，供前端区分「待接入」与「故障」"
 
 
 def test_other_cluster_machines_do_not_leak(db_session):
-    _machine(db_session, "node-a01", "edge", state="online")
+    _machine(db_session, "node-a01", "edge", state="ok")
     stats = cluster_service.instance_host_stats(db_session, "default")
     assert stats["machines_total"] == 0

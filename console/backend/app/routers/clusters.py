@@ -44,6 +44,7 @@ def _row_payload(db, cluster) -> dict:
         "name": cluster.name,
         "registry": cluster.registry,
         "policy": cluster.policy,
+        "machines_pending": stats["machines_pending"],
         "note": cluster.note,
         "machines_total": stats["machines_total"],
         "machines_online": stats["machines_online"],

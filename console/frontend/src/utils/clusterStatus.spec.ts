@@ -29,4 +29,14 @@ describe('clusterStatus (prototype statusTag four states)', () => {
     expect(clusterStatus(row({ machines_total: 0, machines_online: 0 }))).toBe('muted')
     expect(clusterStatus(null)).toBe('muted')
   })
+
+  it('renders all-pending machines as muted, not bad (待接入 ≠ 故障)', () => {
+    expect(
+      clusterStatus(
+        row({ healthy: false, machines_online: 0, machines_pending: 2 })
+      )
+    ).toBe('muted')
+    // 没有待接入信息（旧响应）时保持原语义：无在线 → bad
+    expect(clusterStatus(row({ healthy: false, machines_online: 0 }))).toBe('bad')
+  })
 })

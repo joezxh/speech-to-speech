@@ -71,7 +71,7 @@ export default {
     warn: 'Degraded',
     draining: 'Draining',
     bad: 'Fault',
-    muted: 'No data'
+    muted: 'Pending'
   },
   actions: {
     create: 'Add cluster',

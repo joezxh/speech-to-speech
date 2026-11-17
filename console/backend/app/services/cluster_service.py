@@ -89,14 +89,21 @@ def instance_host_stats(db, cluster_name: str) -> dict:
 
     # param_machine 计入集群成员：机器先注册、实例还没建时机器数不该是 0
     # （用户反馈：机器编辑保存集群后总览页数目为 0）。
+    # 机器在线态取值是 'ok'（注册/心跳后），不是实例的 'online'——口径不同，别混。
     machines = MachineRepository(db).list(cluster_name)
     instance_hosts = {instances_service.host_of(r.base_url) for r in rows}
+    machines_pending = sum(1 for m in machines if m.state == "pending_register")
     for machine in machines:
         host = instances_service.host_of(machine.addr or "")
         if host and host in instance_hosts:
             # 同一台机器既有实例又有 param_machine 行：沿用实例的在线口径，不重复计。
             continue
         machines_total += 1
-        if machine.state == "online":
+        if machine.state == "ok":
             machines_online += 1
-    return {"machines_total": machines_total, "machines_online": machines_online, "instances_total": len(rows)}
+    return {
+        "machines_total": machines_total,
+        "machines_online": machines_online,
+        "machines_pending": machines_pending,
+        "instances_total": len(rows),
+    }
