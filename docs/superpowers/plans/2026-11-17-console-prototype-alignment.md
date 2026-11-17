@@ -652,9 +652,9 @@ export function toolRows(tools: ToolCfg[], enabled: Set<string>): ToolRow[]
 
 - 票据接线：呼叫前 `POST /api/v1/realtime/ticket` → `?ticket=` 拼进 WS URL；401/过期 → 匿名继续（不阻塞呼叫）。
 
-- [ ] **Step 1: 写失败测试** —— orbState 五态映射；`bubblesScroll(false)` 强制滚动、用户上翻时不抢滚动；toolRows 只列启用项；`useRealtimeTicket` 失败时返回 null 且呼叫继续（mock 401）。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现（三个抽屉换 PDrawer；光球四态动画走 voice.less 变量）→ **Step 4:** PASS + build + i18n。
-- [ ] **Step 5: Commit** `feat(console-front): 对话示波页按原型重写（光球/气泡/三抽屉/票据换身份）`
+- [x] **Step 1: 写失败测试** —— orbState 五态映射；`bubblesScroll(false)` 强制滚动、用户上翻时不抢滚动；toolRows 只列启用项；`useRealtimeTicket` 失败时返回 null 且呼叫继续（mock 401）。
+- [x] **Step 2:** FAIL → **Step 3:** 实现（三个抽屉换 PDrawer；光球四态动画走 voice.less 变量）→ **Step 4:** PASS + build + i18n。
+- [x] **Step 5: Commit** `feat(console-front): 对话示波页按原型重写（光球/气泡/三抽屉/票据换身份）`
 
 ---
 
