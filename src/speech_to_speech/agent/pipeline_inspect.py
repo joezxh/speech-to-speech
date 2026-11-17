@@ -221,17 +221,7 @@ def collect_node_metrics() -> dict:
     }
     result.update(_cpu_mem())
     pid = _supervisor_pid()
-    if pid is None:
-        return result
     try:
-        apps = subprocess.run(
-            [
-                "nvidia-smi",
-                "--query-compute-apps=pid,gpu_uuid,used_gpu_memory",
-                "--format=csv,noheader,nounits",
-            ],
-            capture_output=True, text=True, timeout=3.0, check=False,
-        )
         gpus = subprocess.run(
             [
                 "nvidia-smi",
@@ -240,18 +230,33 @@ def collect_node_metrics() -> dict:
             ],
             capture_output=True, text=True, timeout=3.0, check=False,
         )
+        # 没有 supervisor PID（本地 PyCharm 形态）仍取整机 GPU 指标；
+        # 只有进程级显存需要 PID，拿不到就保持 None，不猜。
+        apps = (
+            subprocess.run(
+                [
+                    "nvidia-smi",
+                    "--query-compute-apps=pid,gpu_uuid,used_gpu_memory",
+                    "--format=csv,noheader,nounits",
+                ],
+                capture_output=True, text=True, timeout=3.0, check=False,
+            )
+            if pid is not None
+            else None
+        )
     except (OSError, subprocess.SubprocessError):
         return result
     uuid: str | None = None
-    for line in apps.stdout.splitlines():
-        parts = [part.strip() for part in line.split(",")]
-        if parts and parts[0].isdigit() and int(parts[0]) == pid:
-            if len(parts) >= 3:
-                uuid = parts[1]
-                result["pipeline_vram_gb"] = round((_numeric(parts[2]) or 0) / 1024, 2)
-            elif len(parts) >= 2:
-                result["pipeline_vram_gb"] = round((_numeric(parts[1]) or 0) / 1024, 2)
-            break
+    if apps is not None:
+        for line in apps.stdout.splitlines():
+            parts = [part.strip() for part in line.split(",")]
+            if parts and parts[0].isdigit() and int(parts[0]) == pid:
+                if len(parts) >= 3:
+                    uuid = parts[1]
+                    result["pipeline_vram_gb"] = round((_numeric(parts[2]) or 0) / 1024, 2)
+                elif len(parts) >= 2:
+                    result["pipeline_vram_gb"] = round((_numeric(parts[1]) or 0) / 1024, 2)
+                break
     selected = None
     for line in gpus.stdout.splitlines():
         parts = [part.strip() for part in line.split(",")]

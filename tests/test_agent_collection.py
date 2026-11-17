@@ -95,6 +95,46 @@ def test_vram_probe_parses_real_pid_usage(monkeypatch):
     assert pipeline_inspect._nvidia_smi_vram() == 2.0
 
 
+def test_settings_fall_back_to_repo_config_paths_when_env_absent(monkeypatch):
+    # 回归：PyCharm 启动未设 S2S_AGENT_* 路径，采集器静默返回空参数。
+    from pathlib import Path
+
+    from speech_to_speech.agent.settings import AgentSettings
+
+    for name in (
+        "S2S_AGENT_TARGET_YAML", "S2S_AGENT_DECLARATION", "S2S_AGENT_DEPLOYMENT_MANIFEST"
+    ):
+        monkeypatch.delenv(name, raising=False)
+    settings = AgentSettings.from_env()
+    root = Path(__file__).resolve().parents[1]
+    assert Path(settings.target_yaml) == root / "config" / "prod.yaml"
+    assert Path(settings.declaration_file) == root / ".run" / "agent.yaml"
+    assert Path(settings.deployment_manifest) == root / "config" / "deployment-manifest.json"
+    assert Path(settings.target_yaml).is_file()
+    assert Path(settings.deployment_manifest).is_file()
+
+
+def test_gpu_metrics_fall_back_to_global_query_without_supervisor_pid(monkeypatch):
+    class _Proc:
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    def _fake_run(args, **kwargs):
+        joined = " ".join(args)
+        if "compute-apps" in joined:
+            return _Proc("")
+        return _Proc("0, NVIDIA L40S, 64, 49152, 20480\n")
+
+    monkeypatch.setattr(pipeline_inspect, "_supervisor_pid", lambda: None)
+    monkeypatch.setattr(pipeline_inspect.subprocess, "run", _fake_run)
+    monkeypatch.setattr(pipeline_inspect, "_cpu_mem", lambda: {})
+    metrics = pipeline_inspect.collect_node_metrics()
+    assert metrics["gpu_name"] == "NVIDIA L40S"
+    assert metrics["gpu_util_pct"] == 64
+    assert metrics["gpu_mem_total_gb"] == 48.0
+    assert metrics["pipeline_vram_gb"] is None  # 无 PID 不猜进程显存
+
+
 def test_package_version_uses_installed_metadata(monkeypatch):
     monkeypatch.setattr(pipeline_inspect.metadata, "version", lambda name: "1.1.0")
     assert pipeline_inspect.package_version() == "1.1.0"

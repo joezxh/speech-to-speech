@@ -4,8 +4,15 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 HEARTBEAT_DEFAULT_S = 15
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+
+
+def _local_config(name: str, default: str = "") -> str:
+    path = _REPO_ROOT / "config" / name
+    return str(path) if path.is_file() else default
 
 
 @dataclass
@@ -36,15 +43,18 @@ class AgentSettings:
             machine_id=os.environ.get("S2S_AGENT_MACHINE_ID", ""),
             heartbeat_s=int(os.environ.get("S2S_AGENT_HEARTBEAT_S", str(HEARTBEAT_DEFAULT_S))),
             pipeline_log=os.environ.get("S2S_AGENT_PIPELINE_LOG", cls.pipeline_log),
-            target_yaml=os.environ.get("S2S_AGENT_TARGET_YAML", ""),
+            target_yaml=os.environ.get("S2S_AGENT_TARGET_YAML") or _local_config("prod.yaml"),
             supervisor_socket=os.environ.get(
                 "S2S_AGENT_SUPERVISOR_SOCKET", cls.supervisor_socket
             ),
             supervisor_program=os.environ.get("S2S_AGENT_SUPERVISOR_PROGRAM", "pipeline"),
-            declaration_file=os.environ.get("S2S_AGENT_DECLARATION", cls.declaration_file),
-            deployment_manifest=os.environ.get(
-                "S2S_AGENT_DEPLOYMENT_MANIFEST", cls.deployment_manifest
+            declaration_file=os.environ.get("S2S_AGENT_DECLARATION") or (
+                str(_REPO_ROOT / ".run" / "agent.yaml")
+                if (_REPO_ROOT / ".run" / "agent.yaml").is_file()
+                else cls.declaration_file
             ),
+            deployment_manifest=os.environ.get("S2S_AGENT_DEPLOYMENT_MANIFEST")
+            or _local_config("deployment-manifest.json", cls.deployment_manifest),
             container_log_max_lines=int(
                 os.environ.get(
                     "S2S_AGENT_LOG_MAX_LINES", str(cls.container_log_max_lines)

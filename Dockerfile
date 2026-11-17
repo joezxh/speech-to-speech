@@ -39,6 +39,10 @@ FROM ${BASE_IMAGE}
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
+# agent 采集真源：运行时配置、负载声明与构建期 compose 清单（缺失则静默空采集）。
+ENV S2S_AGENT_TARGET_YAML=/app/config/prod.yaml \
+    S2S_AGENT_DECLARATION=/app/config/agent.yaml \
+    S2S_AGENT_DEPLOYMENT_MANIFEST=/app/config/deployment-manifest.json
 # 基础镜像已把 PATH 指向 /usr/src/app/.venv，uv sync 直接复用该虚拟环境。
 # 索引：官方 PyTorch cu128 通道（torch/torchaudio 的 +cu128 本地构建，受 constraints.txt 锁死）
 # → 清华 tuna PyPI 镜像（绝大多数非 torch 依赖走这里，可靠）→ 阿里云 PyPI 镜像（tuna 未镜像的
