@@ -28,7 +28,8 @@ def test_envelope_and_fields(client):
         "configurable": False,
         "tieBreaker": "weight-random",
     }
-    assert "session-stickiness" in data["unimplemented"]
+    # Task 17/18 落地后三项（粘性/金丝雀/规则）全部实现，unimplemented 清空。
+    assert data["unimplemented"] == []
 
 
 def test_off_mode_still_200(client, monkeypatch):

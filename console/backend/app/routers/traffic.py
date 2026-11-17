@@ -37,6 +37,8 @@ def get_traffic_settings(user: CurrentUser = Depends(require_user)):
                 "configurable": False,
                 "tieBreaker": "weight-random",
             },
-            "unimplemented": ["session-stickiness", "canary-ratio", "routing-rules"],
+            # Task 17/18：会话粘性（param_lb_affinity）、金丝雀比例（share_pct）、
+            # 路由规则（param_lb_rule）已全部落地，unimplemented 清空。
+            "unimplemented": [],
         }
     )

@@ -765,3 +765,7 @@ lb capability instance=pipe-a caps=realtime,asr,tts,voiceprint
 **上游原样透传**：ASR 400/500、TTS 400/500、声纹 400/401/403/404/503（`voiceprint_service.error_body` 的 code 集）、情感 503/504。
 
 **内部计数**（落 `param_proxy_metric.fail_reason`）：`upstream_unreachable`、`upstream_timeout`、`no_available_instance`、`upstream_5xx`、`capability_mismatch`、`capability_misconfigured`、`body_too_large`。
+
+## 16. 修订记录
+
+- **2026-11-17（原型对齐批次落地）**：本设计的 §7.4（规则/粘性/金丝雀）、§8（发布流水线）等在 `docs/superpowers/plans/2026-11-17-console-prototype-alignment.md` 中以 31 任务实施完毕（Task 17 数据面接线除外，见 SDD 台账）。关键落地差异：ack 成功标记复用 `param_agent_config_version.yaml_hash` 前缀（不新增列）；阶段历史存 `param_release.changes`（JSON），未新建 stage 表；规则评估的 header 匹配为占位（Task 18 域）。

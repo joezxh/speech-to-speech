@@ -249,3 +249,7 @@ LiveSettings.__getattr__(name)
 4. 注册表：控制台重启后状态不丢（读 `param_instance_runtime`）；能力指纹随探测刷新。
 5. 占位：两个 store 实例并发预留同一台，只有一个成功；`expire_pending` 按 `expires_at` 回收；`hold`/`release` 后 `reserved` 归零。
 6. API：配置读写权限正确、非法值 400 且不落库、审计行只记字段名；实例增删后运行时行与租约被清理。
+
+## 1.2 修订记录
+
+- **2026-11-17（原型对齐批次落地）**：D 面（机器参数期望/草稿/下发/回滚）与 T/L/R 面在 2026-11-17 计划中交付。期望值唯一真源改为 profile live 渲染值（原先假定的 catalog 默认回落保留为次级）；未回报的键 actual=None 且 drift=False（"未知"不是漂移）；回滚目标=最近 ack 成功快照。
