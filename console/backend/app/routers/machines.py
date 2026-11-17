@@ -14,7 +14,7 @@ from app.core.security import CurrentUser
 from app.deps import DbSession
 from app.schemas.common import ok
 from app.schemas.machine import AutoRegisterIn, MachineCreate, MachineUpdate, RegisterTestIn, WorkloadsPut
-from app.services import machine_service
+from app.services import machine_config_service, machine_service
 
 router = APIRouter(prefix="/api/v1/machines", tags=["machines"])
 
@@ -107,6 +107,32 @@ def replace_workloads(
     except KeyError:
         raise ApiError("not_found", f"machine {machine_id} does not exist", 404) from None
     return ok({"workloads": [w.model_dump() for w in workloads]})
+
+
+@router.get("/{machine_id}/config")
+def config_view(
+    machine_id: str,
+    db: DbSession,
+    user: CurrentUser = Depends(require_permission("console:machine:query")),
+):
+    """D1：机器参数视图（expected/actual/drift/source/...，Review Focus #5）。"""
+    try:
+        return ok({"rows": machine_config_service.config_view(db, machine_id)})
+    except KeyError:
+        raise ApiError("not_found", f"machine {machine_id} does not exist", 404) from None
+
+
+@router.get("/{machine_id}/drift")
+def drift_view(
+    machine_id: str,
+    db: DbSession,
+    user: CurrentUser = Depends(require_permission("console:machine:query")),
+):
+    """D2：漂移摘要（agent 未回报的键未知、不算漂移）。"""
+    try:
+        return ok(machine_config_service.drift(db, machine_id))
+    except KeyError:
+        raise ApiError("not_found", f"machine {machine_id} does not exist", 404) from None
 
 
 @router.post("/register-test")
