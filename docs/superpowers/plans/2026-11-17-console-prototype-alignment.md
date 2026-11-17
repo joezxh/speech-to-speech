@@ -483,9 +483,9 @@ def config_view(machine_id: str) -> list[ParamRow]     # 每目录行：expected
 def drift(machine_id: str) -> DriftSummary             # actual 缺失 → '未知'，不算漂移
 ```
 
-- [ ] **Step 1: 写失败测试**（含 Review Focus #5）—— profile 覆盖的键期望值=live 渲染值；未覆盖回落默认且来源=`期望默认`；**agent 未回报的键 `drift=False` 且 actual=None**；漂移数 = actual 非空且不等期望的行数。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): 机器参数期望值与漂移判定（profile 渲染真源）`
+- [x] **Step 1: 写失败测试**（含 Review Focus #5）—— profile 覆盖的键期望值=live 渲染值；未覆盖回落默认且来源=`期望默认`；**agent 未回报的键 `drift=False` 且 actual=None**；漂移数 = actual 非空且不等期望的行数。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): 机器参数期望值与漂移判定（profile 渲染真源）`
 
 ### Task 21: 机器级草稿（D3–D5）
 
