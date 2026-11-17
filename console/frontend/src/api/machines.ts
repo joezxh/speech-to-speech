@@ -3,17 +3,8 @@ import { api } from './client'
 import type { MachineRow, TestStepIn, WorkloadRow } from '@/views/machines.viewmodel'
 
 export interface MachineDetail extends MachineRow {
-  version: string
-  profile: string | null
-  gpuTotalGb: number | null
-  lastSeen: string | null
-  agentVersion: string
-  protocolVersion: number | null
-  workloadCount: number
-  createdAt: string | null
-  updatedAt: string | null
-  createdBy: string
-  updatedBy: string
+  instanceIds: string[]
+  runtime: Array<Record<string, unknown>>
 }
 
 export interface RegisterTestResult {

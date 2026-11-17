@@ -31,5 +31,20 @@ export default {
     stickiness: 'Session stickiness ships in S3',
     canary: 'Canary traffic ratio ships in S3',
     routing: 'Custom routing rules ship in S3'
+  },
+  cards: {
+    title: 'Traffic & Routing',
+    total: 'Total tokens',
+    perMinute: 'Per minute',
+    cost: 'Cost (USD)',
+    sticky: 'Sticky hit',
+    tokenCard: 'Token usage',
+    tokenNotice: 'Scope: tokens from registered machines, summed from heartbeat window deltas.',
+    policy: 'Policy',
+    rules: 'Routing rules',
+    trend: 'Token trend',
+    distribution: 'Machine distribution',
+    egress: 'Workload egress',
+    instances: 'Instances'
   }
 }

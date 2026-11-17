@@ -1,0 +1,34 @@
+import { describe, expect, it } from 'vitest'
+
+import { egressRoute, splitBar, trendPath } from './traffic.viewmodel'
+
+describe('traffic viewmodel', () => {
+  it('splitBar: input=0 → aPct=0（不做除零）', () => {
+    expect(splitBar(0, 500).aPct).toBe(0)
+  })
+
+  it('splitBar: 400/600 → aPct=40', () => {
+    expect(splitBar(400, 600).aPct).toBe(40)
+  })
+
+  it('trendPath: peak 取 y 最小点', () => {
+    const path = trendPath(
+      [
+        { at: 't0', input: 100, output: 50, total: 150 },
+        { at: 't1', input: 10, output: 5, total: 15 },
+        { at: 't2', input: 300, output: 100, total: 400 },
+      ],
+      400,
+      100,
+    )
+    expect(path.peak.x).toBe(400) // t2 total=400 最高 → y 最小
+    expect(path.line).toContain('M0,')
+    expect(path.area).toContain('Z')
+  })
+
+  it('egressRoute: pipeline→lb 其余→direct', () => {
+    expect(egressRoute('pipeline')).toBe('lb')
+    expect(egressRoute('llm')).toBe('direct')
+    expect(egressRoute('')).toBe('direct')
+  })
+})

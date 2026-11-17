@@ -17,7 +17,13 @@ const machine = (over: Partial<MachineRow>): MachineRow => ({
   gpu: 'L40S',
   state: 'ok',
   clusterId: 'default',
+  profile: null,
+  gpuTotalGb: null,
+  version: '',
   registryMode: 'manual',
+  agentVersion: '',
+  protocolVersion: 1,
+  lastSeen: null,
   workloads: [],
   ...over
 })

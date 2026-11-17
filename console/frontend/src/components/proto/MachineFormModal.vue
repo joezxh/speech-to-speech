@@ -64,13 +64,12 @@ import { useI18n } from 'vue-i18n'
 
 import PModal from './PModal.vue'
 import { useMachineStore } from '@/stores/machine'
-import type { MachineDetail } from '@/api/machines'
-import type { WorkloadRow } from '@/views/machines.viewmodel'
+import type { MachineRow, WorkloadRow } from '@/views/machines.viewmodel'
 
 const props = defineProps<{
   open: boolean
   mode: 'create' | 'edit'
-  machine?: MachineDetail | null
+  machine?: MachineRow | null
 }>()
 
 const emit = defineEmits<{ (e: 'close'): void; (e: 'saved'): void }>()

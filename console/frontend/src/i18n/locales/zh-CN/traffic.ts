@@ -31,5 +31,20 @@ export default {
     stickiness: '会话粘滞路由由 S3 交付',
     canary: '金丝雀流量比例由 S3 交付',
     routing: '自定义路由规则由 S3 交付'
+  },
+  cards: {
+    title: '流量与路由',
+    total: 'Token 总量',
+    perMinute: '每分钟',
+    cost: '成本(USD)',
+    sticky: '粘性命中',
+    tokenCard: 'Token 用量',
+    tokenNotice: '口径：token 只计本控制台登记的机器，按心跳窗口增量汇总。',
+    policy: '策略',
+    rules: '路由规则',
+    trend: 'Token 趋势',
+    distribution: '机器分布',
+    egress: '负载出口',
+    instances: '实例表'
   }
 }

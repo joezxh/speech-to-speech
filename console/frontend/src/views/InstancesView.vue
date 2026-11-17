@@ -19,7 +19,7 @@ import LogPanel from '@/components/LogPanel.vue'
 import RuntimeGrid from '@/components/RuntimeGrid.vue'
 import TurnLatencyPanel from '@/components/TurnLatencyPanel.vue'
 import { AppError } from '@/api/client'
-import type { MachineDetail } from '@/api/machines'
+import type { MachineRow } from '@/views/machines.viewmodel'
 import { getInstances } from '@/api/instances'
 import { useConsoleStore } from '@/stores/console'
 import { useLogsStore } from '@/stores/logs'
@@ -48,8 +48,8 @@ const instanceSnapshot = ref<InstanceSnapshot | null>(null)
 const expanded = ref<string | null>(null)
 const formOpen = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
-const formTarget = ref<MachineDetail | null>(null)
-const testTarget = ref<MachineDetail | null>(null)
+const formTarget = ref<MachineRow | null>(null)
+const testTarget = ref<MachineRow | null>(null)
 
 const DOT_STATE: Record<string, 'ok' | 'warn' | 'draining' | 'bad'> = {
   ok: 'ok',
@@ -94,17 +94,17 @@ function openCreate(): void {
   formOpen.value = true
 }
 
-function openEdit(machine: MachineDetail): void {
+function openEdit(machine: MachineRow): void {
   formMode.value = 'edit'
   formTarget.value = machine
   formOpen.value = true
 }
 
-function openTest(machine: MachineDetail): void {
+function openTest(machine: MachineRow): void {
   testTarget.value = machine
 }
 
-async function remove(machine: MachineDetail): Promise<void> {
+async function remove(machine: MachineRow): Promise<void> {
   if (!window.confirm(t('machines.admin.confirmDelete', { id: machine.machineId }))) return
   try {
     await store.remove(machine.machineId)

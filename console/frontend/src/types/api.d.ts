@@ -88,6 +88,7 @@ export type InstanceStatus = 'unknown' | 'online' | 'degraded' | 'offline' | 'dr
 /** 字段名与后端 instances_service._collect_registry 逐字一致（snake_case）。 */
 export interface InstanceRow {
   instance_id: string
+  machine_id: string | null  // Task 10：public_addr 绑定的机器，空=未绑定
   base_url: string
   status: InstanceStatus
   weight: number

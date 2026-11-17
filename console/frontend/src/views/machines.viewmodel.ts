@@ -14,12 +14,18 @@ export interface WorkloadRow {
 
 export interface MachineRow {
   machineId: string
+  clusterId: string
+  profile: string | null
   addr: string
   role: string
   gpu: string
+  gpuTotalGb: number | null
+  version: string
   state: string
-  clusterId: string
   registryMode: string
+  agentVersion: string
+  protocolVersion: number | null
+  lastSeen: string | null
   workloads: WorkloadRow[]
 }
 
