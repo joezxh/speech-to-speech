@@ -676,9 +676,9 @@ export function topoRows(m: Machine[], i: Instance[]): TopoRow[]
 export function eventRows(a: AuditRow[]): EventRow[]      // 取最近 N=8
 ```
 
-- [ ] **Step 1: 写失败测试** —— KPI：在线机器 `x/y`、路由命中率无数据→`不可得`；topoRows 按 machine 分组实例；eventRows 截取 8 条。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS + build。
-- [ ] **Step 5: Commit** `feat(console-front): 集群总览页按原型重写（KPI/拓扑/最近事件真值）`
+- [x] **Step 1: 写失败测试** —— KPI：在线机器 `x/y`、路由命中率无数据→`不可得`；topoRows 按 machine 分组实例；eventRows 截取 8 条。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS + build。
+- [x] **Step 5: Commit** `feat(console-front): 集群总览页按原型重写（KPI/拓扑/最近事件真值）`
 
 ### Task 30: antd 清零清扫 + 剩余组件原生化
 
