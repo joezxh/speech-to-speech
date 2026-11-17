@@ -23,6 +23,7 @@ def register_api_routers(app: FastAPI) -> None:
         machines,
         profiles,
         realtime,
+        releases,
         runtime,
         sessions,
         status,
@@ -65,6 +66,8 @@ def register_api_routers(app: FastAPI) -> None:
     # Token 观测（T1–T5）与 LB 策略/规则（L1–L6）：SPA catch-all 之前（C11）。
     app.include_router(tokens.router)
     app.include_router(lb.router)
+    # 发布台账（R1–R4，Task 24）：console 只记账，CI 回填走 stage-result。
+    app.include_router(releases.router)
 
     # The demo face is anonymous and unenveloped (A.13), so it goes last among the
     # API groups but still before the SPA catch-all.

@@ -24,6 +24,9 @@ def test_registry_contains_the_registered_codes():
         "console:token:query",
         "console:lb:query",
         "console:lb:rule:write",
+        # 发布台账（Task 24）
+        "console:release:query",
+        "console:release:write",
     }
     assert PERMISSION_ROLES["console:cluster:switch"] == frozenset({"admin", "operator"})
     assert PERMISSION_ROLES["console:cluster:create"] == frozenset({"admin"})

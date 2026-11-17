@@ -32,6 +32,9 @@ PERMISSION_ROLES: dict[str, frozenset[str]] = {
     # LB 策略/规则（L1–L6）：规则写只给 admin。
     "console:lb:query": frozenset({"admin", "operator"}),
     "console:lb:rule:write": frozenset({"admin"}),
+    # 发布台账（Task 24）：记账写只给 admin；CI 回填走同一权限（服务凭据是 admin 角色）。
+    "console:release:query": frozenset({"admin", "operator"}),
+    "console:release:write": frozenset({"admin"}),
     # 仅登记（防打字错误占位）：agent 面不走角色，按 machine token 映射（§7.3）。
     "console:agent:enroll": frozenset({"admin", "operator"}),
 }
