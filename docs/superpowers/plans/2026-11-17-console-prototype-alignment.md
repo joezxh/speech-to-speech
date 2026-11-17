@@ -580,9 +580,9 @@ def rollback(release_id: str, actor: str) -> ReleaseOut                 # 连带
 **Interfaces:**
 - Produces：`GET /api/v1/audit?actor&action&result&field&category&from&to&page&pageSize` 分页；`GET /api/v1/audit/export` CSV（`Content-Disposition: attachment`）；`category` 由 `action` 前缀推导（`machine./lb./deploy./release./voice./cluster.`）。
 
-- [ ] **Step 1: 写失败测试** —— 筛选组合各一条；分页边界；CSV 首行表头 + 行数 = 筛选总数；无权限 → 403。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): 全局审计查询与 CSV 导出`
+- [x] **Step 1: 写失败测试** —— 筛选组合各一条；分页边界；CSV 首行表头 + 行数 = 筛选总数；无权限 → 403。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): 全局审计查询与 CSV 导出`
 
 ### Task 26: release 页 + audit 页重写
 
