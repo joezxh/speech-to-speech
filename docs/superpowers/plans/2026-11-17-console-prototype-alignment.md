@@ -516,9 +516,9 @@ def deploy(machine_id: str, rows: list[str] | None, mode: 'push'|'rollback', act
 # 风控：target machine.role!='canary' → 需 confirm_word==machine_id，否则 403
 ```
 
-- [ ] **Step 1: 写失败测试**（含 Review Focus #6）—— push 后 `config_version` 递增且 agent 视角 `GET config` 取到新 YAML；**rollback 取 ack 快照而非最近上报实际值**；无 ack → 409；非 canary 机器无确认词 → 403、带确认词 → 放行并审计；行级 push 只影响指定键。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): 机器级下发与 ack 快照回滚（canary 风控）`
+- [x] **Step 1: 写失败测试**（含 Review Focus #6）—— push 后 `config_version` 递增且 agent 视角 `GET config` 取到新 YAML；**rollback 取 ack 快照而非最近上报实际值**；无 ack → 409；非 canary 机器无确认词 → 403、带确认词 → 放行并审计；行级 push 只影响指定键。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): 机器级下发与 ack 快照回滚（canary 风控）`
 
 ### Task 23: deploy 页重写
 
