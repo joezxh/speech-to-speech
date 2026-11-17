@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 
 import { api, AppError } from '@/api/client'
 import { clustersApi } from '@/api/clusters'
-import { listMachines } from '@/api/machines'
+import { listMachines, type MachineDetail } from '@/api/machines'
 import ClusterFormModal from '@/components/ClusterFormModal.vue'
 import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
@@ -22,8 +22,6 @@ import { describeAlert } from '@/utils/error'
 import { DASH, formatTime } from '@/utils/format'
 import { hostOf } from '@/utils/host'
 import { layoutTopo } from '@/utils/topoLayout'
-import { topoRows, type Instance, type Machine } from './overview.viewmodel'
-
 /**
  * 集群总览（spec §5.2，原型 renderOverview/clusterRows/topoSVG）：
  * 页面头 + 五段=KPI 四卡 / 集群表 CRUD / 拓扑 / 图例+最近事件 / 全降级态。
@@ -157,17 +155,7 @@ async function loadClusterData(): Promise<void> {
 // /instances 探池耗时数秒时请求叠罗汉；卸载即清理。
 let refreshing = false
 let timer: number | undefined
-// Task 29 真值区（原型对齐后只留拓扑分组表；重复 KPI 与事件"日志"已按反馈删除）。
-const machines = ref<Machine[]>([])
-const machineInstances = computed<Instance[]>(() =>
-  instances.value.map((row) => ({
-    instance_id: row.instance_id,
-    base_url: row.base_url,
-    machine_id: row.machine_id ?? null,
-    status: row.status ?? 'unknown',
-  }))
-)
-const protoTopo = computed(() => topoRows(machines.value, machineInstances.value))
+const machines = ref<MachineDetail[]>([])
 
 async function refreshSafely(): Promise<void> {
   if (refreshing) return
@@ -178,7 +166,7 @@ async function refreshSafely(): Promise<void> {
       (value) => value,
       () => null
     )
-    if (machinesResult) machines.value = machinesResult.machines as unknown as Machine[]
+    if (machinesResult) machines.value = machinesResult.machines
   } finally {
     refreshing = false
   }
@@ -280,19 +268,6 @@ const tableColumns = computed(() => [
     <section v-if="alerts.length" class="overview__alerts">
       <a-alert v-for="alert in alerts" :key="alert" type="warning" show-icon :message="describeAlert(alert)" />
     </section>
-
-    <!-- Task 29 真值区（原型对齐后只留拓扑分组表；重复 KPI 与事件日志已删）。 -->
-    <div class="overview__truth">
-      <table class="truth-topo">
-        <thead><tr><th>machine</th><th>instances</th></tr></thead>
-        <tbody>
-          <tr v-for="row in protoTopo" :key="row.machine_id ?? '__unbound__'">
-            <td>{{ row.machine_id ?? '未绑定实例' }}</td>
-            <td>{{ row.instances.map((i) => i.instance_id).join('、') || '—' }}</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
 
     <!-- ① KPI 四卡：机器 / 实例 / 活跃会话 / 错误率(5m)，随当前集群联动。 -->
     <div class="overview__grid">
@@ -428,20 +403,6 @@ const tableColumns = computed(() => [
 </template>
 
 <style scoped lang="less">
-.overview__truth {
-  display: grid;
-  gap: 12px;
-}
-.truth-topo {
-  width: 100%;
-  border-collapse: collapse;
-}
-.truth-topo th,
-.truth-topo td {
-  text-align: left;
-  padding: 6px 8px;
-  border-bottom: 1px solid var(--border);
-}
 .overview {
   display: flex;
   flex-direction: column;
