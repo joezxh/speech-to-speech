@@ -87,11 +87,40 @@ def _to_response(upstream: httpx.Response, *, keep_location: bool) -> Response:
     )
 
 
-async def forward_selected(offer: bytes, *, keep_location: bool) -> Response:
+async def forward_selected(offer: bytes, *, keep_location: bool, request=None) -> Response:
     """proxy 模式：选台 → 转发 offer → 上游满员就换台（spec §5.5）。
 
     目标由服务端决定（注册表），不是客户端传的，所以不构成开放代理。
+    request（Task 17 接线）：有票据/tenant_tag 时按 RoutingEngine 决策选台；
+    无票据且规则表为空 → routing=None，与改前逐字一致。
     """
+    from app.services.routing_service import (  # noqa: PLC0415
+        RoutingEngine,
+        context_from_ticket,
+        drop_sticky,
+        sticky_key,
+    )
+
+    decision = None
+    context = None
+    if request is not None:
+        try:
+            from app.db.database import SessionLocal  # noqa: PLC0415
+
+            session = SessionLocal()
+            try:
+                query = getattr(request, "query_params", {})
+                context = context_from_ticket(
+                    query.get("ticket", ""),
+                    session_key=query.get("session_key") or "sdp",
+                    tenant_tag=query.get("tenant_tag", ""),
+                )
+                decision = RoutingEngine(session).resolve(context)
+            finally:
+                session.close()
+        except Exception:  # noqa: BLE001 - 路由是增强，不阻断 SDP 握手
+            decision, context = None, None
+
     tried: set[str] = set()
     last: httpx.Response | None = None
     timeout = console.lb_upstream_ready_timeout_s + 10.0
@@ -101,6 +130,7 @@ async def forward_selected(offer: bytes, *, keep_location: bool) -> Response:
             capability="realtime",
             exclude=frozenset(tried),
             rng=allocator._rng,
+            routing=decision,
         )
         if not ranked:
             break
@@ -115,6 +145,19 @@ async def forward_selected(offer: bytes, *, keep_location: bool) -> Response:
         if not is_full_response(last):
             break
         logger.warning("lb failover: {} is full, trying another instance", target.instance_id)
+        if decision is not None and decision.sticky_hit:
+            # 粘性目标满员：删亲和行 + 回落，理由 sticky_target_unavailable。
+            try:
+                from app.db.database import SessionLocal  # noqa: PLC0415
+
+                session = SessionLocal()
+                try:
+                    drop_sticky(session, sticky_key(context) if context else decision.affinity_key)
+                finally:
+                    session.close()
+            except Exception:  # noqa: BLE001
+                pass
+            decision = None
     if last is None:
         raise HTTPException(status_code=503, detail="No speech instance is available.")
     return _to_response(last, keep_location=keep_location)

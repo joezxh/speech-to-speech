@@ -35,6 +35,51 @@ def issue_realtime_ticket(user: CurrentUser = Depends(require_user)):
     """WS 短票据换发（Task 16）：用户 JWT 换 60s 一次性票据，JWT 不上查询串。"""
     return ok({"ticket": realtime_ticket.issue(user.username, user.role), "ttl_s": int(realtime_ticket.TTL_S)})
 
+
+def routing_for_websocket(db, websocket) -> "RoutingDecision":
+    """WS 握手参数 → 路由决策（Task 17 接线）：票据一次性消费，tenant_tag 可选。"""
+    from app.services.routing_service import RoutingEngine, context_from_ticket  # noqa: PLC0415
+
+    query = websocket.query_params
+    ctx = context_from_ticket(
+        query.get("ticket", ""),
+        session_key=query.get("session_key") or uuid.uuid4().hex,
+        tenant_tag=query.get("tenant_tag", ""),
+    )
+    return RoutingEngine(db).resolve(ctx)
+
+
+def _routing_decision_for_ws(websocket):
+    """规则表未部署/读失败 → None（routing=None 走改前逐字一致路径）。"""
+    from app.db.database import SessionLocal  # noqa: PLC0415
+
+    try:
+        session = SessionLocal()
+    except Exception:  # noqa: BLE001
+        return None
+    try:
+        return routing_for_websocket(session, websocket)
+    except Exception:  # noqa: BLE001 - 路由是增强，不能让代理握手失败
+        return None
+    finally:
+        session.close()
+
+
+def _drop_sticky_for_ws(key: str) -> None:
+    from app.db.database import SessionLocal  # noqa: PLC0415
+    from app.services.routing_service import drop_sticky  # noqa: PLC0415
+
+    try:
+        session = SessionLocal()
+    except Exception:  # noqa: BLE001
+        return
+    try:
+        drop_sticky(session, key)
+    except Exception:  # noqa: BLE001
+        pass
+    finally:
+        session.close()
+
 SESSION_CREATED = "session.created"
 SESSION_LIMIT_REACHED = "session_limit_reached"
 
@@ -183,17 +228,25 @@ async def _proxy_with_failover(websocket: WebSocket) -> None:
     """
     tried: set[str] = set()
     last_full_frame: str | bytes | None = None
+    # Task 17：每次尝试重新评估路由（粘性失败后回落需要新决策）。
+    decision = _routing_decision_for_ws(websocket)
     for _attempt in range(console.lb_failover_attempts + 1):
         ranked = upstream_resolver.rank_session(
             store=allocator.store,
             capability="realtime",
             exclude=frozenset(tried),
             rng=allocator._rng,
+            routing=decision,
         )
         if not ranked:
             break
         spec = ranked[0]
         tried.add(spec.instance_id)
+        if decision is not None and decision.sticky_hit and spec.instance_id != decision.candidates.instance_id:
+            # 粘性目标不可达/满员 → 删亲和行并回落；下一次循环重新评估。
+            _drop_sticky_for_ws(decision.affinity_key)
+            logger.warning("sticky_target_unavailable: {} fallback to {}", decision.candidates.instance_id, spec.instance_id)
+            decision = None
         res_key = uuid.uuid4().hex
         if not allocator.store.reserve(
             spec.instance_id, res_key, allocator_settings.grant_ttl_s
@@ -255,6 +308,17 @@ async def _proxy_with_failover(websocket: WebSocket) -> None:
         allocator.store.hold(res_key, spec.instance_id)
         upstream_resolver.inflight_enter(spec.instance_id)
         proxy_counters.bump(spec.instance_id, "realtime", ok=True)
+        if decision is not None and not decision.sticky_hit and decision.candidates.kind == "pinned_instance":
+            from app.db.database import SessionLocal  # noqa: PLC0415
+            from app.services.routing_service import remember_sticky_async  # noqa: PLC0415
+
+            remember_sticky_async(
+                SessionLocal,
+                decision.affinity_key,
+                requested_by=decision.affinity_key.split(":", 1)[0],
+                instance_id=spec.instance_id,
+                ttl_s=60,
+            )
         try:
             await _pump(websocket, upstream)
         finally:

@@ -39,6 +39,51 @@ class RoutingDecision:
     candidates: CandidateSpec
 
 
+def context_from_ticket(ticket: str, *, session_key: str, tenant_tag: str = "") -> SessionContext:
+    """WS 升级参数里的短票据 → 会话上下文（一次性消费，JWT 不上查询串）。
+
+    票据无效/缺失 → 匿名上下文：规则空时 rank_session 与改前逐字一致。
+    """
+    from app.services import realtime_ticket  # noqa: PLC0415 - 避免 import 环
+
+    identity = realtime_ticket.consume(ticket) if ticket else None
+    return SessionContext(
+        session_key=session_key,
+        username=identity.username if identity else "",
+        tenant_tag=tenant_tag,
+    )
+
+
+def drop_sticky(db: Session, key: str) -> None:
+    """粘性目标满员/不可达：删亲和行，下一轮按新路由选（§7.4）。"""
+    from app.models.lb import ParamLbAffinity  # noqa: PLC0415
+
+    row = db.get(ParamLbAffinity, key)
+    if row is not None:
+        db.delete(row)
+        db.commit()
+
+
+def remember_sticky_async(session_factory, key: str, *, requested_by: str, instance_id: str, ttl_s: int):
+    """亲和行异步写（后台线程）——绝不阻塞选台数据面。返回 Thread 便于测试 join。"""
+    import threading  # noqa: PLC0415
+
+    def _write() -> None:
+        session = session_factory()
+        try:
+            RoutingEngine(session).remember_sticky(
+                key, requested_by=requested_by, instance_id=instance_id, ttl_s=ttl_s
+            )
+        except Exception:  # noqa: BLE001 - 记账失败不影响已建立的会话
+            pass
+        finally:
+            session.close()
+
+    worker = threading.Thread(target=_write, daemon=True)
+    worker.start()
+    return worker
+
+
 def sticky_key(ctx: SessionContext) -> str:
     """亲和键派生：含票据 username——A 的会话永远写不到 B 名下的 key（§7.4 越权防线）。"""
     return f"{ctx.username or 'anon'}:{ctx.session_key}"
