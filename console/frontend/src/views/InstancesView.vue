@@ -4,7 +4,7 @@
 // 新增两步模态 + 三步测试面板 / 编辑模态。观测面板（模型运行时/轮次/日志）保留。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import PBadge from '@/components/proto/PBadge.vue'
 import PDot from '@/components/proto/PDot.vue'
@@ -19,17 +19,27 @@ import LogPanel from '@/components/LogPanel.vue'
 import RuntimeGrid from '@/components/RuntimeGrid.vue'
 import TurnLatencyPanel from '@/components/TurnLatencyPanel.vue'
 import { AppError } from '@/api/client'
-import type { MachineRow } from '@/views/machines.viewmodel'
+import { issueMachineCommand, listMachineCommands } from '@/api/machines'
 import { getInstances } from '@/api/instances'
+import type { MachineCommandView, MachineRow, CommandKind, WorkloadRow } from '@/views/machines.viewmodel'
 import { useConsoleStore } from '@/stores/console'
 import { useLogsStore } from '@/stores/logs'
 import { useMachineStore } from '@/stores/machine'
 import { useRuntimeStore } from '@/stores/runtime'
 import type { InstanceSnapshot } from '@/types/api'
-import { filterMachines, vramSummary, workloadTags } from './machines.viewmodel'
+import {
+  commandActions,
+  filterMachines,
+  healthState,
+  latestHealth,
+  serviceIdOf,
+  vramSummary,
+  workloadTags
+} from './machines.viewmodel'
 
 const { t } = useI18n()
 const route = useRoute()
+const router = useRouter()
 const consoleStore = useConsoleStore()
 const runtime = useRuntimeStore()
 const logs = useLogsStore()
@@ -44,6 +54,8 @@ watch(
   }
 )
 const error = ref('')
+const notice = ref('')
+const commands = ref<Record<string, MachineCommandView[]>>({})
 const instanceSnapshot = ref<InstanceSnapshot | null>(null)
 const expanded = ref<string | null>(null)
 const formOpen = ref(false)
@@ -113,8 +125,40 @@ async function remove(machine: MachineRow): Promise<void> {
   }
 }
 
+const activeKinds = (machineId: string): string[] =>
+  (commands.value[machineId] ?? [])
+    .filter((command) => command.status === 'pending' || command.status === 'dispatched')
+    .map((command) => command.kind)
+const actionsFor = (machine: MachineRow) => commandActions(machine.state, activeKinds(machine.machineId))
+
+async function issue(machine: MachineRow, kind: CommandKind, serviceId = ''): Promise<void> {
+  error.value = ''
+  notice.value = ''
+  try {
+    await issueMachineCommand(machine.machineId, kind, serviceId)
+    notice.value = t('machines.action.issued', { kind: t(`machines.action.${kind}`), id: machine.machineId })
+    commands.value[machine.machineId] = await listMachineCommands(machine.machineId)
+  } catch (caught) {
+    error.value = caught instanceof AppError ? caught.message : t('machines.action.failed')
+  }
+}
+
+const checkState = (machine: MachineRow, workload: WorkloadRow) =>
+  healthState(latestHealth(commands.value[machine.machineId] ?? [], serviceIdOf(workload)))
+const checkService = (machine: MachineRow, workload: WorkloadRow) =>
+  issue(machine, 'health_check', serviceIdOf(workload))
+
+function goDeploy(machine: MachineRow): void {
+  void router.push({ name: 'deploy', query: { machine: machine.machineId } })
+}
+
 async function poll(): Promise<void> {
   await store.fetch()
+  await Promise.allSettled(
+    store.machines.map(async (machine) => {
+      commands.value[machine.machineId] = await listMachineCommands(machine.machineId)
+    })
+  )
   try {
     instanceSnapshot.value = await getInstances(consoleStore.profile)
   } catch {
@@ -145,8 +189,10 @@ onBeforeUnmount(() => clearInterval(pollTimer))
     </div>
 
     <ErrorBanner v-if="store.error" :error="new AppError('unknown', store.error)" />
+    <ErrorBanner v-if="error" :error="new AppError('unknown', error)" />
+    <div v-if="notice" class="note">{{ notice }}</div>
 
-    <!-- 12 列机器表（mtbl），行点击展开负载清单 -->
+    <!-- 12 列机器表（mtbl）；单击展开负载，双击下钻部署页 -->
     <div class="tscroll">
       <table class="tbl mtbl">
         <thead>
@@ -158,7 +204,12 @@ onBeforeUnmount(() => clearInterval(pollTimer))
         </thead>
         <tbody>
           <template v-for="row in rows" :key="row.machineId">
-            <tr class="clickable" @click="toggleExpand(row.machineId)">
+            <tr
+              class="clickable"
+              :data-machine="row.machineId"
+              @click="toggleExpand(row.machineId)"
+              @dblclick="goDeploy(row)"
+            >
               <td class="mono">
                 <PDot :state="dotState(row.state)" />
                 {{ row.machineId }}
@@ -193,7 +244,18 @@ onBeforeUnmount(() => clearInterval(pollTimer))
               </td>
               <td>{{ row.clusterId || '—' }}</td>
               <td>{{ row.addr || '—' }}</td>
-              <td @click.stop>
+              <td @click.stop @dblclick.stop>
+                <button
+                  v-for="action in actionsFor(row)"
+                  :key="action.kind"
+                  type="button"
+                  class="btn sm"
+                  :data-action="action.kind"
+                  :disabled="action.disabled"
+                  @click="issue(row, action.kind)"
+                >
+                  {{ t(action.labelKey) }}
+                </button>
                 <button type="button" class="btn sm" @click="openTest(row)">{{ t('machines.test.start') }}</button>
                 <button type="button" class="btn sm" @click="openEdit(row)">{{ t('machines.form.edit') }}</button>
                 <button type="button" class="btn sm ghost" @click="remove(row)">{{ t('machines.form.delete') }}</button>
@@ -209,19 +271,37 @@ onBeforeUnmount(() => clearInterval(pollTimer))
                   <thead>
                     <tr>
                       <th>{{ t('machines.admin.workloadCols.kind') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.engine') }}</th>
                       <th>{{ t('machines.admin.workloadCols.model') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.port') }}</th>
                       <th>{{ t('machines.admin.workloadCols.listen') }}</th>
-                      <th>{{ t('machines.admin.workloadCols.publicAddr') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.healthPath') }}</th>
                       <th>{{ t('machines.admin.workloadCols.vramGb') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.check') }}</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr v-for="wl in row.workloads" :key="`${wl.kind}-${wl.port}`">
                       <td><span class="tag" :class="`wl-${wl.kind}`">{{ wl.kind }}</span></td>
+                      <td class="mono">{{ wl.engine || '—' }}</td>
                       <td class="mono">{{ wl.model || '—' }}</td>
+                      <td class="mono">{{ wl.port ?? '—' }}</td>
                       <td class="mono">{{ wl.listen || '—' }}</td>
-                      <td class="mono">{{ wl.publicAddr || '—' }}</td>
+                      <td class="mono">{{ wl.healthPath || '—' }}</td>
                       <td>{{ wl.vramGb != null ? `${wl.vramGb} GB` : '—' }}</td>
+                      <td>
+                        <span class="mono" :data-check="serviceIdOf(wl)">
+                          {{ t(`machines.checkResult.${checkState(row, wl)}`) }}
+                        </span>
+                        <button
+                          type="button"
+                          class="btn sm"
+                          :data-svc-check="serviceIdOf(wl)"
+                          @click.stop="checkService(row, wl)"
+                        >
+                          {{ t('machines.action.health_check') }}
+                        </button>
+                      </td>
                     </tr>
                   </tbody>
                 </table>
@@ -229,7 +309,7 @@ onBeforeUnmount(() => clearInterval(pollTimer))
             </tr>
           </template>
           <tr v-if="!rows.length">
-            <td :colspan="columns.length" style="text-align: center; color: var(--s2s-color-faint)">
+            <td :colspan="columns.length" style="text-align: center; color: var(--s2s-color-muted)">
               {{ t('machines.admin.empty') }}
             </td>
           </tr>

@@ -13,6 +13,14 @@ export const PERMISSION_ROLES: Record<string, readonly string[]> = {
   'console:machine:create': ['admin'],
   'console:machine:update': ['admin'],
   'console:machine:delete': ['admin'],
+  'console:machine:operate': ['admin'],
+  'console:token:query': ['admin', 'operator'],
+  'console:lb:query': ['admin', 'operator'],
+  'console:lb:rule:write': ['admin'],
+  'console:release:query': ['admin', 'operator'],
+  'console:release:write': ['admin'],
+  'console:audit:query': ['admin', 'operator'],
+  'console:audit:export': ['admin'],
   'console:agent:enroll': ['admin', 'operator']
 }
 

@@ -26,15 +26,23 @@ describe('permission mirror', () => {
   it('covers exactly the codes the backend registers', () => {
     expect(Object.keys(PERMISSION_ROLES).sort()).toEqual([
       'console:agent:enroll',
+      'console:audit:export',
+      'console:audit:query',
       'console:cluster:create',
       'console:cluster:delete',
       'console:cluster:query',
       'console:cluster:switch',
       'console:cluster:update',
+      'console:lb:query',
+      'console:lb:rule:write',
       'console:machine:create',
       'console:machine:delete',
+      'console:machine:operate',
       'console:machine:query',
-      'console:machine:update'
+      'console:machine:update',
+      'console:release:query',
+      'console:release:write',
+      'console:token:query'
     ])
   })
 })

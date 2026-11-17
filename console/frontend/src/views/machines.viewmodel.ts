@@ -81,6 +81,68 @@ export function clusterOptions(
   return values.map((value) => ({ value, label: value }))
 }
 
+export interface MachineCommandView {
+  commandId: string
+  machineId: string
+  kind: string
+  status: string
+  payload: Record<string, unknown>
+  result: Record<string, unknown> | null
+  error: string
+  expiresAt: string | null
+  dispatchedAt: string | null
+  finishedAt: string | null
+  createdAt: string | null
+}
+
+export type CommandKind = 'drain' | 'resume' | 'reboot' | 'recover' | 'health_check'
+
+/** 原型机器行动作：排空中→恢复，不可达/故障→拉起，其他→排空+重启。 */
+export function commandActions(
+  state: string,
+  activeKinds: string[]
+): Array<{ kind: CommandKind; labelKey: string; disabled: boolean }> {
+  const kinds: CommandKind[] =
+    state === 'draining'
+      ? ['resume']
+      : state === 'unreachable' || state === 'bad' || state === 'offline'
+        ? ['recover']
+        : ['drain', 'reboot']
+  return kinds.map((kind) => ({
+    kind,
+    labelKey: `machines.action.${kind}`,
+    disabled: activeKinds.includes(kind)
+  }))
+}
+
+/** agent 端 _service_matches 接受 kind 或 kind:port，这里生成同一个稳定 ID。 */
+export function serviceIdOf(workload: WorkloadRow): string {
+  return workload.port == null ? workload.kind : `${workload.kind}:${workload.port}`
+}
+
+export function latestHealth(
+  commands: MachineCommandView[],
+  serviceId: string
+): MachineCommandView | undefined {
+  return commands
+    .filter(
+      (command) =>
+        command.kind === 'health_check' && command.payload?.service_id === serviceId
+    )
+    .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))[0]
+}
+
+/** 检查结果四态：无命令=unknown，进行中=checking，真结果=ok/bad。 */
+export function healthState(
+  command: MachineCommandView | undefined
+): 'unknown' | 'checking' | 'ok' | 'bad' {
+  if (!command) return 'unknown'
+  if (command.status === 'pending' || command.status === 'dispatched') return 'checking'
+  if (command.result?.reachable === true && command.status === 'succeeded') return 'ok'
+  if (command.result?.reachable === false || command.status === 'failed') return 'bad'
+  return 'unknown'
+}
+
 /** 后端 pass/pending/fail → 面板 ok/running/fail（三步测试的点色状态机）。 */
 export function testStepsToView(steps: TestStepIn[]): TestStepView[] {
   return steps.map((step) => ({

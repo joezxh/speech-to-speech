@@ -52,15 +52,29 @@ export default {
     workloadSum: '{n} 个负载 · 显存 {used}/{total} GB',
     workloadCols: {
       kind: '类型',
+      engine: '引擎',
       model: '模型',
+      port: '端口',
       listen: '监听地址',
       publicAddr: '对外地址',
-      vramGb: '显存'
+      healthPath: '健康检查路径',
+      vramGb: '显存',
+      check: '检查'
     },
     empty: '还没有机器。点「新增机器」建档，或让机器端 agent 自动注册。',
     confirmDelete: '删除机器 {id}？负载清单与实例绑定一并清除。',
     deleteFailed: '删除失败'
   },
+  action: {
+    drain: '排空',
+    resume: '恢复调度',
+    reboot: '重启',
+    recover: '拉起',
+    health_check: '检查',
+    issued: '已下发 {kind} 到 {id}，等待 agent 回执',
+    failed: '命令下发失败'
+  },
+  checkResult: { unknown: '未知', checking: '检查中', ok: '通', bad: '不通' },
   test: {
     title: '注册测试（三步）',
     simulate: '模拟失败（agent 不来）',

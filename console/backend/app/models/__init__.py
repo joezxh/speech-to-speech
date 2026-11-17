@@ -3,6 +3,7 @@ from app.db.base import Base
 from .comments import apply_comments
 from .lb import ParamLbAffinity, ParamLbRouteLog, ParamLbRule
 from .machine import ParamMachine, ParamMachineWorkload
+from .machine_command import ParamMachineCommand
 from .machine_config import ParamAgentConfigVersion, ParamMachineConfig, ParamMachineDraft
 from .param_allocator_lease import ParamAllocatorLease
 from .param_audit import ParamAudit
@@ -34,6 +35,7 @@ __all__ = [
     "ParamLbRouteLog",
     "ParamLbRule",
     "ParamMachine",
+    "ParamMachineCommand",
     "ParamMachineConfig",
     "ParamMachineDraft",
     "ParamMachineWorkload",

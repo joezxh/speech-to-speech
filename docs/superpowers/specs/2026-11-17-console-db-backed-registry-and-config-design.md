@@ -250,6 +250,34 @@ LiveSettings.__getattr__(name)
 5. 占位：两个 store 实例并发预留同一台，只有一个成功；`expire_pending` 按 `expires_at` 回收；`hold`/`release` 后 `reserved` 归零。
 6. API：配置读写权限正确、非法值 400 且不落库、审计行只记字段名；实例增删后运行时行与租约被清理。
 
+## 11. 机器命令通道（2026-11-17 追加）
+
+机器侧的排空/恢复/重启/拉起/服务检查走**反向拉取队列**：console 不主动连 NAT 后的机器，
+agent 用 machine token 在心跳 tick（`S2S_AGENT_HEARTBEAT_S`，默认 15s）里拉取并执行，随后回执。
+
+- 存储：`param_machine_command`（migration `0011_machine_command_queue`），软关联 `machine_id`，
+  无 FK；`expires_at` 默认下发后 120s。
+- 状态机：`pending → dispatched → succeeded / failed`，超时收敛为 `expired`。
+  同一 `machine_id + kind` 只允许一条未完成任务（重复下发 409 `command_in_flight`）。
+- 类型白名单：`drain / resume / reboot / recover / health_check`（未知类型 400 `unsupported_command`）。
+- 端点：
+
+| 端点 | 方法 | 鉴权 | 说明 |
+|---|---|---|---|
+| `/api/v1/machines/{id}/commands` | POST | `console:machine:operate`（admin） | 下发命令，`serviceId` 仅 `health_check` 用 |
+| `/api/v1/machines/{id}/commands` | GET | `console:machine:query` | 前端轮询命令状态与结果 |
+| `/api/v1/agent/commands` | GET | machine token | agent 领取本机 pending，条件 UPDATE 转 dispatched |
+| `/api/v1/agent/commands/{id}/report` | POST | machine token | 回执真实执行/探测结果；越权机器 403 |
+| `/api/v1/agent/instances/drain` | POST | machine token | agent 执行排空/恢复：仅作用于本机绑定实例 |
+| `/api/v1/agent/instances/probe` | POST | machine token | agent 执行拉起后巡检，返回实例状态 |
+
+- 执行真源：drain/resume 写 `param_instance.drain_requested` 并同步内存注册表；reboot 走
+  supervisor XML-RPC（`stopProgram/startProgram`）；recover = 恢复调度 + 巡检；
+  health_check 按 agent.yaml 的 `listen/public_addr + health_path` 真探测，无声明=未知，不伪造值。
+- 审计：`machine.command.issue/report/expire`、`machine.instance.drain/undrain`，
+  `fields` 只记字段名，命令 ID 写 `request_id` 供关联。用户 JWT 与 machine token 严格分离。
+
 ## 1.2 修订记录
 
 - **2026-11-17（原型对齐批次落地）**：D 面（机器参数期望/草稿/下发/回滚）与 T/L/R 面在 2026-11-17 计划中交付。期望值唯一真源改为 profile live 渲染值（原先假定的 catalog 默认回落保留为次级）；未回报的键 actual=None 且 drift=False（"未知"不是漂移）；回滚目标=最近 ack 成功快照。
+- **2026-11-17（机器命令通道）**：新增 §11 反向拉取命令队列；机器页与部署页按原型对齐，原型 mock 字段一律以 —/不可得展示。

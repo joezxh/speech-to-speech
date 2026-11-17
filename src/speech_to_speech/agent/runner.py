@@ -11,6 +11,7 @@ from pathlib import Path
 
 from loguru import logger
 
+from speech_to_speech.agent import commands as command_executor
 from speech_to_speech.agent import config_sync
 from speech_to_speech.agent.client import AgentClient
 from speech_to_speech.agent.collectors import Usage, tail_turn_latency, usage_diff
@@ -66,7 +67,9 @@ def _heartbeat_body(settings: AgentSettings, usage: Usage, uptime_s: int) -> dic
         "protocol_version": 1,
         "agent_version": "1.0.0",
         "machine": {"machine_id": settings.machine_id, "uptime_s": uptime_s},
-        "capabilities": ["heartbeat", "workloads", "token", "config_pull", "config_report"],
+        "capabilities": [
+            "heartbeat", "workloads", "token", "config_pull", "config_report", "commands"
+        ],
         "workloads": collect_workloads(settings),
         "runtime": {},
         "tokens": usage.__dict__,
@@ -101,7 +104,13 @@ def run_forever(settings: AgentSettings | None = None) -> None:  # pragma: no co
             # 2) 配置同步（拉取/落地/回报/确认）。
             config_sync.sync_config(client, token, settings)
 
-            # 3) turn-latency 断点续读（Task 8 接 A5 端点后上报；先只推进游标）。
+            # 3) 机器命令（排空/重启/拉起/健康检查）：独立 try，失败不影响后续采集。
+            try:
+                command_executor.poll_and_run(client, token, settings)
+            except Exception as exc:  # noqa: BLE001 - agent 失败只告警，不阻塞语音链路
+                logger.warning("agent command poll failed: {}", exc)
+
+            # 4) turn-latency 断点续读（Task 8 接 A5 端点后上报；先只推进游标）。
             global _TURN_OFFSET  # noqa: PLW0603
             _, _ = tail_turn_latency(settings.pipeline_log, _TURN_OFFSET)
         except Exception as exc:  # noqa: BLE001 - 语音链路优先，agent 失败只退避

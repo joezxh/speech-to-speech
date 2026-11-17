@@ -42,6 +42,46 @@ export function applyScenario(scene: Scene, patch: Record<string, string>): Reco
   return next
 }
 
+export const stageOf = (row: ParamRow): string => row.key.split('.')[0] || 'other'
+
+/** 原型 g4 KPI 全部由真实参数目录字段推导，没有来源的场景名显式沿用当前选择。 */
+export function deployKpis(
+  rows: ParamRow[],
+  driftCount: number,
+  sceneName: string
+): { params: number; drift: number; ops: number; hot: number; scene: string } {
+  return {
+    params: rows.length,
+    drift: driftCount,
+    ops: rows.filter((r) => r.exposure === 'ops').length,
+    hot: rows.filter((r) => r.effect === 'hot' || r.effect === 'both').length,
+    scene: sceneName
+  }
+}
+
+export function groupChips(rows: ParamRow[]): Array<{ group: string; count: number }> {
+  const counts = new Map<string, number>()
+  for (const row of rows) {
+    const stage = stageOf(row)
+    counts.set(stage, (counts.get(stage) ?? 0) + 1)
+  }
+  return [
+    { group: 'ALL', count: rows.length },
+    ...[...counts.entries()].map(([group, count]) => ({ group, count }))
+  ]
+}
+
+export function groupRows(rows: ParamRow[], group: string): ParamRow[] {
+  return group === 'ALL' ? rows : rows.filter((row) => stageOf(row) === group)
+}
+
+/** 原型的“当前版本”无真源（backend 不下发 group 版本），显式 null 由页面显示 —。 */
+export function deployStack(rows: ParamRow[]): Array<{ group: string; count: number; version: null }> {
+  return groupChips(rows)
+    .filter((chip) => chip.group !== 'ALL')
+    .map((chip) => ({ group: chip.group, count: chip.count, version: null }))
+}
+
 export interface DiffRow {
   key: string
   current: string

@@ -27,6 +27,8 @@ PERMISSION_ROLES: dict[str, frozenset[str]] = {
     "console:machine:create": frozenset({"admin"}),
     "console:machine:update": frozenset({"admin"}),
     "console:machine:delete": frozenset({"admin"}),
+    # 命令下发（排空/重启/恢复/检查）：机器写操作只给 admin。
+    "console:machine:operate": frozenset({"admin"}),
     # Token 观测（T1–T5）：只读；operator 可看，改不了。
     "console:token:query": frozenset({"admin", "operator"}),
     # LB 策略/规则（L1–L6）：规则写只给 admin。

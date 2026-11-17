@@ -1,4 +1,29 @@
 export default {
+  pageTitle: 'Deployment & parameters',
+  pageDesc: 'Deployment stack and runtime parameters actually reported by the selected machine. Fields without a source show —.',
+  driftAlert: 'Parameter drift detected',
+  offline: '{machine} is offline; parameter pushes may not take effect',
+  push: 'Push parameters',
+  rollback: 'Rollback',
+  confirmHint: 'Enter the machine ID to confirm a push on non-canary machines',
+  noticeRollback: 'Rolled back to the last acknowledged version',
+  col: { actual: 'Actual' },
+  kpi: {
+    params: 'Parameters', drift: 'Drifted', ops: 'Ops-only', opsHint: 'ops-visible only',
+    hot: 'Hot parameters', hotHint: 'effective in seconds', scene: 'Current scene', sceneTitle: 'Scenario advisor'
+  },
+  stack: 'Deployment stack',
+  field: {
+    machine: 'Machine', version: 'Version', deployedAt: 'Deployed at', configSource: 'Config source',
+    gpu: 'GPU', status: 'Status', lastPush: 'Last config push', draftVersion: 'Draft version'
+  },
+  utilizationUnknown: 'utilization unavailable',
+  groups: 'Parameter groups',
+  groupCount: 'Parameters',
+  groupNote: 'No version source for group pushes yet — shown as —; counts come from the parameter catalog.',
+  sceneTitle: 'Scenario advisor',
+  paramsTitle: 'Runtime parameters',
+  all: 'All',
   exposure: {
     basic: 'basic · shown inline',
     advanced: 'advanced · with suggested value',

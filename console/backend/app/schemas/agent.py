@@ -70,3 +70,17 @@ class AgentTurnLatencyIn(BaseModel):
     """A5：逐轮 TURN_LATENCY 行上报（logged_at 为行内时间戳，ISO 字符串）。"""
 
     rows: list[dict] = Field(default_factory=list)
+
+
+class AgentCommandReportIn(BaseModel):
+    """机器命令回执：result 是真实执行/探测结果，不缓存伪造值。"""
+
+    ok: bool
+    result: dict = Field(default_factory=dict)
+    error: str = Field(default="", max_length=512)
+
+
+class AgentDrainIn(BaseModel):
+    """agent 执行排空/恢复：只作用于 token 所指机器绑定的实例。"""
+
+    drain: bool

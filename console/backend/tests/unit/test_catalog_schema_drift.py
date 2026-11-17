@@ -59,7 +59,10 @@ def test_the_catalog_and_the_registry_agree(entries):
     assert validator.check_consistency(entries, _schema.ITEMS) == []
 
 
-def test_the_gate_passes_on_the_repository_catalog():
+def test_the_gate_passes_on_the_repository_catalog(monkeypatch):
+    # validator.main() 直接 parse_args()：pytest 的 -q 会被误当脚本参数，
+    # 注入脚本自己的 argv 才能测到“仓库目录跑校验脚本”的真实行为。
+    monkeypatch.setattr(sys, "argv", [str(BACKEND / "scripts" / "validate_catalog_schema.py")])
     assert validator.main() == 0
 
 

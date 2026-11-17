@@ -222,6 +222,8 @@ COMMENT ON TABLE "param_config" IS '控制台配置项登记表：库中的值�
 
 COMMENT ON TABLE "param_machine" IS '机器实体：agent 注册与心跳的落点，实例挂载与机器状态的单一来源';
 
+COMMENT ON TABLE "param_machine_command" IS '机器命令队列：用户下发、机器端 agent 拉取并回执，不主动连接机器';
+
 COMMENT ON TABLE "param_machine_workload" IS '机器负载声明：心跳清单全量覆盖，按机器与负载类型对齐';
 
 COMMENT ON TABLE "param_machine_config" IS '机器实际生效配置，与配置档期望值比对得出漂移数';
@@ -499,6 +501,32 @@ COMMENT ON COLUMN "param_machine"."updated_by" IS '最近修改人';
 COMMENT ON COLUMN "param_machine"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_machine_command"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_machine_command"."command_id" IS '命令全局标识，供 agent 回执关联';
+
+COMMENT ON COLUMN "param_machine_command"."machine_id" IS '目标机器标识，软关联 param_machine.machine_id';
+
+COMMENT ON COLUMN "param_machine_command"."kind" IS '命令类型白名单：排空、恢复、重启、拉起、健康检查';
+
+COMMENT ON COLUMN "param_machine_command"."payload" IS '命令参数，健康检查带服务标识';
+
+COMMENT ON COLUMN "param_machine_command"."status" IS '命令状态：待领取、已下发、成功、失败、已超时';
+
+COMMENT ON COLUMN "param_machine_command"."result" IS 'agent 回执的真实执行或探测结果，无结果时为空';
+
+COMMENT ON COLUMN "param_machine_command"."error" IS '回执错误信息，成功时为空';
+
+COMMENT ON COLUMN "param_machine_command"."expires_at" IS '命令超时时间（UTC），到期后不再被领取';
+
+COMMENT ON COLUMN "param_machine_command"."dispatched_at" IS 'agent 领取时间（UTC）';
+
+COMMENT ON COLUMN "param_machine_command"."finished_at" IS '命令终态时间（UTC）';
+
+COMMENT ON COLUMN "param_machine_command"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_machine_command"."updated_at" IS '最近修改时间（UTC）';
 
 COMMENT ON COLUMN "param_machine_workload"."id" IS '主键标识';
 
@@ -1027,6 +1055,34 @@ ALTER TABLE param_instance ADD COLUMN machine_id VARCHAR(64);
 ALTER TABLE param_cluster ADD COLUMN baseline_profile VARCHAR(64) DEFAULT 'prod' NOT NULL;
 
 UPDATE alembic_version SET version_num='0010_console_lb_backbone' WHERE alembic_version.version_num = '0009_db_registry_and_config';
+
+-- Running upgrade 0010_console_lb_backbone -> 0011_machine_command_queue
+
+CREATE TABLE param_machine_command (
+    id SERIAL NOT NULL,
+    command_id VARCHAR(64) NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    kind VARCHAR(32) NOT NULL,
+    payload JSON DEFAULT '{}' NOT NULL,
+    status VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    result JSON,
+    error VARCHAR(512) DEFAULT '' NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE,
+    dispatched_at TIMESTAMP WITH TIME ZONE,
+    finished_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_machine_command_command_id UNIQUE (command_id)
+);
+
+CREATE INDEX ix_param_machine_command_machine_id ON param_machine_command (machine_id);
+
+CREATE INDEX ix_param_machine_command_status ON param_machine_command (status);
+
+CREATE INDEX ix_param_machine_command_expires_at ON param_machine_command (expires_at);
+
+UPDATE alembic_version SET version_num='0011_machine_command_queue' WHERE alembic_version.version_num = '0010_console_lb_backbone';
 
 COMMIT;
 

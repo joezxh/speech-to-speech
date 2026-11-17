@@ -23,7 +23,7 @@ from app.schemas.common import iso_utc
 from app.services.machine_service import hash_secret
 
 SUPPORTED_PROTOCOL_VERSION = 1
-SUPPORTED_CAPS = ("heartbeat", "workloads", "token", "config_pull", "config_report")
+SUPPORTED_CAPS = ("heartbeat", "workloads", "token", "config_pull", "config_report", "commands")
 HEARTBEAT_AFTER_S = 15
 
 # token 窗口增量的暂存处（键 = machine_id）。console 重启即失——Task 14 接表后废弃。

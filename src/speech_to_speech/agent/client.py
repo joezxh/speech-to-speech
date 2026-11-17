@@ -64,3 +64,46 @@ class AgentClient:
         )
         response.raise_for_status()
         return response.json()["data"]
+
+    def pull_commands(self, token: str, limit: int = 10) -> list[dict]:
+        """拉取本机命令；领到即被 console 标记 dispatched。"""
+        response = httpx.get(
+            f"{self.base_url}/api/v1/agent/commands",
+            params={"limit": limit},
+            headers=self._headers(token),
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()["data"]
+
+    def report_command(
+        self, token: str, command_id: str, *, ok: bool, result: dict, error: str = ""
+    ) -> dict:
+        response = httpx.post(
+            f"{self.base_url}/api/v1/agent/commands/{command_id}/report",
+            json={"ok": ok, "result": result, "error": error},
+            headers=self._headers(token),
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()["data"]
+
+    def set_instance_drain(self, token: str, drain: bool) -> dict:
+        """排空/恢复本机绑定的 pipeline 实例（console DB + 内存注册表同步）。"""
+        response = httpx.post(
+            f"{self.base_url}/api/v1/agent/instances/drain",
+            json={"drain": drain},
+            headers=self._headers(token),
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()["data"]
+
+    def probe_instances(self, token: str) -> dict:
+        response = httpx.post(
+            f"{self.base_url}/api/v1/agent/instances/probe",
+            headers=self._headers(token),
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()["data"]

@@ -19,6 +19,7 @@ def test_registry_contains_the_registered_codes():
         "console:machine:create",
         "console:machine:update",
         "console:machine:delete",
+        "console:machine:operate",
         "console:agent:enroll",
         # Token 观测与 LB 规则（spec 2026-11-17 §7.3，Task 14）
         "console:token:query",

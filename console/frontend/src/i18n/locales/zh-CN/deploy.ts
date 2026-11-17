@@ -1,4 +1,29 @@
 export default {
+  pageTitle: '部署与参数',
+  pageDesc: '所选机器上实际运行的部署栈与运行时参数。无真源字段显示 —。',
+  driftAlert: '检测到参数漂移',
+  offline: '{machine} 当前不在线，参数下发可能不会生效',
+  push: '下发参数',
+  rollback: '回滚',
+  confirmHint: '非灰度机器请填写机器 ID 确认下发',
+  noticeRollback: '已回滚到最近 ack 版本',
+  col: { actual: '实际值' },
+  kpi: {
+    params: '参数行', drift: '漂移参数', ops: '运维参数', opsHint: '仅运维可见',
+    hot: '热更新参数', hotHint: '秒级生效', scene: '当前场景', sceneTitle: '场景顾问'
+  },
+  stack: '部署栈',
+  field: {
+    machine: '机器', version: '版本', deployedAt: '部署时间', configSource: '配置来源',
+    gpu: 'GPU', status: '状态', lastPush: '最近配置下发', draftVersion: '草稿版本'
+  },
+  utilizationUnknown: '利用率不可得',
+  groups: '参数分组',
+  groupCount: '参数数',
+  groupNote: '当前版本无下发真源，统一显示 —；参数数来自参数目录。',
+  sceneTitle: '场景顾问',
+  paramsTitle: '运行时参数',
+  all: '全部',
   exposure: {
     basic: 'basic · 直出',
     advanced: 'advanced · 带建议值',

@@ -460,3 +460,31 @@ ALTER TABLE param_cluster ADD COLUMN baseline_profile VARCHAR(64) DEFAULT 'prod'
 
 UPDATE alembic_version SET version_num='0010_console_lb_backbone' WHERE alembic_version.version_num = '0009_db_registry_and_config';
 
+-- Running upgrade 0010_console_lb_backbone -> 0011_machine_command_queue
+
+CREATE TABLE param_machine_command (
+    id INTEGER NOT NULL,
+    command_id VARCHAR(64) NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    kind VARCHAR(32) NOT NULL,
+    payload JSON DEFAULT '{}' NOT NULL,
+    status VARCHAR(16) DEFAULT 'pending' NOT NULL,
+    result JSON,
+    error VARCHAR(512) DEFAULT '' NOT NULL,
+    expires_at DATETIME,
+    dispatched_at DATETIME,
+    finished_at DATETIME,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_machine_command_command_id UNIQUE (command_id)
+);
+
+CREATE INDEX ix_param_machine_command_machine_id ON param_machine_command (machine_id);
+
+CREATE INDEX ix_param_machine_command_status ON param_machine_command (status);
+
+CREATE INDEX ix_param_machine_command_expires_at ON param_machine_command (expires_at);
+
+UPDATE alembic_version SET version_num='0011_machine_command_queue' WHERE alembic_version.version_num = '0010_console_lb_backbone';
+

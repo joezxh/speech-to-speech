@@ -52,15 +52,29 @@ export default {
     workloadSum: '{n} workloads · VRAM {used}/{total} GB',
     workloadCols: {
       kind: 'Kind',
+      engine: 'Engine',
       model: 'Model',
+      port: 'Port',
       listen: 'Listen',
       publicAddr: 'Public address',
-      vramGb: 'VRAM'
+      healthPath: 'Health path',
+      vramGb: 'VRAM',
+      check: 'Check'
     },
     empty: 'No machines yet. Create one, or let the machine-side agent auto register.',
     confirmDelete: 'Delete machine {id}? Its workload list and instance binding go with it.',
     deleteFailed: 'Delete failed'
   },
+  action: {
+    drain: 'Drain',
+    resume: 'Resume scheduling',
+    reboot: 'Reboot',
+    recover: 'Recover',
+    health_check: 'Check',
+    issued: '{kind} issued to {id}; waiting for agent report',
+    failed: 'Command issue failed'
+  },
+  checkResult: { unknown: 'Unknown', checking: 'Checking', ok: 'OK', bad: 'Unreachable' },
   test: {
     title: 'Register test (3 steps)',
     simulate: 'Simulate failure (agent never comes)',

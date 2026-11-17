@@ -3,10 +3,15 @@ import { describe, expect, it } from 'vitest'
 
 import {
   clusterOptions,
+  commandActions,
   filterMachines,
+  healthState,
+  latestHealth,
+  serviceIdOf,
   testStepsToView,
   vramSummary,
   workloadTags,
+  type MachineCommandView,
   type MachineRow,
   type WorkloadRow
 } from './machines.viewmodel'
@@ -118,10 +123,70 @@ describe('clusterOptions', () => {
 
   it('does not duplicate the current value when it exists in the table', () => {
     const options = clusterOptions(
-      [{ id: 1, name: 'default', note: '', createdAt: '' }],
+      [{ name: 'default' }],
       'default'
     )
     expect(options).toHaveLength(1)
     expect(options[0].value).toBe('default')
+  })
+})
+
+const command = (over: Partial<MachineCommandView>): MachineCommandView => ({
+  commandId: 'c1',
+  machineId: 'node-a01',
+  kind: 'health_check',
+  status: 'succeeded',
+  payload: {},
+  result: null,
+  error: '',
+  expiresAt: null,
+  dispatchedAt: null,
+  finishedAt: null,
+  createdAt: null,
+  ...over
+})
+
+describe('commandActions (prototype machine row actions)', () => {
+  it('offers drain and reboot on a healthy machine', () => {
+    expect(commandActions('ok', []).map((a) => a.kind)).toEqual(['drain', 'reboot'])
+  })
+
+  it('offers resume while draining and recover when unreachable', () => {
+    expect(commandActions('draining', []).map((a) => a.kind)).toEqual(['resume'])
+    expect(commandActions('unreachable', []).map((a) => a.kind)).toEqual(['recover'])
+    expect(commandActions('bad', []).map((a) => a.kind)).toEqual(['recover'])
+  })
+
+  it('disables only the kinds with an in-flight command', () => {
+    expect(commandActions('ok', ['drain'])).toEqual([
+      { kind: 'drain', labelKey: 'machines.action.drain', disabled: true },
+      { kind: 'reboot', labelKey: 'machines.action.reboot', disabled: false }
+    ])
+    expect(commandActions('draining', ['resume'])[0].disabled).toBe(true)
+  })
+})
+
+describe('service checks', () => {
+  it('builds a stable service id from kind and port', () => {
+    expect(serviceIdOf(workload({ kind: 'asr', port: 8011 }))).toBe('asr:8011')
+    expect(serviceIdOf(workload({ kind: 'asr', port: null }))).toBe('asr')
+  })
+
+  it('picks the latest check command for a service', () => {
+    const rows = [
+      command({ commandId: 'c1', payload: { service_id: 'asr:8011' }, createdAt: '2026-01-01T00:00:00Z' }),
+      command({ commandId: 'c2', kind: 'drain' }),
+      command({ commandId: 'c3', payload: { service_id: 'asr:8011' }, createdAt: '2026-01-02T00:00:00Z' })
+    ]
+    expect(latestHealth(rows, 'asr:8011')?.commandId).toBe('c3')
+    expect(latestHealth(rows, 'llm:8000')).toBeUndefined()
+  })
+
+  it('maps real check results to ok/bad/checking/unknown without fabrication', () => {
+    expect(healthState(undefined)).toBe('unknown')
+    expect(healthState(command({ status: 'pending' }))).toBe('checking')
+    expect(healthState(command({ result: { reachable: true } }))).toBe('ok')
+    expect(healthState(command({ status: 'failed', result: { reachable: false } }))).toBe('bad')
+    expect(healthState(command({ result: { reachable: null } }))).toBe('unknown')
   })
 })

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.services.machine_service import (
     AutoRegisterIn,
@@ -31,7 +31,16 @@ class MachineDeployIn(BaseModel):
     rows: list[str] | None = None
     confirm_word: str = ""
 
+
+class MachineCommandIn(BaseModel):
+    """用户侧下发机器命令；serviceId 仅 health_check 使用（agent 侧按它探测）。"""
+
+    kind: str = Field(min_length=1, max_length=32)
+    serviceId: str = Field(default="", max_length=64)
+
+
 __all__ = [
+    "MachineCommandIn",
     "AutoRegisterIn",
     "MachineCreate",
     "MachineDeployIn",

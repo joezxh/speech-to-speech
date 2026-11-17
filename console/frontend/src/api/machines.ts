@@ -1,6 +1,11 @@
 // api/machines.ts — M1–M9（spec 2026-11-17 §7.2.2）。
 import { api } from './client'
-import type { MachineRow, TestStepIn, WorkloadRow } from '@/views/machines.viewmodel'
+import type {
+  MachineCommandView,
+  MachineRow,
+  TestStepIn,
+  WorkloadRow
+} from '@/views/machines.viewmodel'
 
 export interface MachineDetail extends MachineRow {
   instanceIds: string[]
@@ -34,6 +39,16 @@ export const updateMachine = (id: string, payload: Partial<MachineDetail>): Prom
   api.put<MachineDetail>(`/machines/${id}`, payload)
 
 export const deleteMachine = (id: string): Promise<void> => api.delete(`/machines/${id}`)
+
+export const issueMachineCommand = (
+  machineId: string,
+  kind: string,
+  serviceId = ''
+): Promise<MachineCommandView> =>
+  api.post<MachineCommandView>(`/machines/${machineId}/commands`, { kind, serviceId })
+
+export const listMachineCommands = (machineId: string): Promise<MachineCommandView[]> =>
+  api.get<MachineCommandView[]>(`/machines/${machineId}/commands`)
 
 export const getWorkloads = (id: string): Promise<{ workloads: WorkloadRow[] }> =>
   api.get<{ workloads: WorkloadRow[] }>(`/machines/${id}/workloads`)
