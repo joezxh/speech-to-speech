@@ -36,6 +36,14 @@ export default {
   },
   create: {
     title: 'Create voice',
+    wizard: {
+      source: 'Source',
+      record: 'Record audio',
+      trim: 'Trim window',
+      voiceprint: 'Voiceprint embedding',
+      naming: 'Name & save',
+    },
+    voiceprintHint: 'A voiceprint embedding is computed from the audio after creation (one-shot background job; track progress in the list).',
     steps: { source: 'Source', audio: 'Audio / transcript', audition: 'Audition & trim', name: 'Name & save' },
     micDenied: 'Cannot access the microphone',
     requiredMissing: 'This step still has required fields unfilled',

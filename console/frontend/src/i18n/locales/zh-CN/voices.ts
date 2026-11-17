@@ -1,4 +1,5 @@
 export default {
+
   status: { draft: '草稿', precomputing: '制作中', ready: '可用', failed: '失败' },
   source: { builtin: '内置', clone: '克隆', design: '指令设计' },
   precompute: {
@@ -36,6 +37,14 @@ export default {
   },
   create: {
     title: '制作音色',
+    wizard: {
+      source: '来源',
+      record: '录制音频',
+      trim: '裁剪保留窗',
+      voiceprint: '声纹嵌入',
+      naming: '命名与保存'
+    },
+    voiceprintHint: '创建后将基于音频计算声纹嵌入（一次性后台任务，可在列表查看进度）。',
     steps: { source: '来源', audio: '音频 / 转写', audition: '试听与裁剪', name: '命名保存' },
     micDenied: '无法访问麦克风',
     requiredMissing: '这一步还有必填项没填',

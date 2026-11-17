@@ -4,11 +4,14 @@ import { useI18n } from 'vue-i18n'
 
 import { AppError } from '@/api/client'
 import ErrorBanner from '@/components/ErrorBanner.vue'
+import PModal from '@/components/proto/PModal.vue'
+import PPipe from '@/components/proto/PPipe.vue'
 import VoiceAudition from '@/components/VoiceAudition.vue'
 import { useVoicesStore } from '@/stores/voices'
 import type { PrecomputeError, VoiceRow, VoiceSource } from '@/types/voice-library'
 import { precomputeText, sourceLabel } from '@/utils/voice-text'
 import { toWav } from '@/utils/wav'
+import { canAdvance, stepsFor, type WizardStep } from './voiceWizard.viewmodel'
 
 const props = defineProps<{
   open: boolean
@@ -26,12 +29,22 @@ const emit = defineEmits<{
 const store = useVoicesStore()
 const { t } = useI18n()
 
-const STEPS = computed(() => [
-  { title: t('voices.create.steps.source') },
-  { title: t('voices.create.steps.audio') },
-  { title: t('voices.create.steps.audition') },
-  { title: t('voices.create.steps.name') }
-])
+const STEPS = computed(() => stepsFor(source.value))
+const pipeSteps = computed(() =>
+  STEPS.value.map((key, index) => ({
+    key,
+    label: t(`voices.create.wizard.${key}`),
+    state: index < step.value ? ('done' as const) : index === step.value ? ('active' as const) : ('todo' as const),
+  }))
+)
+const currentStep = computed<WizardStep>(() => STEPS.value[Math.min(step.value, STEPS.value.length - 1)] ?? 'source')
+const canGoNext = computed(() => canAdvance(currentStep.value, {
+  source: source.value,
+  name: name.value,
+  audioBars: [],
+  pending: precompute.value?.stage !== undefined && precompute.value.stage !== 'done',
+  window: [trimStartMs.value, trimEndMs.value],
+}))
 
 const step = ref(0)
 const source = ref<VoiceSource>('builtin')
@@ -160,7 +173,8 @@ const canSave = computed(
 )
 
 function next(): void {
-  if (step.value === 1 && (audioMissing.value || refTextMissing.value || instructMissing.value)) {
+  // 跳过逻辑由 stepsFor(source) 决定：builtin 2 步、design 4 步、clone 5 步（§4.7）。
+  if (!canGoNext.value) {
     error.value = new AppError('invalid_parameter', t('voices.create.requiredMissing'))
     return
   }
@@ -231,8 +245,8 @@ function close(): void {
 </script>
 
 <template>
-  <a-modal :open="open" :title="t('voices.create.title')" :width="640" :footer="null" @cancel="close">
-    <a-steps :current="step" size="small" :items="STEPS" class="voice-create__steps" />
+  <PModal :open="open" :title="t('voices.create.title')" @close="close">
+    <PPipe :steps="pipeSteps" class="voice-create__steps" />
 
     <ErrorBanner :error="error" />
 
@@ -245,12 +259,12 @@ function close(): void {
       <a-alert v-if="errorText" type="error" show-icon :message="errorText" />
       <p v-if="canRetry" class="voice-create__hint">{{ t('voices.create.retryHint') }}</p>
       <div class="voice-create__actions">
-        <a-button type="primary" @click="close">{{ t('voices.create.done') }}</a-button>
+        <button type="button" class="btn primary" @click="close">{{ t('voices.create.done') }}</button>
       </div>
     </div>
 
     <template v-else>
-      <section v-if="step === 0" class="voice-create__body">
+      <section v-if="currentStep === 'source'" class="voice-create__body">
         <a-radio-group v-model:value="source" button-style="solid">
           <a-radio-button v-for="item in sources" :key="item" :value="item">
             {{ sourceLabel(item) }}
@@ -261,14 +275,14 @@ function close(): void {
         </p>
       </section>
 
-      <section v-else-if="step === 1" class="voice-create__body">
+      <section v-else-if="currentStep === 'record'" class="voice-create__body">
         <template v-if="isClone">
           <div class="voice-create__row">
             <a-upload :before-upload="onPick" :show-upload-list="false" accept="audio/wav,.wav">
-              <a-button>{{ t('voices.create.uploadWav') }}</a-button>
+              <button type="button" class="btn">{{ t('voices.create.uploadWav') }}</button>
             </a-upload>
-            <a-button v-if="!recording" @click="startRecording">{{ t('voices.create.record') }}</a-button>
-            <a-button v-else danger @click="stopRecording">{{ t('voices.create.stopRecord') }}</a-button>
+            <button v-if="!recording" type="button" class="btn" @click="startRecording">{{ t('voices.create.record') }}</button>
+            <button v-else type="button" class="btn danger" @click="stopRecording">{{ t('voices.create.stopRecord') }}</button>
             <span v-if="audio" class="voice-create__picked">{{ t('voices.create.selected', { sec: (durationMs / 1000).toFixed(2) }) }}</span>
           </div>
           <p class="voice-create__hint">
@@ -294,7 +308,7 @@ function close(): void {
         <p v-else class="voice-create__hint">{{ t('voices.create.builtinHint') }}</p>
       </section>
 
-      <section v-else-if="step === 2" class="voice-create__body">
+      <section v-else-if="currentStep === 'trim'" class="voice-create__body">
         <VoiceAudition
           v-if="audioUrl"
           :src="audioUrl"
@@ -304,6 +318,10 @@ function close(): void {
           @update:trim="(start: number, end: number) => { trimStartMs = start; trimEndMs = end }"
         />
         <p v-else class="voice-create__hint">{{ t('voices.create.noAudioStep') }}</p>
+      </section>
+
+      <section v-else-if="currentStep === 'voiceprint'" class="voice-create__body">
+        <p class="voice-create__hint">{{ t('voices.create.voiceprintHint') }}</p>
       </section>
 
       <section v-else class="voice-create__body">
@@ -319,15 +337,26 @@ function close(): void {
       </section>
 
       <div class="voice-create__actions">
-        <a-button v-if="step > 0" @click="back">{{ t('voices.create.back') }}</a-button>
-        <a-button v-if="step < STEPS.length - 1" type="primary" @click="next">{{ t('voices.create.next') }}</a-button>
-        <a-button v-else type="primary" :disabled="!canSave" :loading="store.saving" @click="save">{{ t('voices.create.save') }}</a-button>
+        <button v-if="step > 0" type="button" class="btn" @click="back">{{ t('voices.create.back') }}</button>
+        <button v-if="step < STEPS.length - 1" type="button" class="btn primary" :disabled="!canGoNext" @click="next">{{ t('voices.create.next') }}</button>
+        <button v-else type="button" class="btn primary" :disabled="!canSave" @click="save">{{ t('voices.create.save') }}</button>
       </div>
     </template>
-  </a-modal>
+  </PModal>
 </template>
 
 <style scoped lang="less">
+.btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 4px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.btn.primary { background: var(--accent); color: var(--surface); border-color: var(--accent); }
+.btn.danger { color: var(--danger-text); border-color: var(--danger-text); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .voice-create {
   &__steps {
     margin-bottom: 16px;
