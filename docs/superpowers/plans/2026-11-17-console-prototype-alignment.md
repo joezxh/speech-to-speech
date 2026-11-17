@@ -424,7 +424,7 @@ class RoutingEngine:
 
 - [x] **Step 1: 写失败测试**（含 Review Focus #3/#4）—— 规则优先级取第一条 enabled 命中；user_signed 匹配（有票据 username）；tenant_tag / header / default；粘性命中直连；**粘性目标满员 → 亲和行被删 + 回落重选 + 记录理由**；粘性过期（`expires_at` 已过）→ 视为新路由；金丝雀 20% 在 1000 次模拟中分流 [12%,28%]；**等价性：规则表清空 + 无票据时，rank_session 的返回与改动前同一输入逐字一致**；亲和 key 越权（A 用户票据写 B 用户 key）→ 拒绝。
 - [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** PASS + `tests/unit/test_allocator.py` PASS（契约未变）+ `test_db_allocator_store.py` PASS。
-- [ ] **Step 5: Commit** `feat(console): RoutingEngine 插桩 rank_session（粘性/金丝雀/规则，等价性受保护）`
+- [x] **Step 5: Commit** `feat(console): RoutingEngine 插桩 rank_session（粘性/金丝雀/规则，等价性受保护）`
 
 ### Task 18: 路由记账异步落库 + L6 统计接真值
 
