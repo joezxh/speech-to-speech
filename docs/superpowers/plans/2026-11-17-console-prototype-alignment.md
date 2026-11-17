@@ -462,9 +462,9 @@ def flush() -> int                              # lifespan 周期任务批量入
 **Interfaces:**
 - 校验脚本失败即非零退出（CI 两道闸）；`_schema.py` 键集合与 YAML 双向一致（§7.6）。
 
-- [ ] **Step 1: 写失败测试** —— catalog 新字段解析透出；`exposure:ops` 行数仍 52；scenarios 键全部存在于 catalog 且建议值满足 `choices`；`validate_catalog_schema` 在人为注入不一致键时失败（fixture 临时 YAML）。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现（catalog 补字段可由脚本从现有行派生 `what/scope/anchor` 草稿再人工核对；scenarios 引用的键必须有 `product_baseline`，N4）→ **Step 4:** PASS + 两脚本对真实文件跑通退出码 0。
-- [ ] **Step 5: Commit** `feat(console): 参数目录四字段、场景数据集与两道校验闸`
+- [x] **Step 1: 写失败测试** —— catalog 新字段解析透出；`exposure:ops` 行数仍 52；scenarios 键全部存在于 catalog 且建议值满足 `choices`；`validate_catalog_schema` 在人为注入不一致键时失败（fixture 临时 YAML）。
+- [x] **Step 2:** FAIL → **Step 3:** 实现（catalog 补字段可由脚本从现有行派生 `what/scope/anchor` 草稿再人工核对；scenarios 引用的键必须有 `product_baseline`，N4）→ **Step 4:** PASS + 两脚本对真实文件跑通退出码 0。
+- [x] **Step 5: Commit** `feat(console): 参数目录四字段、场景数据集与两道校验闸`
 
 ### Task 20: 期望值计算 + 漂移（D1/D2）
 
