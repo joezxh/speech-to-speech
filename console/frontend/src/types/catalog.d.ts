@@ -17,6 +17,10 @@ export interface CatalogEntry {
   risk: string | null
   source_ref: string
   source_priority: string[]
+  what?: string
+  scope?: string
+  product_baseline?: unknown
+  anchor?: string
 }
 
 /** A.1 的 `data`（Task 8 多给了几个计数/变体字段，前端用处不大但类型要完整）。 */

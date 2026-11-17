@@ -1,0 +1,40 @@
+# 四套调参场景（spec 2026-11-17，D 面参数目录的推荐值集合）。
+# 硬约束：patches[].key 必须是 parameter-catalog.yaml 的 <stage>.<name>；
+# 有 choices 的参数其值必须在 choices 内；每个引用键必须有 product_baseline。
+schema: s2s-scenarios-v1
+
+scenarios:
+  latency:
+    note: {en: "Lowest first-byte latency", zh: "最低首字延迟"}
+    why: {en: "Short frames and minimal buffering", zh: "短帧与最小缓冲"}
+    gain: {en: "Faster turn-taking", zh: "更快的轮次切换"}
+    cost: {en: "Slightly higher CPU", zh: "CPU 略增"}
+    risk: {en: "May mis-trigger VAD in noisy rooms", zh: "噪声环境可能误触发 VAD"}
+    patches:
+      - {key: vad.min_silence_ms, value: 300}
+      - {key: tts.qwen3_tts_streaming_chunk_size, value: 2}
+  slow:
+    note: {en: "Deliberate speaking pace", zh: "放慢语速"}
+    why: {en: "Longer silence tolerance for thoughtful speech", zh: "给思考中的发言更长静默容忍"}
+    gain: {en: "Fewer mid-sentence cutoffs", zh: "减少句中截断"}
+    cost: {en: "Slower responses", zh: "响应变慢"}
+    risk: {en: "Feels sluggish", zh: "体感迟钝"}
+    patches:
+      - {key: vad.min_silence_ms, value: 1200}
+  edge:
+    note: {en: "Edge-device resource envelope", zh: "边缘设备资源档"}
+    why: {en: "Constrained memory and GPU budget", zh: "内存与显存受限"}
+    gain: {en: "Runs on smaller machines", zh: "可在小机器上运行"}
+    cost: {en: "Reduced concurrency", zh: "并发下降"}
+    risk: {en: "Quality regression under load", zh: "负载下音质下降"}
+    patches:
+      - {key: llm.responses_api_audio_max_tokens, value: 256}
+  mix:
+    note: {en: "Balanced mixed traffic", zh: "混合流量均衡"}
+    why: {en: "Balance latency and stability", zh: "兼顾延迟与稳定"}
+    gain: {en: "Predictable p95", zh: "p95 更可预测"}
+    cost: {en: "No single metric is optimal", zh: "单项指标不极致"}
+    risk: {en: "Needs periodic re-tuning", zh: "需定期重调"}
+    patches:
+      - {key: vad.min_silence_ms, value: 700}
+      - {key: llm.responses_api_audio_max_tokens, value: 512}

@@ -211,18 +211,28 @@ def check_consistency(entries: list[dict[str, Any]], items) -> list[str]:
     return errors
 
 
-def main() -> int:
-    if not CATALOG.is_file():
-        print(f"找不到参数目录：{CATALOG}")
+def main(argv: list[str] | None = None) -> int:
+    import argparse  # noqa: PLC0415
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--catalog", type=Path, default=CATALOG)
+    args = parser.parse_args(argv)
+    catalog_path = args.catalog
+
+    if not catalog_path.is_file():
+        print(f"找不到参数目录：{catalog_path}")
         return 1
 
     derived = getattr(_schema, "CATALOG_PATH", None)
-    if derived is None or Path(derived).resolve() != CATALOG.resolve():
-        print(f"控制台登记表派生自 {derived}，不是仓库里的 {CATALOG}")
+    if derived is None:
+        print("控制台登记表没有 CATALOG_PATH")
+        return 1
+    if catalog_path == CATALOG and Path(derived).resolve() != catalog_path.resolve():
+        print(f"控制台登记表派生自 {derived}，不是仓库里的 {catalog_path}")
         return 1
 
     try:
-        entries = load_entries(CATALOG)
+        entries = load_entries(catalog_path)
     except (OSError, yaml.YAMLError, ValueError) as exc:
         print(f"参数目录解析失败：{exc}")
         return 1

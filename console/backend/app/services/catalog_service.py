@@ -46,6 +46,11 @@ class Entry:
     risk: str = ""
     source_ref: str = ""
     source_priority: tuple[str, ...] = ()
+    # Task 19：面向人的说明/作用域/产品基线/锚点（可选，允许旧目录文件无这些键）。
+    what: str = ""
+    scope: str = ""
+    product_baseline: Any = None
+    anchor: str = ""
 
     @property
     def key(self) -> str:
@@ -73,6 +78,10 @@ class Entry:
             "risk": self.risk,
             "source_ref": self.source_ref,
             "source_priority": list(self.source_priority),
+            "what": self.what,
+            "scope": self.scope,
+            "product_baseline": json_safe(self.product_baseline),
+            "anchor": self.anchor,
         }
 
 
@@ -244,4 +253,8 @@ def _entry(row: Any, position: int, target: Path) -> Entry:
         risk=str(row.get("risk") or ""),
         source_ref=str(row.get("source_ref") or ""),
         source_priority=tuple(row.get("source_priority") or ()),
+        what=str(row.get("what") or ""),
+        scope=str(row.get("scope") or ""),
+        product_baseline=row.get("product_baseline"),
+        anchor=str(row.get("anchor") or ""),
     )
