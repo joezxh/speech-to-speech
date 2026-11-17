@@ -442,9 +442,9 @@ def submit(entry: RouteLogEntry) -> None        # 内存队列，绝不阻塞选
 def flush() -> int                              # lifespan 周期任务批量入库
 ```
 
-- [ ] **Step 1: 写失败测试** —— submit 后 flush 落库行数正确；队列满丢弃并计数（不阻塞）；`sticky_hit_rate = sticky/(sticky+新建)` 口径；未归因 token 计入"未匹配"。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现（lifespan 注册周期 flush）→ **Step 4:** PASS。
-- [ ] **Step 5: Commit** `feat(console): 路由记账异步批量落库与命中率统计`
+- [x] **Step 1: 写失败测试** —— submit 后 flush 落库行数正确；队列满丢弃并计数（不阻塞）；`sticky_hit_rate = sticky/(sticky+新建)` 口径；未归因 token 计入"未匹配"。
+- [x] **Step 2:** FAIL → **Step 3:** 实现（lifespan 注册周期 flush）→ **Step 4:** PASS。
+- [x] **Step 5: Commit** `feat(console): 路由记账异步批量落库与命中率统计`
 
 ---
 
