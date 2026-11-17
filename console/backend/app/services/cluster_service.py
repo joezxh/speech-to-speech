@@ -76,12 +76,27 @@ def delete_cluster(db, *, name: str, actor: str) -> None:
 
 
 def instance_host_stats(db, cluster_name: str) -> dict:
-    """该集群的机器/实例计数（spec §4.2）：机器 = base_url host 去重；
-    machines_online = 至少有一个 online 实例的 host 数。派生逻辑与 /instances summary
-    共用 instances_service.derive_machine_counts，防口径漂移。"""
+    """该集群的机器/实例计数（spec §4.2）：机器 = 实例 host 去重 ∪ 该集群的
+    param_machine 行（addr host 与实例 host 匹配的只算一台）；machines_online =
+    有 online 实例的 host 数 + state==online 且未被实例口径覆盖的机器。
+    派生逻辑与 /instances summary 共用 instances_service.derive_machine_counts，防口径漂移。"""
+    from app.repositories.machine_repository import MachineRepository  # noqa: PLC0415 - 避免 import 环
     from app.services import instances_service  # noqa: PLC0415 - 避免 import 环
 
     rows = [r for r in InstanceRepository(db).list_all() if r.cluster_id == cluster_name]
     view = instance_monitor.snapshot()
     machines_total, machines_online = instances_service.derive_machine_counts(rows, view.get)
+
+    # param_machine 计入集群成员：机器先注册、实例还没建时机器数不该是 0
+    # （用户反馈：机器编辑保存集群后总览页数目为 0）。
+    machines = MachineRepository(db).list(cluster_name)
+    instance_hosts = {instances_service.host_of(r.base_url) for r in rows}
+    for machine in machines:
+        host = instances_service.host_of(machine.addr or "")
+        if host and host in instance_hosts:
+            # 同一台机器既有实例又有 param_machine 行：沿用实例的在线口径，不重复计。
+            continue
+        machines_total += 1
+        if machine.state == "online":
+            machines_online += 1
     return {"machines_total": machines_total, "machines_online": machines_online, "instances_total": len(rows)}
