@@ -706,11 +706,11 @@ export function eventRows(a: AuditRow[]): EventRow[]      // 取最近 N=8
 
 **Interfaces:** 无新接口；本任务是收口与一致性验证。
 
-- [ ] **Step 1:** `npx vitest run src/i18n/i18n.spec.ts` → 若双语不一致则按输出补 key（预期至少补 `nav.lb`、`nav.conversation`）。
+- [x] **Step 1:** `npx vitest run src/i18n/i18n.spec.ts` → 若双语不一致则按输出补 key（预期至少补 `nav.lb`、`nav.conversation`）。
 - [ ] **Step 2:** hex 白名单扩到全部改造文件；`hex-ban.spec.ts` PASS。
-- [ ] **Step 3: 基线截图比对**（人工步骤，写入本任务勾选）：10 张既有基线（`_shot-lb/-machines/-deploy-voicepick/-voices/-voice-wizard` 中英各 5）并排比对；另补 4 页基线（总览/对话示波/发布/审计，中英各 1），存 `console/design/`。
-- [ ] **Step 4:** 文档修订记录写回两份既有 spec；`traffic.py` 的 `unimplemented` 清空；三份使用文档同步。
-- [ ] **Step 5:** 后端全量 `python -m pytest console/backend/tests -v`（基线 405 不回退）+ 前端 `npx vitest run` + `npm run build` + `npm run lint` 全绿。**Commit** `feat(console): 原型对齐收口——i18n/样式棘轮/基线截图/文档修订`
+- [ ] **Step 3: (人工基线截图，未做) 基线截图比对**（人工步骤，写入本任务勾选）：10 张既有基线（`_shot-lb/-machines/-deploy-voicepick/-voices/-voice-wizard` 中英各 5）并排比对；另补 4 页基线（总览/对话示波/发布/审计，中英各 1），存 `console/design/`。
+- [x] **Step 4:** 文档修订记录写回两份既有 spec；`traffic.py` 的 `unimplemented` 清空；三份使用文档同步。
+- [ ] **Step 5: (基线截图未做，整支评审未做)** 后端全量 `python -m pytest console/backend/tests -v`（基线 405 不回退）+ 前端 `npx vitest run` + `npm run build` + `npm run lint` 全绿。**Commit** `feat(console): 原型对齐收口——i18n/样式棘轮/基线截图/文档修订`
 
 ---
 
