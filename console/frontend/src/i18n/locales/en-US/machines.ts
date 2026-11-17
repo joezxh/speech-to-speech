@@ -50,6 +50,7 @@ export default {
     },
     registry: { manual: 'manual', auto: 'auto' },
     workloadSum: '{n} workloads · VRAM {used}/{total} GB',
+    paramsCount: 'All parameters ({n})',
     workloadCols: {
       kind: 'Kind',
       engine: 'Engine',
@@ -59,6 +60,7 @@ export default {
       publicAddr: 'Public address',
       healthPath: 'Health path',
       vramGb: 'VRAM',
+      params: 'Model & params',
       check: 'Check'
     },
     empty: 'No machines yet. Create one, or let the machine-side agent auto register.',

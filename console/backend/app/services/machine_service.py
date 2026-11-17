@@ -42,6 +42,7 @@ class WorkloadIn(BaseModel):
     healthPath: str = ""
     healthIntervalS: int = Field(default=30, ge=1)
     note: str = ""
+    params: dict = Field(default_factory=dict)
     state: str = ""
 
 
@@ -140,6 +141,7 @@ def _workload_out(row: ParamMachineWorkload) -> WorkloadOut:
         healthPath=row.health_path,
         healthIntervalS=row.health_interval_s,
         note=row.note,
+        params=row.params_json or {},
         state=row.state,
     )
 
@@ -275,6 +277,7 @@ _WORKLOAD_COLUMNS = {
     "healthPath": "health_path",
     "healthIntervalS": "health_interval_s",
     "note": "note",
+    "params": "params_json",
     "state": "state",
 }
 

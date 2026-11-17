@@ -124,3 +124,31 @@ def test_heartbeat_with_unsupported_protocol_is_rejected(client, db_session):
     token = _register(client, code).json()["data"]["machine_token"]
     response = _heartbeat(client, token, protocol_version=999)
     assert response.status_code == 400
+
+
+def test_heartbeat_persists_real_pipeline_models_params_and_vram(client, db_session):
+    # 机器页展开区需要 agent 采集的真源（模型/全部参数/实测显存）。
+    code = _enroll(db_session)
+    token = _register(client, code).json()["data"]["machine_token"]
+    params = {
+        "models": {"stt": "/models/asr-1.7b", "llm": "qwen3.8-27b", "tts": "/models/qwen3-tts"},
+        "llm.responses_api_api_key": "***",
+        "stt.qwen3_asr_device": "cuda",
+    }
+    response = _heartbeat(
+        client,
+        token,
+        workloads=[
+            {
+                "kind": "pipeline", "port": 8765, "model": "asr · llm · tts",
+                "public_addr": "10.12.0.31:8765", "vram_gb": 4.75, "params": params,
+            }
+        ],
+    )
+    assert response.status_code == 200
+    rows = MachineRepository(db_session).list_workloads("node-a01")
+    assert len(rows) == 1
+    assert rows[0].params_json == params
+    assert rows[0].vram_gb == 4.75
+    out = machine_service._workload_out(rows[0])
+    assert out.params == params

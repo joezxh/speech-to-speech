@@ -155,7 +155,13 @@ def read_usage(settings=None) -> Usage:
 
 
 def collect_workloads(settings=None) -> list[dict]:
-    """负载清单：agent.yaml 声明全量保留；pipeline 负载由探测 /v1/pool 补全（§5.3.3）。"""
+    """负载清单：agent.yaml 声明全量保留；pipeline 负载由探测 /v1/pool 补全（§5.3.3）。
+
+    模型名/全部参数来自本机生效配置，显存来自 nvidia-smi 实测（pipeline_inspect）。
+    """
+    from speech_to_speech.agent import pipeline_inspect  # noqa: PLC0415
+
+    deployment = pipeline_inspect.collect_pipeline_deployment(settings)
     workloads: list[dict] = []
     declaration = Path(getattr(settings, "declaration_file", "/app/config/agent.yaml"))
     declared: list[dict] = []
@@ -169,18 +175,21 @@ def collect_workloads(settings=None) -> list[dict]:
             declared = []
     for item in declared:
         workloads.append(
-            {
-                "kind": str(item.get("kind", "")),
-                "engine": str(item.get("engine", "")),
-                "model": str(item.get("model", "")),
-                "port": item.get("port"),
-                "vram_gb": item.get("vram_gb"),
-                "health_path": str(item.get("health_path", "")),
-                "health_interval_s": int(item.get("health_interval_s") or 30),
-                "listen": str(item.get("listen", "")),
-                "public_addr": str(item.get("public_addr", "")),
-                "note": str(item.get("note", "")),
-            }
+            pipeline_inspect.enrich_workload(
+                {
+                    "kind": str(item.get("kind", "")),
+                    "engine": str(item.get("engine", "")),
+                    "model": str(item.get("model", "")),
+                    "port": item.get("port"),
+                    "vram_gb": item.get("vram_gb"),
+                    "health_path": str(item.get("health_path", "")),
+                    "health_interval_s": int(item.get("health_interval_s") or 30),
+                    "listen": str(item.get("listen", "")),
+                    "public_addr": str(item.get("public_addr", "")),
+                    "note": str(item.get("note", "")),
+                },
+                deployment,
+            )
         )
 
     if not any(item["kind"] == "pipeline" for item in workloads):
@@ -192,18 +201,21 @@ def collect_workloads(settings=None) -> list[dict]:
         except Exception:  # noqa: BLE001 - 探测不到就不报 pipeline 负载
             return workloads
         workloads.append(
-            {
-                "kind": "pipeline",
-                "engine": "speech-to-speech-pipeline",
-                "model": "",
-                "port": port,
-                "vram_gb": None,
-                "health_path": "/v1/pool",
-                "health_interval_s": 5,
-                "listen": f"127.0.0.1:{port}",
-                "public_addr": f"127.0.0.1:{port}",
-                "note": "会话 Pipeline（VAD · STT · LLM 调用 · TTS）",
-            }
+            pipeline_inspect.enrich_workload(
+                {
+                    "kind": "pipeline",
+                    "engine": "speech-to-speech-pipeline",
+                    "model": "",
+                    "port": port,
+                    "vram_gb": None,
+                    "health_path": "/v1/pool",
+                    "health_interval_s": 5,
+                    "listen": f"127.0.0.1:{port}",
+                    "public_addr": f"127.0.0.1:{port}",
+                    "note": "会话 Pipeline（VAD · STT · LLM 调用 · TTS）",
+                },
+                deployment,
+            )
         )
     return workloads
 

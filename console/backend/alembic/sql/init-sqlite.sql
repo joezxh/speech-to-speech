@@ -488,3 +488,9 @@ CREATE INDEX ix_param_machine_command_expires_at ON param_machine_command (expir
 
 UPDATE alembic_version SET version_num='0011_machine_command_queue' WHERE alembic_version.version_num = '0010_console_lb_backbone';
 
+-- Running upgrade 0011_machine_command_queue -> 0012_workload_observability
+
+ALTER TABLE param_machine_workload ADD COLUMN params_json JSON DEFAULT '{}' NOT NULL;
+
+UPDATE alembic_version SET version_num='0012_workload_observability' WHERE alembic_version.version_num = '0011_machine_command_queue';
+

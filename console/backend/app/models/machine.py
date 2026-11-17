@@ -66,6 +66,8 @@ class ParamMachineWorkload(Base):
     health_path: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     health_interval_s: Mapped[int] = mapped_column(Integer, nullable=False, default=30)
     note: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    # agent 从生效配置采集的 pipeline 模型与全部参数（密钥已掩码）。
+    params_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     state: Mapped[str] = mapped_column(String(16), nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow

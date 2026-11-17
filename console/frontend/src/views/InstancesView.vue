@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Task 12（2026-11-17 原型对齐计划）：机器管理页按原型重写（§4.5）。
-// 告警条 / 搜索+两按钮 / 12 列机器表（mtbl）/ 内联展开负载清单（svcrow）/
-// 新增两步模态 + 三步测试面板 / 编辑模态。观测面板（模型运行时/轮次/日志）保留。
+// 告警条 / 搜索+两按钮 / 12 列机器表（mtbl）/ 内联展开负载清单（svcrow，含模型/参数/显存）/
+// 新增两步模态 + 三步测试面板 / 编辑模态。原型外的运行时/日志观测面板已移除。
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -13,20 +13,10 @@ import type { PColumn } from '@/components/proto/PTable.vue'
 import MachineFormModal from '@/components/proto/MachineFormModal.vue'
 import MachineTestPanel from '@/components/proto/MachineTestPanel.vue'
 import ErrorBanner from '@/components/ErrorBanner.vue'
-import InstanceCard from '@/components/InstanceCard.vue'
-import LogAnalysisCard from '@/components/LogAnalysisCard.vue'
-import LogPanel from '@/components/LogPanel.vue'
-import RuntimeGrid from '@/components/RuntimeGrid.vue'
-import TurnLatencyPanel from '@/components/TurnLatencyPanel.vue'
 import { AppError } from '@/api/client'
 import { issueMachineCommand, listMachineCommands } from '@/api/machines'
-import { getInstances } from '@/api/instances'
 import type { MachineCommandView, MachineRow, CommandKind, WorkloadRow } from '@/views/machines.viewmodel'
-import { useConsoleStore } from '@/stores/console'
-import { useLogsStore } from '@/stores/logs'
 import { useMachineStore } from '@/stores/machine'
-import { useRuntimeStore } from '@/stores/runtime'
-import type { InstanceSnapshot } from '@/types/api'
 import {
   commandActions,
   filterMachines,
@@ -34,15 +24,13 @@ import {
   latestHealth,
   serviceIdOf,
   vramSummary,
+  workloadParamEntries,
   workloadTags
 } from './machines.viewmodel'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const consoleStore = useConsoleStore()
-const runtime = useRuntimeStore()
-const logs = useLogsStore()
 const store = useMachineStore()
 
 // 拓扑下钻（?host=）映射为初始搜索词：host 命中机器 ID 或地址均可（Task 12 保留语义）。
@@ -56,7 +44,6 @@ watch(
 const error = ref('')
 const notice = ref('')
 const commands = ref<Record<string, MachineCommandView[]>>({})
-const instanceSnapshot = ref<InstanceSnapshot | null>(null)
 const expanded = ref<string | null>(null)
 const formOpen = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
@@ -159,11 +146,6 @@ async function poll(): Promise<void> {
       commands.value[machine.machineId] = await listMachineCommands(machine.machineId)
     })
   )
-  try {
-    instanceSnapshot.value = await getInstances(consoleStore.profile)
-  } catch {
-    instanceSnapshot.value = null
-  }
 }
 
 const pollTimer = setInterval(poll, 5000)
@@ -277,6 +259,7 @@ onBeforeUnmount(() => clearInterval(pollTimer))
                       <th>{{ t('machines.admin.workloadCols.listen') }}</th>
                       <th>{{ t('machines.admin.workloadCols.healthPath') }}</th>
                       <th>{{ t('machines.admin.workloadCols.vramGb') }}</th>
+                      <th>{{ t('machines.admin.workloadCols.params') }}</th>
                       <th>{{ t('machines.admin.workloadCols.check') }}</th>
                     </tr>
                   </thead>
@@ -289,6 +272,13 @@ onBeforeUnmount(() => clearInterval(pollTimer))
                       <td class="mono">{{ wl.listen || '—' }}</td>
                       <td class="mono">{{ wl.healthPath || '—' }}</td>
                       <td>{{ wl.vramGb != null ? `${wl.vramGb} GB` : '—' }}</td>
+                      <td>
+                        <details v-if="workloadParamEntries(wl.params).length">
+                          <summary>{{ t('machines.admin.paramsCount', { n: workloadParamEntries(wl.params).length }) }}</summary>
+                          <pre class="param-list">{{ workloadParamEntries(wl.params).map((p) => `${p.key} = ${p.value}`).join('\n') }}</pre>
+                        </details>
+                        <span v-else>—</span>
+                      </td>
                       <td>
                         <span class="mono" :data-check="serviceIdOf(wl)">
                           {{ t(`machines.checkResult.${checkState(row, wl)}`) }}
@@ -309,7 +299,7 @@ onBeforeUnmount(() => clearInterval(pollTimer))
             </tr>
           </template>
           <tr v-if="!rows.length">
-            <td :colspan="columns.length" style="text-align: center; color: var(--s2s-color-muted)">
+            <td :colspan="columns.length" class="empty-cell">
               {{ t('machines.admin.empty') }}
             </td>
           </tr>
@@ -329,12 +319,6 @@ onBeforeUnmount(() => clearInterval(pollTimer))
     <!-- 新增/编辑两步模态 -->
     <MachineFormModal :open="formOpen" :mode="formMode" :machine="formTarget" @close="formOpen = false" />
 
-    <!-- 观测面板（保留既有能力） -->
-    <RuntimeGrid :snapshot="runtime.snapshot" :loading="runtime.loading" :error="runtime.error" />
-    <InstanceCard :snapshot="instanceSnapshot" :error="error" />
-    <TurnLatencyPanel />
-    <LogPanel :live="logs.live" @follow="logs.setLive($event)" @refresh="logs.reload()" @analyze="logs.analyze()" />
-    <LogAnalysisCard :analysis="logs.analysis" :pending="logs.pending" :error="logs.analysisError" @retry="logs.analyze()" />
   </div>
 </template>
 
@@ -343,5 +327,16 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+.empty-cell { text-align: center; opacity: 0.65; }
+.param-list {
+  max-height: 220px;
+  max-width: 520px;
+  overflow: auto;
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
 }
 </style>

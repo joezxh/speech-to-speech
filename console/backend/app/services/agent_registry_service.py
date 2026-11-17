@@ -169,6 +169,7 @@ def heartbeat(db: Session, token_machine_id: str, body: HeartbeatIn) -> dict:
                 "health_path": item.health_path,
                 "health_interval_s": item.health_interval_s,
                 "note": item.note,
+                "params_json": item.params,
             }
             for item in body.workloads
         ],

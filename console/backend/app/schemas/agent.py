@@ -31,6 +31,8 @@ class AgentWorkload(BaseModel):
     listen: str = Field(default="", max_length=64)
     public_addr: str = Field(default="", max_length=64)
     note: str = Field(default="", max_length=255)
+    # agent 从 pipeline 生效配置采集的模型与全部参数（密钥已掩码）。
+    params: dict = Field(default_factory=dict)
 
 
 class AgentRegisterIn(BaseModel):

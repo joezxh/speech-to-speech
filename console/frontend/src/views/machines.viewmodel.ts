@@ -10,6 +10,20 @@ export interface WorkloadRow {
   healthPath: string
   healthIntervalS: number
   note: string
+  // agent 从生效配置采集的模型与全部参数（密钥已掩码）。
+  params?: Record<string, unknown>
+}
+
+export function workloadParamEntries(
+  params: Record<string, unknown> | undefined
+): Array<{ key: string; value: string }> {
+  if (!params) return []
+  return Object.entries(params)
+    .map(([key, value]) => ({
+      key,
+      value: typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)
+    }))
+    .sort((a, b) => a.key.localeCompare(b.key))
 }
 
 export interface MachineRow {

@@ -544,13 +544,15 @@ COMMENT ON COLUMN "param_machine_workload"."listen_addr" IS '容器内实际监�
 
 COMMENT ON COLUMN "param_machine_workload"."public_addr" IS '对外可达地址，控制台用它反查实例归属';
 
-COMMENT ON COLUMN "param_machine_workload"."vram_gb" IS '声明显存占用（GB）';
+COMMENT ON COLUMN "param_machine_workload"."vram_gb" IS '显存占用（GB），pipeline 行取 nvidia-smi 实测，其余为声明值';
 
 COMMENT ON COLUMN "param_machine_workload"."health_path" IS '健康检查路径';
 
 COMMENT ON COLUMN "param_machine_workload"."health_interval_s" IS '健康检查间隔（秒）';
 
 COMMENT ON COLUMN "param_machine_workload"."note" IS '备注说明';
+
+COMMENT ON COLUMN "param_machine_workload"."params_json" IS 'agent 采集的 pipeline 模型与全部参数（密钥已掩码）';
 
 COMMENT ON COLUMN "param_machine_workload"."state" IS '负载状态描述，空表示未探测';
 
@@ -1083,6 +1085,12 @@ CREATE INDEX ix_param_machine_command_status ON param_machine_command (status);
 CREATE INDEX ix_param_machine_command_expires_at ON param_machine_command (expires_at);
 
 UPDATE alembic_version SET version_num='0011_machine_command_queue' WHERE alembic_version.version_num = '0010_console_lb_backbone';
+
+-- Running upgrade 0011_machine_command_queue -> 0012_workload_observability
+
+ALTER TABLE param_machine_workload ADD COLUMN params_json JSON DEFAULT '{}' NOT NULL;
+
+UPDATE alembic_version SET version_num='0012_workload_observability' WHERE alembic_version.version_num = '0011_machine_command_queue';
 
 COMMIT;
 

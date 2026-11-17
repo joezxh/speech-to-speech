@@ -11,6 +11,7 @@ import {
   testStepsToView,
   vramSummary,
   workloadTags,
+  workloadParamEntries,
   type MachineCommandView,
   type MachineRow,
   type WorkloadRow
@@ -163,6 +164,23 @@ describe('commandActions (prototype machine row actions)', () => {
       { kind: 'reboot', labelKey: 'machines.action.reboot', disabled: false }
     ])
     expect(commandActions('draining', ['resume'])[0].disabled).toBe(true)
+  })
+})
+
+describe('workloadParamEntries', () => {
+  it('renders collected pipeline params in stable order without inventing values', () => {
+    expect(
+      workloadParamEntries({
+        'tts.qwen3_tts_streaming_chunk_size': 4,
+        'llm.model_name': 'qwen3.8-27b',
+        'llm.responses_api_api_key': '***'
+      })
+    ).toEqual([
+      { key: 'llm.model_name', value: 'qwen3.8-27b' },
+      { key: 'llm.responses_api_api_key', value: '***' },
+      { key: 'tts.qwen3_tts_streaming_chunk_size', value: '4' }
+    ])
+    expect(workloadParamEntries(undefined)).toEqual([])
   })
 })
 

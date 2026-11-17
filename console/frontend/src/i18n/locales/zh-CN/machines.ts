@@ -50,6 +50,7 @@ export default {
     },
     registry: { manual: '手动', auto: '自动' },
     workloadSum: '{n} 个负载 · 显存 {used}/{total} GB',
+    paramsCount: '全部参数 ({n})',
     workloadCols: {
       kind: '类型',
       engine: '引擎',
@@ -59,6 +60,7 @@ export default {
       publicAddr: '对外地址',
       healthPath: '健康检查路径',
       vramGb: '显存',
+      params: '模型与参数',
       check: '检查'
     },
     empty: '还没有机器。点「新增机器」建档，或让机器端 agent 自动注册。',
