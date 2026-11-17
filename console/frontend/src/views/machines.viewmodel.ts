@@ -66,6 +66,21 @@ export function workloadTags(rows: WorkloadRow[]): { kind: string; count: number
   return [...counts.entries()].map(([kind, count]) => ({ kind, count }))
 }
 
+export interface ClusterOption {
+  value: string
+  label: string
+}
+
+/** 机器表单的集群下拉选项：集群表全量 + 当前值兜底（软关联：旧值必须可选）。 */
+export function clusterOptions(
+  clusters: Array<{ name: string }>,
+  current: string
+): ClusterOption[] {
+  const values = clusters.map((cluster) => cluster.name)
+  if (current && !values.includes(current)) values.push(current)
+  return values.map((value) => ({ value, label: value }))
+}
+
 /** 后端 pass/pending/fail → 面板 ok/running/fail（三步测试的点色状态机）。 */
 export function testStepsToView(steps: TestStepIn[]): TestStepView[] {
   return steps.map((step) => ({

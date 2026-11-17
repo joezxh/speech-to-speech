@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  clusterOptions,
   filterMachines,
   testStepsToView,
   vramSummary,
@@ -103,5 +104,24 @@ describe('testStepsToView', () => {
       { key: 'step2', label: '已下发注册指令 —— 等待机器端 Agent 上报', state: 'fail' },
       { key: 'step3', label: 'Agent 握手 · 心跳 · 版本上报', state: 'running' }
     ])
+  })
+})
+
+describe('clusterOptions', () => {
+  it('lists cluster names and keeps the current value even when absent from the table', () => {
+    const options = clusterOptions(
+      [{ id: 1, name: 'default', note: '', createdAt: '' }, { id: 2, name: 'edge', note: '', createdAt: '' }],
+      'staging'
+    )
+    expect(options.map((o) => o.value)).toEqual(['default', 'edge', 'staging'])
+  })
+
+  it('does not duplicate the current value when it exists in the table', () => {
+    const options = clusterOptions(
+      [{ id: 1, name: 'default', note: '', createdAt: '' }],
+      'default'
+    )
+    expect(options).toHaveLength(1)
+    expect(options[0].value).toBe('default')
   })
 })

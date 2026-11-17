@@ -19,7 +19,12 @@
     </div>
     <div class="field">
       <label>{{ t('machines.form.clusterId') }}</label>
-      <input v-model="draft.clusterId" class="fin" />
+      <!-- Task 12 增量：集群来自集群表（param_cluster），下拉选择；旧值不在表时兜底显示。 -->
+      <select v-model="draft.clusterId" class="fin">
+        <option v-for="option in options" :key="option.value" :value="option.value">
+          {{ option.label }}
+        </option>
+      </select>
     </div>
 
     <h3>{{ t('machines.form.workloadsTitle') }}</h3>
@@ -59,12 +64,13 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import PModal from './PModal.vue'
+import { clustersApi } from '@/api/clusters'
 import { useMachineStore } from '@/stores/machine'
-import type { MachineRow, WorkloadRow } from '@/views/machines.viewmodel'
+import { clusterOptions, type ClusterOption, type MachineRow, type WorkloadRow } from '@/views/machines.viewmodel'
 
 const props = defineProps<{
   open: boolean
@@ -86,6 +92,24 @@ const draft = reactive({
 })
 const busy = ref(false)
 const createdCode = ref('')
+const clusters = ref<Array<{ name: string }>>([])
+
+// 集群下拉数据源：打开弹窗时拉集群表；失败保持空列表（当前值兜底仍可显示）。
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) return
+    clustersApi
+      .list()
+      .then((rows) => {
+        clusters.value = rows as unknown as Array<{ name: string }>
+      })
+      .catch(() => {
+        clusters.value = []
+      })
+  }
+)
+const options = computed<ClusterOption[]>(() => clusterOptions(clusters.value, draft.clusterId))
 
 watch(
   () => props.open,
