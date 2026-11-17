@@ -629,9 +629,9 @@ export function canAdvance(step: WizardStep, s: WizardState): boolean        // 
 
 - 术语：界面文案用「声纹嵌入」（不出现 x-vector）。
 
-- [ ] **Step 1: 写失败测试** —— `stepsFor('builtin')` 长度 2（来源+命名）；`stepsFor('design')` 长度 4；`stepsFor('clone')` 长度 5；trimWindow 高亮窗计算；预计算 `pending` 时 `canAdvance=false`。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现（波形 SVG 48 柱、保留窗高亮、三输入联动）→ **Step 4:** PASS + build。
-- [ ] **Step 5: Commit** `feat(console-front): 五步音色向导按原型重写（跳过逻辑/裁剪/预计算）`
+- [x] **Step 1: 写失败测试** —— `stepsFor('builtin')` 长度 2（来源+命名）；`stepsFor('design')` 长度 4；`stepsFor('clone')` 长度 5；trimWindow 高亮窗计算；预计算 `pending` 时 `canAdvance=false`。
+- [x] **Step 2:** FAIL → **Step 3:** 实现（波形 SVG 48 柱、保留窗高亮、三输入联动）→ **Step 4:** PASS + build。
+- [x] **Step 5: Commit** `feat(console-front): 五步音色向导按原型重写（跳过逻辑/裁剪/预计算）`
 
 ### Task 28: 对话页重写 + WS 票据接线
 
