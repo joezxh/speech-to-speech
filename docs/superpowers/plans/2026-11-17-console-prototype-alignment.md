@@ -539,9 +539,9 @@ export function applyScenario(scene: Scene, patch: Record<string,string>): Recor
 
 - 元素按设计 §4.6 逐条：机器 chips / 漂移条 / 离线条 / KPI×4 / 部署栈卡（推送·回滚）/ 分组概览 / 场景顾问（四 chip、建议卡三列理由、差异表、应用到草稿）/ 11 列宽表（首末列 sticky，四类行底色）。
 
-- [ ] **Step 1: 写失败测试** —— rowTone 优先级 drift > ops > ro > draft；applyScenario 只写差距键；diffRows 标记 `same`（现值=建议）。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现（Profile 选择器落位页头；下发按钮 canary 之外弹确认词输入）→ **Step 4:** vitest + build + i18n spec PASS。
-- [ ] **Step 5: Commit** `feat(console-front): 部署与参数页按原型重写（11 列宽表/场景顾问/行级下发）`
+- [x] **Step 1: 写失败测试** —— rowTone 优先级 drift > ops > ro > draft；applyScenario 只写差距键；diffRows 标记 `same`（现值=建议）。
+- [x] **Step 2:** FAIL → **Step 3:** 实现（Profile 选择器落位页头；下发按钮 canary 之外弹确认词输入）→ **Step 4:** vitest + build + i18n spec PASS。
+- [x] **Step 5: Commit** `feat(console-front): 部署与参数页按原型重写（11 列宽表/场景顾问/行级下发）`
 
 ---
 
