@@ -16,12 +16,14 @@ import ErrorBanner from '@/components/ErrorBanner.vue'
 import { AppError } from '@/api/client'
 import { issueMachineCommand, listMachineCommands } from '@/api/machines'
 import type { MachineCommandView, MachineRow, CommandKind, WorkloadRow } from '@/views/machines.viewmodel'
+import { useLogsStore } from '@/stores/logs'
 import { useMachineStore } from '@/stores/machine'
 import {
   commandActions,
   filterMachines,
   healthState,
   latestHealth,
+  nodeMetricSummary,
   serviceIdOf,
   vramSummary,
   workloadParamEntries,
@@ -32,6 +34,7 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const store = useMachineStore()
+const logsStore = useLogsStore()
 
 // 拓扑下钻（?host=）映射为初始搜索词：host 命中机器 ID 或地址均可（Task 12 保留语义）。
 const query = ref(String(route.query.host ?? ''))
@@ -139,6 +142,19 @@ function goDeploy(machine: MachineRow): void {
   void router.push({ name: 'deploy', query: { machine: machine.machineId } })
 }
 
+const deploymentCounts = (machine: MachineRow) => ({
+  runtime: Object.keys(machine.deployment?.runtime ?? {}).length,
+  declared: Object.keys(machine.deployment?.declared ?? {}).length
+})
+
+function goLogs(machine: MachineRow): void {
+  logsStore.filters.process = ['pipeline']
+  logsStore.filters.q = machine.machineId
+  void logsStore.reload()
+  void logsStore.analyze()
+  goDeploy(machine)
+}
+
 async function poll(): Promise<void> {
   await store.fetch()
   await Promise.allSettled(
@@ -148,8 +164,8 @@ async function poll(): Promise<void> {
   )
 }
 
+void poll()
 const pollTimer = setInterval(poll, 5000)
-watch(() => consoleStore.profile, poll, { immediate: true })
 onBeforeUnmount(() => clearInterval(pollTimer))
 </script>
 
@@ -248,6 +264,18 @@ onBeforeUnmount(() => clearInterval(pollTimer))
               <td :colspan="columns.length">
                 <div class="svc-sum">
                   <span>{{ t('machines.admin.workloadSum', { n: row.workloads.length, used: vramSummary(row.workloads, row.gpuTotalGb).usedGb, total: row.gpuTotalGb ?? 0 }) }}</span>
+                </div>
+                <div class="svc-sum">
+                  <strong>{{ t('machines.admin.nodeTitle') }}</strong>
+                  <span v-for="metric in nodeMetricSummary(row)" :key="metric.key">
+                    {{ t(`machines.admin.nodeMetric.${metric.key}`) }}: {{ metric.value }}
+                  </span>
+                </div>
+                <div class="svc-sum">
+                  <strong>{{ t('machines.admin.deploySummary') }}</strong>
+                  <span>{{ t('machines.admin.deployCounts', deploymentCounts(row)) }}</span>
+                  <button type="button" class="btn sm" @click.stop="goDeploy(row)">{{ t('machines.admin.deployAction') }}</button>
+                  <button type="button" class="btn sm" @click.stop="goLogs(row)">{{ t('machines.admin.logsAction') }}</button>
                 </div>
                 <table class="tbl">
                   <thead>

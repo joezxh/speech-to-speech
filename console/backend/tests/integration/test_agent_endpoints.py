@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 from app.db.database import get_db
 from app.main import create_app
+from app.models.machine_config import ParamAgentConfigVersion
+from app.repositories.audit_repository import AuditRepository
 from app.repositories.machine_repository import MachineRepository
 from app.services import machine_service
 from app.services.machine_service import MachineCreate
@@ -90,6 +92,25 @@ def test_register_exchange_then_heartbeat_roundtrip(client, db_session):
     assert MachineRepository(db_session).get("node-a01").state == "ok"
 
 
+def test_machine_out_derives_deploy_fields_from_audit_and_config_snapshot(client, db_session):
+    _enroll(db_session)
+    AuditRepository(db_session).record(
+        actor="alice", role="admin", action="machine.config.deploy",
+        profile="node-a01", fields=["values"], request_id="r1",
+    )
+    db_session.add(
+        ParamAgentConfigVersion(
+            machine_id="node-a01", config_version=1, yaml_hash="h", yaml_text="blocks: {}"
+        )
+    )
+    db_session.commit()
+    out = machine_service.list_machines(db_session)[0]
+    assert out.lastPushBy == "alice"
+    assert out.lastPushAt is not None
+    assert out.deployedAt == out.lastPushAt
+    assert out.configSource == "console"
+
+
 def test_register_code_is_single_use(client, db_session):
     code = _enroll(db_session)
     assert _register(client, code).status_code == 200
@@ -124,6 +145,33 @@ def test_heartbeat_with_unsupported_protocol_is_rejected(client, db_session):
     token = _register(client, code).json()["data"]["machine_token"]
     response = _heartbeat(client, token, protocol_version=999)
     assert response.status_code == 400
+
+
+def test_heartbeat_persists_node_metrics_and_deployment_params(client, db_session):
+    code = _enroll(db_session)
+    token = _register(client, code).json()["data"]["machine_token"]
+    response = _heartbeat(
+        client,
+        token,
+        machine={
+            "machine_id": "node-a01", "addr": "10.12.0.31",
+            "version": "1.1.0", "gpu_util_pct": 64, "cpu_pct": 12.5,
+            "mem_total_gb": 64.0, "mem_used_gb": 20.0, "mem_pct": 31.2,
+            "gpu": "NVIDIA L40S", "collected_at": "2026-11-17T12:00:00Z",
+        },
+        runtime={"deployment": {"runtime": {"stt.backend": "qwen3-asr"}, "declared": {}}},
+    )
+    assert response.status_code == 200
+    row = MachineRepository(db_session).get("node-a01")
+    assert row.version == "1.1.0"
+    assert row.gpu == "NVIDIA L40S"
+    assert row.gpu_util_pct == 64
+    assert row.cpu_pct == 12.5
+    assert row.deployment_json["runtime"]["stt.backend"] == "qwen3-asr"
+    out = machine_service.list_machines(db_session)[0]
+    assert out.version == "1.1.0"
+    assert out.gpuUtilPct == 64
+    assert out.cpuPct == 12.5
 
 
 def test_heartbeat_persists_real_pipeline_models_params_and_vram(client, db_session):

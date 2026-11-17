@@ -42,6 +42,67 @@ export function applyScenario(scene: Scene, patch: Record<string, string>): Reco
   return next
 }
 
+export interface DeployDetailMachine {
+  machineId: string
+  addr: string
+  state: string
+  version: string | null
+  deployedAt: string | null
+  configSource: string | null
+  gpu: string | null
+  gpuUtilPct: number | null
+  lastPushAt: string | null
+  lastPushBy: string
+}
+
+export interface DeployDetailRow {
+  labelKey: string
+  value: string | null
+  valueKey?: string
+  params?: Record<string, string>
+  tagClass?: 'ok' | 'warn' | 'bad' | 'orange'
+  mono?: boolean
+  statusRow?: boolean
+}
+
+/** 原型 renderDeploy() 2521-2529 行：字段顺序/格式是该卡片的唯一契约。 */
+export function deployDetailRows(machine: DeployDetailMachine): DeployDetailRow[] {
+  const statusTag = (): 'ok' | 'warn' | 'bad' | 'orange' =>
+    machine.state === 'ok' ? 'ok'
+      : machine.state === 'warn' ? 'warn'
+        : machine.state === 'bad' || !machine.state ? 'bad' : 'orange'
+  return [
+    {
+      labelKey: 'machines.admin.columns.machine',
+      value: machine.machineId && machine.addr ? `${machine.machineId} · ${machine.addr}` : null,
+      mono: true
+    },
+    {
+      labelKey: 'deploy.field.version',
+      value: machine.version || null,
+      tagClass: statusTag()
+    },
+    { labelKey: 'deploy.field.deployedAt', value: machine.deployedAt, mono: true },
+    { labelKey: 'deploy.field.configSource', value: machine.configSource },
+    {
+      labelKey: 'deploy.field.gpu',
+      value: machine.gpu
+        ? `${machine.gpu}${machine.gpuUtilPct == null ? '' : ` · ${machine.gpuUtilPct}%`}`
+        : null
+    },
+    { labelKey: 'deploy.field.status', value: machine.state || null, statusRow: true },
+    machine.lastPushAt && machine.lastPushBy
+      ? {
+          labelKey: 'deploy.field.lastPush',
+          value: null,
+          valueKey: 'deploy.lastPush',
+          params: { pushed: machine.lastPushAt, by: machine.lastPushBy },
+          mono: true
+        }
+      : { labelKey: 'deploy.field.lastPush', value: null, mono: true }
+  ]
+}
+
 export const stageOf = (row: ParamRow): string => row.key.split('.')[0] || 'other'
 
 /** 原型 g4 KPI 全部由真实参数目录字段推导，没有来源的场景名显式沿用当前选择。 */

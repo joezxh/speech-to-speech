@@ -39,6 +39,9 @@ COPY src/speech_to_speech/voiceprint/ /usr/src/app/src/speech_to_speech/voicepri
 # ModuleNotFoundError: No module named 'speech_to_speech.console_integration' 启动失败。
 # 因此声纹配置统一走环境变量（补丁层读取），不经过 CLI 参数。
 
+# 4) 构建期部署参数声明清单（compose 文件本身未挂载进容器）
+COPY config/deployment-manifest.json /app/config/deployment-manifest.json
+
 # 编译校验：补丁注入的代码必须能被解释器接受
 RUN python3 -m compileall -q /usr/src/app/src/speech_to_speech/voiceprint \
     && python3 -m compileall -q /usr/src/app/src/speech_to_speech/api/openai_realtime/websocket_router.py \

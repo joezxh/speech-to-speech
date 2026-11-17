@@ -14,6 +14,26 @@ export interface WorkloadRow {
   params?: Record<string, unknown>
 }
 
+type NodeMetricInput = Pick<
+  MachineRow,
+  'cpuPct' | 'memUsedGb' | 'memTotalGb' | 'memPct' | 'gpuUtilPct' | 'gpuMemUsedGb' | 'collectedAt'
+>
+
+export function nodeMetricSummary(machine: Partial<NodeMetricInput>): Array<{ key: string; value: string }> {
+  const dash = '—'
+  return [
+    { key: 'cpu', value: machine.cpuPct == null ? dash : `${machine.cpuPct}%` },
+    {
+      key: 'mem',
+      value: machine.memUsedGb == null ? dash
+        : `${machine.memUsedGb} / ${machine.memTotalGb ?? dash} GB (${machine.memPct ?? dash}%)`
+    },
+    { key: 'gpu', value: machine.gpuUtilPct == null ? dash : `${machine.gpuUtilPct}%` },
+    { key: 'gpuMem', value: machine.gpuMemUsedGb == null ? dash : `${machine.gpuMemUsedGb} GB` },
+    { key: 'collectedAt', value: machine.collectedAt || dash }
+  ]
+}
+
 export function workloadParamEntries(
   params: Record<string, unknown> | undefined
 ): Array<{ key: string; value: string }> {
@@ -41,6 +61,22 @@ export interface MachineRow {
   protocolVersion: number | null
   lastSeen: string | null
   workloads: WorkloadRow[]
+  // 节点资源与部署详情（agent 心跳上报，缺失为 null/空）
+  gpuUtilPct?: number | null
+  cpuPct?: number | null
+  loadAvg?: number[]
+  memTotalGb?: number | null
+  memUsedGb?: number | null
+  memPct?: number | null
+  gpuMemUsedGb?: number | null
+  gpuMemTotalGb?: number | null
+  pipelineVramGb?: number | null
+  collectedAt?: string | null
+  deployment?: { runtime?: Record<string, unknown>; declared?: Record<string, unknown> }
+  deployedAt?: string | null
+  configSource?: string | null
+  lastPushAt?: string | null
+  lastPushBy?: string
 }
 
 export interface TestStepIn {
@@ -109,7 +145,7 @@ export interface MachineCommandView {
   createdAt: string | null
 }
 
-export type CommandKind = 'drain' | 'resume' | 'reboot' | 'recover' | 'health_check'
+export type CommandKind = 'drain' | 'resume' | 'reboot' | 'config_restart' | 'recover' | 'health_check'
 
 /** 原型机器行动作：排空中→恢复，不可达/故障→拉起，其他→排空+重启。 */
 export function commandActions(
@@ -121,7 +157,7 @@ export function commandActions(
       ? ['resume']
       : state === 'unreachable' || state === 'bad' || state === 'offline'
         ? ['recover']
-        : ['drain', 'reboot']
+        : ['drain', 'reboot', 'config_restart']
   return kinds.map((kind) => ({
     kind,
     labelKey: `machines.action.${kind}`,

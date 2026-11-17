@@ -3,13 +3,17 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
+import LogAnalysisCard from '@/components/LogAnalysisCard.vue'
+import LogPanel from '@/components/LogPanel.vue'
 import PDot from '@/components/proto/PDot.vue'
 import ScenarioAdvisor from '@/components/proto/ScenarioAdvisor.vue'
 import { machineConfigApi, type MachineParamRow } from '@/api/machineConfig'
+import { useLogsStore } from '@/stores/logs'
 import { useMachineStore as useMachinesStore } from '@/stores/machine'
 import { DASH } from '@/utils/format'
 import { SCENES } from './scenes'
 import {
+  deployDetailRows,
   deployKpis,
   deployStack,
   groupChips,
@@ -21,7 +25,9 @@ import {
 const { t } = useI18n()
 const route = useRoute()
 const machinesStore = useMachinesStore()
+const logsStore = useLogsStore()
 const selectedMachine = ref(String(route.query.machine ?? ''))
+const paramSource = ref<'runtime' | 'declared'>('runtime')
 const rows = ref<MachineParamRow[]>([])
 const driftCount = ref(0)
 const patch = ref<Record<string, string>>({})
@@ -49,6 +55,32 @@ const kpis = computed(() => deployKpis(rows.value, driftCount.value, selectedSce
 const chips = computed(() => groupChips(rows.value))
 const stack = computed(() => deployStack(rows.value))
 const visibleRows = computed(() => groupRows(rows.value, group.value))
+const detailRows = computed(() => deployDetailRows({
+  machineId: machine.value?.machineId ?? '',
+  addr: machine.value?.addr ?? '',
+  state: machine.value?.state ?? '',
+  version: machine.value?.version ?? null,
+  deployedAt: machine.value?.deployedAt ?? null,
+  configSource: machine.value?.configSource ?? null,
+  gpu: machine.value?.gpu ?? null,
+  gpuUtilPct: machine.value?.gpuUtilPct ?? null,
+  lastPushAt: machine.value?.lastPushAt ?? null,
+  lastPushBy: machine.value?.lastPushBy ?? ''
+}))
+const nodeMetrics = computed(() => [
+  { label: t('deploy.node.cpu'), value: machine.value?.cpuPct == null ? DASH : `${machine.value.cpuPct}%` },
+  { label: t('deploy.node.load'), value: machine.value?.loadAvg?.length ? machine.value.loadAvg.join(' / ') : DASH },
+  { label: t('deploy.node.mem'), value: machine.value?.memUsedGb == null ? DASH : `${machine.value.memUsedGb} / ${machine.value.memTotalGb ?? DASH} GB (${machine.value.memPct ?? DASH}%)` },
+  { label: t('deploy.node.gpuMem'), value: machine.value?.gpuMemUsedGb == null ? DASH : `${machine.value.gpuMemUsedGb} / ${machine.value.gpuMemTotalGb ?? DASH} GB` },
+  { label: t('deploy.node.pipelineVram'), value: machine.value?.pipelineVramGb == null ? DASH : `${machine.value.pipelineVramGb} GB` },
+  { label: t('deploy.node.collectedAt'), value: machine.value?.collectedAt ?? DASH }
+])
+const deploymentEntries = computed(() =>
+  Object.entries(machine.value?.deployment?.[paramSource.value] ?? {}).map(([key, value]) => ({
+    key,
+    value: typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value)
+  }))
+)
 
 async function load(): Promise<void> {
   await machinesStore.fetch()
@@ -56,6 +88,9 @@ async function load(): Promise<void> {
     selectedMachine.value = machinesStore.machines[0].machineId
   }
   if (!selectedMachine.value) return
+  logsStore.filters.process = ['pipeline']
+  logsStore.filters.q = selectedMachine.value
+  void logsStore.reload()
   const [view, drift, draft] = await Promise.all([
     machineConfigApi.view(selectedMachine.value),
     machineConfigApi.drift(selectedMachine.value),
@@ -135,14 +170,19 @@ onMounted(load)
       <div class="card">
         <h2>{{ t('deploy.stack') }}</h2>
         <dl class="kv">
-          <dt>{{ t('deploy.field.machine') }}</dt><dd class="mono">{{ machine?.machineId || DASH }} · {{ machine?.addr || DASH }}</dd>
-          <dt>{{ t('deploy.field.version') }}</dt><dd>{{ machine?.version || DASH }}</dd>
-          <dt>{{ t('deploy.field.deployedAt') }}</dt><dd class="mono">{{ DASH }}</dd>
-          <dt>{{ t('deploy.field.configSource') }}</dt><dd>{{ DASH }}</dd>
-          <dt>{{ t('deploy.field.gpu') }}</dt><dd>{{ machine?.gpu || DASH }} · {{ t('deploy.utilizationUnknown') }}</dd>
-          <dt>{{ t('deploy.field.status') }}</dt><dd>{{ machine ? t(`machines.status.${machine.state}`) : DASH }}</dd>
-          <dt>{{ t('deploy.field.lastPush') }}</dt><dd class="mono">{{ DASH }}</dd>
-          <dt>{{ t('deploy.field.draftVersion') }}</dt><dd class="mono">{{ draftVersion }}</dd>
+          <template v-for="row in detailRows" :key="row.labelKey">
+            <dt>{{ t(row.labelKey) }}</dt>
+            <dd
+              :class="{ mono: row.mono }"
+              :data-detail="row.labelKey"
+            >
+              <span v-if="row.tagClass" class="tag" :class="row.tagClass">{{ row.value || DASH }}</span>
+              <span v-else-if="row.statusRow && row.value">{{ t(`machines.status.${row.value}`) }}</span>
+              <span v-else-if="row.valueKey && row.params">{{ t(row.valueKey, row.params) }}</span>
+              <span v-else-if="row.labelKey === 'deploy.field.configSource' && row.value === 'console'">{{ t('deploy.source.console') }}</span>
+              <span v-else>{{ row.value || DASH }}</span>
+            </dd>
+          </template>
         </dl>
         <div class="rowline">
           <input v-model="confirmWord" class="confirm" :placeholder="t('deploy.confirmHint')" />
@@ -166,6 +206,51 @@ onMounted(load)
           </tbody>
         </table>
       </div>
+    </div>
+
+    <div class="deploy-grid">
+      <div class="card">
+        <h2>{{ t('deploy.node.title') }}</h2>
+        <div class="metric-grid">
+          <div v-for="item in nodeMetrics" :key="item.label" class="metric">
+            <span>{{ item.label }}</span><strong>{{ item.value }}</strong>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <h2>{{ t('deploy.params.title') }}</h2>
+        <div class="machine-chips">
+          <button class="chip" :class="{ active: paramSource === 'runtime' }" @click="paramSource = 'runtime'">{{ t('deploy.params.runtime') }}</button>
+          <button class="chip" :class="{ active: paramSource === 'declared' }" @click="paramSource = 'declared'">{{ t('deploy.params.declared') }}</button>
+        </div>
+        <div class="table-wrapper" role="region" :aria-label="t('deploy.params.title')" tabindex="0">
+          <table class="tbl">
+            <thead><tr><th>{{ t('deploy.params.key') }}</th><th>{{ t('deploy.params.value') }}</th></tr></thead>
+            <tbody>
+              <tr v-for="entry in deploymentEntries" :key="entry.key">
+                <td class="mono">{{ entry.key }}</td><td class="mono wrap">{{ entry.value }}</td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="!deploymentEntries.length" class="note">{{ DASH }}</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>{{ t('deploy.logs.title') }}</h2>
+      <LogPanel
+        :live="logsStore.live"
+        @follow="logsStore.setLive($event)"
+        @refresh="logsStore.reload()"
+        @analyze="logsStore.analyze()"
+      />
+      <LogAnalysisCard
+        :analysis="logsStore.analysis"
+        :pending="logsStore.pending"
+        :error="logsStore.analysisError"
+        @retry="logsStore.analyze()"
+      />
     </div>
 
     <div class="card">
@@ -224,6 +309,12 @@ onMounted(load)
 .kpi strong { font-size: 22px; }
 .kpi small { color: var(--muted); }
 .deploy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.metric-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.metric { display: flex; flex-direction: column; gap: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
+.metric span { color: var(--muted); font-size: 12px; }
+.table-wrapper { overflow: auto; max-inline-size: 100%; max-block-size: min(420px, 70vh); container-type: inline-size; }
+.table-wrapper thead { position: sticky; inset-block-start: 0; background: var(--surface); z-index: 1; }
+.wrap { white-space: normal; word-break: break-all; }
 .kv { display: grid; grid-template-columns: 130px 1fr; gap: 8px 12px; }
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; }

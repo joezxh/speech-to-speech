@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, Query, Request, Response
 
+from app.config import console as console_settings
 from app.core.errors import ApiError
 from app.deps import DbSession
 from app.repositories.audit_repository import AuditRepository
@@ -18,6 +19,7 @@ from app.schemas.agent import (
     AgentConfigAckIn,
     AgentConfigReportIn,
     AgentDrainIn,
+    AgentLogsIn,
     AgentRegisterIn,
     AgentTurnLatencyIn,
     HeartbeatIn,
@@ -28,6 +30,7 @@ from app.services import (
     agent_latency_service,
     agent_registry_service,
     instance_monitor,
+    log_service,
     machine_command_service,
 )
 
@@ -195,6 +198,20 @@ def agent_probe_instances(
         state = instance_monitor.registry.get(instance_id)
         statuses[instance_id] = state.status if state else "unknown"
     return ok({"statuses": statuses})
+
+
+@router.post("/logs")
+def agent_upload_logs(
+    payload: AgentLogsIn,
+    db: DbSession,
+    authorization: str = Header(default=""),
+):
+    """容器日志落盘到既有四日志文件，供 /api/v1/logs 与 /logs/analyze 复用。"""
+    machine_id = _machine_id(db, authorization)
+    written = log_service.append_agent_logs(
+        console_settings.log_dir, machine_id, [row.model_dump() for row in payload.logs]
+    )
+    return ok({"written": written})
 
 
 @router.post("/turn-latency")

@@ -154,14 +154,16 @@ def read_usage(settings=None) -> Usage:
     )
 
 
-def collect_workloads(settings=None) -> list[dict]:
+def collect_workloads(settings=None, *, pipeline_vram_gb=None) -> list[dict]:
     """负载清单：agent.yaml 声明全量保留；pipeline 负载由探测 /v1/pool 补全（§5.3.3）。
 
     模型名/全部参数来自本机生效配置，显存来自 nvidia-smi 实测（pipeline_inspect）。
     """
     from speech_to_speech.agent import pipeline_inspect  # noqa: PLC0415
 
-    deployment = pipeline_inspect.collect_pipeline_deployment(settings)
+    deployment = pipeline_inspect.collect_pipeline_deployment(
+        settings, vram_gb=pipeline_vram_gb
+    )
     workloads: list[dict] = []
     declaration = Path(getattr(settings, "declaration_file", "/app/config/agent.yaml"))
     declared: list[dict] = []

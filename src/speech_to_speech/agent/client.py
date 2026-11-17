@@ -99,6 +99,17 @@ class AgentClient:
         response.raise_for_status()
         return response.json()["data"]
 
+    def upload_logs(self, token: str, logs: list[dict]) -> dict:
+        """上报容器日志（已脱敏、有界）；console 复用现有四日志格式落盘。"""
+        response = httpx.post(
+            f"{self.base_url}/api/v1/agent/logs",
+            json={"logs": logs},
+            headers=self._headers(token),
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()["data"]
+
     def probe_instances(self, token: str) -> dict:
         response = httpx.post(
             f"{self.base_url}/api/v1/agent/instances/probe",

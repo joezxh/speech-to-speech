@@ -18,6 +18,22 @@ export default {
     gpu: 'GPU', status: 'Status', lastPush: 'Last config push', draftVersion: 'Draft version'
   },
   utilizationUnknown: 'utilization unavailable',
+  lastPush: 'last push {pushed} by {by}',
+  source: { console: 'Pushed by Console' },
+  node: {
+    title: 'Node resources',
+    cpu: 'CPU usage',
+    load: 'Load 1/5/15 min',
+    mem: 'Memory used / total',
+    gpuMem: 'GPU memory used / total',
+    pipelineVram: 'Pipeline process VRAM',
+    collectedAt: 'Collected at'
+  },
+  params: {
+    title: 'Deployment parameters', runtime: 'Runtime effective', declared: 'Repository declared',
+    key: 'Parameter', value: 'Value'
+  },
+  logs: { title: 'Container logs & server analysis' },
   groups: 'Parameter groups',
   groupCount: 'Parameters',
   groupNote: 'No version source for group pushes yet — shown as —; counts come from the parameter catalog.',

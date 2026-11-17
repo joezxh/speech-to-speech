@@ -18,6 +18,9 @@
 FROM speech-to-speech-local:cu130-1.1-sox
 USER root
 
+# 构建期部署参数声明清单（compose 文件未挂载进容器时 agent 仍需可读）
+COPY config/deployment-manifest.json /app/config/deployment-manifest.json
+
 COPY scripts/patch_pipeline_rest.py /tmp/patch_pipeline_rest.py
 RUN python3 /tmp/patch_pipeline_rest.py && rm /tmp/patch_pipeline_rest.py
 

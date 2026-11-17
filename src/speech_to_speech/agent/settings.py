@@ -23,6 +23,9 @@ class AgentSettings:
     supervisor_program: str = "pipeline"
     # 本机声明文件：负载清单与 effects 映射的来源（§5.3.3）。
     declaration_file: str = "/app/config/agent.yaml"
+    # 构建期生成的 compose 声明清单（容器内读不到 compose 文件本身）。
+    deployment_manifest: str = "/app/config/deployment-manifest.json"
+    container_log_max_lines: int = 500
 
     @classmethod
     def from_env(cls) -> "AgentSettings":
@@ -39,4 +42,12 @@ class AgentSettings:
             ),
             supervisor_program=os.environ.get("S2S_AGENT_SUPERVISOR_PROGRAM", "pipeline"),
             declaration_file=os.environ.get("S2S_AGENT_DECLARATION", cls.declaration_file),
+            deployment_manifest=os.environ.get(
+                "S2S_AGENT_DEPLOYMENT_MANIFEST", cls.deployment_manifest
+            ),
+            container_log_max_lines=int(
+                os.environ.get(
+                    "S2S_AGENT_LOG_MAX_LINES", str(cls.container_log_max_lines)
+                )
+            ),
         )

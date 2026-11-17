@@ -18,6 +18,22 @@ export default {
     gpu: 'GPU', status: '状态', lastPush: '最近配置下发', draftVersion: '草稿版本'
   },
   utilizationUnknown: '利用率不可得',
+  lastPush: '最近由 {by} 于 {pushed} 下发',
+  source: { console: 'Console 下发' },
+  node: {
+    title: '节点资源',
+    cpu: 'CPU 使用率',
+    load: '负载 1/5/15 分钟',
+    mem: '内存 已用/总量',
+    gpuMem: 'GPU 显存 已用/总量',
+    pipelineVram: 'Pipeline 进程显存',
+    collectedAt: '采集时间'
+  },
+  params: {
+    title: '部署参数', runtime: '运行时生效', declared: '仓库声明',
+    key: '参数', value: '值'
+  },
+  logs: { title: '容器日志与服务端分析' },
   groups: '参数分组',
   groupCount: '参数数',
   groupNote: '当前版本无下发真源，统一显示 —；参数数来自参数目录。',

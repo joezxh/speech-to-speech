@@ -12,7 +12,7 @@ from pathlib import Path
 from loguru import logger
 
 from speech_to_speech.agent import commands as command_executor
-from speech_to_speech.agent import config_sync
+from speech_to_speech.agent import config_sync, pipeline_inspect
 from speech_to_speech.agent.client import AgentClient
 from speech_to_speech.agent.collectors import Usage, tail_turn_latency, usage_diff
 from speech_to_speech.agent.settings import AgentSettings
@@ -22,6 +22,7 @@ BACKOFF_MAX_S = 60.0
 
 # turn-latency 断点游标（内存态；进程重启从 0 重读，重复 upsert 无害）。
 _TURN_OFFSET = 0
+_LOG_TICK = 0
 
 
 def _load_token(settings: AgentSettings) -> str:
@@ -63,15 +64,23 @@ def _register(client: AgentClient, settings: AgentSettings) -> str | None:
 def _heartbeat_body(settings: AgentSettings, usage: Usage, uptime_s: int) -> dict:
     from speech_to_speech.agent.collectors import collect_workloads  # noqa: PLC0415
 
+    metrics = pipeline_inspect.collect_node_metrics()
+    deployment = pipeline_inspect.collect_deployment_params(settings)
     return {
         "protocol_version": 1,
-        "agent_version": "1.0.0",
-        "machine": {"machine_id": settings.machine_id, "uptime_s": uptime_s},
+        "agent_version": pipeline_inspect.package_version(),
+        "machine": {
+            "machine_id": settings.machine_id,
+            "uptime_s": uptime_s,
+            "version": pipeline_inspect.package_version(),
+            "gpu": metrics["gpu_name"] or "",
+            **{key: value for key, value in metrics.items() if key != "gpu_name"},
+        },
         "capabilities": [
             "heartbeat", "workloads", "token", "config_pull", "config_report", "commands"
         ],
-        "workloads": collect_workloads(settings),
-        "runtime": {},
+        "workloads": collect_workloads(settings, pipeline_vram_gb=metrics["pipeline_vram_gb"]),
+        "runtime": {"deployment": deployment},
         "tokens": usage.__dict__,
     }
 
@@ -110,7 +119,18 @@ def run_forever(settings: AgentSettings | None = None) -> None:  # pragma: no co
             except Exception as exc:  # noqa: BLE001 - agent 失败只告警，不阻塞语音链路
                 logger.warning("agent command poll failed: {}", exc)
 
-            # 4) turn-latency 断点续读（Task 8 接 A5 端点后上报；先只推进游标）。
+            # 4) 容器日志：每 4 tick 上报一次（默认 60s），失败不影响语音链路。
+            global _LOG_TICK  # noqa: PLW0603
+            _LOG_TICK += 1
+            if _LOG_TICK % 4 == 0:
+                try:
+                    logs = pipeline_inspect.collect_container_logs(settings)
+                    if logs:
+                        client.upload_logs(token, logs)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("agent log upload failed: {}", exc)
+
+            # 5) turn-latency 断点续读（Task 8 接 A5 端点后上报；先只推进游标）。
             global _TURN_OFFSET  # noqa: PLW0603
             _, _ = tail_turn_latency(settings.pipeline_log, _TURN_OFFSET)
         except Exception as exc:  # noqa: BLE001 - 语音链路优先，agent 失败只退避

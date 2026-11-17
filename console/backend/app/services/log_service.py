@@ -27,6 +27,33 @@ LEVELS = ("ERROR", "WARN", "INFO")
 # One page never reads more than this from the end of a file (§A.15 budget).
 TAIL_BYTES = 256 * 1024
 
+_LOG_SECRET = re.compile(
+    r"(?i)\b(api[_-]?key|access[_-]?key|secret|token|password)(\s*[:=]\s*)\S+"
+)
+_SK = re.compile(r"\bsk-[A-Za-z0-9_-]{6,}")
+MAX_AGENT_LOG_LINES = 500
+
+
+def append_agent_logs(log_dir: str | Path, machine_id: str, logs: list[dict]) -> dict[str, int]:
+    """agent 上报的容器日志按现有四日志文件名追加，行首标机器归属。"""
+    root = Path(log_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    written: dict[str, int] = {}
+    for batch in logs:
+        source = "stderr" if str(batch.get("source", "")) == "stderr" else "stdout"
+        path = root / f"pipeline-{source}.log"
+        lines: list[str] = []
+        for raw in list(batch.get("lines") or [])[:MAX_AGENT_LOG_LINES]:
+            line = str(raw).replace("\r", " ").replace("\n", " ")
+            line = _LOG_SECRET.sub(lambda m: f"{m.group(1)}{m.group(2)}***", line)
+            line = _SK.sub("sk-***", line)
+            lines.append(f"[machine:{machine_id}] {line}\n")
+        if lines:
+            with path.open("a", encoding="utf-8") as handle:
+                handle.writelines(lines)
+        written[source] = written.get(source, 0) + len(lines)
+    return written
+
 _ERROR_LEVEL = re.compile(r'"level"\s*:\s*"(?:error|fatal|critical|traceback)"', re.IGNORECASE)
 _TS_JSON = re.compile(r'"(?:time|timestamp)"\s*:\s*"([^"]+)"')
 _TS_LEADING = re.compile(r"^\[?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)")

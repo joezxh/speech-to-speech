@@ -25,6 +25,19 @@ def _reboot(settings) -> tuple[bool, dict, str]:
     return True, {"restarted": True}, ""
 
 
+def _config_restart(settings, client, token: str) -> tuple[bool, dict, str]:
+    """先落地配置再重启；任一步失败都带阶段名回执，不假装成功。"""
+    try:
+        config = config_sync.sync_config(client, token, settings)
+    except Exception as exc:  # noqa: BLE001 - 失败阶段必须显式回执
+        return False, {"stage": "config"}, f"config stage failed: {type(exc).__name__}: {exc}"
+    try:
+        config_sync.restart_pipeline(settings)
+    except Exception as exc:  # noqa: BLE001
+        return False, {"stage": "restart", "config": config}, f"restart stage failed: {type(exc).__name__}: {exc}"
+    return True, {"config": config, "restart": {"restarted": True}}, ""
+
+
 def _recover(client, token: str) -> tuple[bool, dict, str]:
     drained = client.set_instance_drain(token, False)
     probed = client.probe_instances(token)
@@ -73,6 +86,8 @@ def execute(command: dict, settings, client, token: str) -> tuple[bool, dict, st
         return _drain(client, token, False)
     if kind == "reboot":
         return _reboot(settings)
+    if kind == "config_restart":
+        return _config_restart(settings, client, token)
     if kind == "recover":
         return _recover(client, token)
     if kind == "health_check":

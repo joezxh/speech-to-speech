@@ -148,6 +148,21 @@ def heartbeat(db: Session, token_machine_id: str, body: HeartbeatIn) -> dict:
     row.agent_version = body.agent_version
     row.protocol_version = body.protocol_version
     row.agent_caps = list(body.capabilities)
+    # 部署详情与节点资源：agent 采集失败传 None，保留上一轮真值，不写 0。
+    machine = body.machine
+    for field in (
+        "version", "gpu_util_pct", "cpu_pct", "mem_total_gb", "mem_used_gb",
+        "mem_pct", "gpu_mem_used_gb", "gpu_mem_total_gb", "pipeline_vram_gb",
+        "collected_at",
+    ):
+        value = getattr(machine, field)
+        if value not in (None, "", []):
+            setattr(row, field, value)
+    if machine.load_avg:
+        row.load_avg = machine.load_avg
+    deployment = (body.runtime or {}).get("deployment")
+    if isinstance(deployment, dict):
+        row.deployment_json = deployment
     row.last_seen_at = utcnow()
     # 首次心跳 = 注册成功落地（§7.1 状态表）；warn/bad/draining 由 monitor 后续覆盖。
     if row.state == "pending_register":

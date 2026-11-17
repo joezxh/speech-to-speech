@@ -277,7 +277,42 @@ agent 用 machine token 在心跳 tick（`S2S_AGENT_HEARTBEAT_S`，默认 15s）
 - 审计：`machine.command.issue/report/expire`、`machine.instance.drain/undrain`，
   `fields` 只记字段名，命令 ID 写 `request_id` 供关联。用户 JWT 与 machine token 严格分离。
 
+## 12. DeployView 详情与 Agent 全量采集契约（2026-11-17 追加）
+
+### 12.1 详情卡 7 字段（顺序/格式严格对齐原型 2521–2529 行）
+
+| # | 原型键 | 值格式 | 真源 | 缺失 |
+|---|---|---|---|---|
+| 1 | machine | `id · addr`（mono） | `param_machine.machine_id/addr`（心跳/建档） | — |
+| 2 | version | 状态色 tag：ok→ok、warn→warn、不可用→bad、其他→orange | `param_machine.version` ← agent `importlib.metadata.version("speech-to-speech")`（现心跳硬编码 1.0.0 必须修正） | — |
+| 3 | deployed.at | `YYYY-MM-DD HH:mm`（mono） | `param_agent_config_version.rendered_at` 或 `machine.config.deploy` 审计 `at` | — |
+| 4 | config.source | 配置来源文案 | console 确有配置快照时为 console（`status_service.configSource` 口径），否则 — | — |
+| 5 | gpu | `型号 · N%` | agent 上报 GPU 型号 + utilization.gpu（按 pipeline PID 所在卡定位）；型号取 `param_machine.gpu` | — |
+| 6 | status | 状态标签 | `param_machine.state`（pending_register→ok，无 online） | — |
+| 7 | config.pushed | 中文“最近由 {by} 于 {pushed} 下发”/英文反向 | `param_audit(action="machine.config.deploy", profile=machine_id)` 最新 `at/actor` | — |
+
+详情卡不增加第 8 行（草稿版本等移出详情卡）。新增信息以独立区块展示在详情卡下方和机器页展开区。
+
+### 12.2 Agent 采集字段
+
+- **运行时部署参数**：`target_yaml`（prod.yaml 的 blocks/pipelines/runtime，env 引用解析、密钥掩码）+ supervisor `getProcessInfo` 的启动命令；键前缀 `yaml.*` / `supervisor.*`。
+- **仓库声明参数**：docker-compose*.yml（含 `docker-compose.voiceprint.yml` 的 image/command/env/ports/volumes/GPU device_ids 与 thirdparty 差异）在 voiceprint/thirdparty 容器内**未挂载**（voiceprint.yml:119-128），运行时不可读。由构建期生成 `config/deployment-manifest.json` 随镜像投递，agent 读取并标记 `source=declared`；与运行时参数分栏展示，不冒充真值。
+- **节点资源**：`cpu_pct`（psutil.cpu_percent）、`load_avg`、`mem_total_gb/mem_used_gb/mem_pct`（psutil.virtual_memory）、`gpu_name/gpu_util_pct/gpu_mem_used_gb/gpu_mem_total_gb`（一次 nvidia-smi `--query-gpu=index,name,utilization.gpu,memory.total,memory.used` + PID 定位卡）、`pipeline_vram_gb`（既有 compute-apps 查询）、`collected_at`。失败一律 null，不阻塞心跳。
+- **版本**：`importlib.metadata.version("speech-to-speech")` 作为 pipeline 版本与 agent 版本真源；不再硬编码 `"1.0.0"`。
+- **容器日志**：有界 tail（默认 500 行/200 KiB，仅 `pipeline-stdout.log`/`pipeline-stderr.log`），经 `POST /api/v1/agent/logs` 上报；密钥脱敏后按现有四日志格式追加到 console `log_dir/pipeline-stdout.log`，每行前缀 `[machine:<id>]` 保留机器归属；复用 `/api/v1/logs` + `/api/v1/logs/analyze` 与现有前端分析面板。上报失败只告警。
+
+### 12.3 命令扩展
+
+保留 `reboot`（仅 supervisor 重启），新增 `config_restart`：先 `config_sync.sync_config()` 落地配置（返回 config_version/applied），再 `config_sync.restart_pipeline()`，回执 `result={config: {...}, restart: {...}}`；任一步失败按 failed 回执，错误包含失败阶段。白名单/按钮/文案同步更新。
+
+### 12.4 服务端与前端
+
+- 新增迁移 0013：`param_machine` 增加 `cpu_pct/load_avg/mem_* /gpu_* /pipeline_vram_gb/collected_at`；`MachineOut` 扩展详情字段；部署时间/下发人从审计与 config_version 查询派生（避免 N+1：批量按 machine_ids 聚合一次）。
+- DeployView：详情卡严格 7 行；下方新增「节点资源 / 部署参数（运行时 vs 仓库声明分栏）/ 容器日志分析（复用 LogPanel + LogAnalysisCard）」三区块。
+- 机器页展开区：同步显示节点资源摘要、部署参数条数与日志入口；沿用既有参数明细样式。
+
 ## 1.2 修订记录
 
 - **2026-11-17（原型对齐批次落地）**：D 面（机器参数期望/草稿/下发/回滚）与 T/L/R 面在 2026-11-17 计划中交付。期望值唯一真源改为 profile live 渲染值（原先假定的 catalog 默认回落保留为次级）；未回报的键 actual=None 且 drift=False（"未知"不是漂移）；回滚目标=最近 ack 成功快照。
 - **2026-11-17（机器命令通道）**：新增 §11 反向拉取命令队列；机器页与部署页按原型对齐，原型 mock 字段一律以 —/不可得展示。
+- **2026-11-17（部署详情与节点可观测性）**：新增 §12——详情卡 7 字段契约、部署参数（含 compose）全量采集、config_restart 命令、节点资源与容器日志上报，两处 UI 同步展示。

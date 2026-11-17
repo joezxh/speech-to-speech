@@ -476,7 +476,29 @@ COMMENT ON COLUMN "param_machine"."gpu" IS '显卡型号描述';
 
 COMMENT ON COLUMN "param_machine"."gpu_total_gb" IS '显存总量（GB），不可得时为空';
 
-COMMENT ON COLUMN "param_machine"."version" IS '部署版本描述';
+COMMENT ON COLUMN "param_machine"."version" IS '部署版本描述，来自 agent 读取的已安装包元数据';
+
+COMMENT ON COLUMN "param_machine"."gpu_util_pct" IS 'GPU 利用率（%%），按 pipeline 进程所在卡采样';
+
+COMMENT ON COLUMN "param_machine"."cpu_pct" IS '节点 CPU 使用率（%%）';
+
+COMMENT ON COLUMN "param_machine"."load_avg" IS '节点 1/5/15 分钟负载均值（JSON 数组）';
+
+COMMENT ON COLUMN "param_machine"."mem_total_gb" IS '节点内存总量（GB）';
+
+COMMENT ON COLUMN "param_machine"."mem_used_gb" IS '节点已用内存（GB）';
+
+COMMENT ON COLUMN "param_machine"."mem_pct" IS '节点内存使用率（%%）';
+
+COMMENT ON COLUMN "param_machine"."gpu_mem_used_gb" IS 'pipeline 所在卡已用显存（GB）';
+
+COMMENT ON COLUMN "param_machine"."gpu_mem_total_gb" IS 'pipeline 所在卡显存总量（GB）';
+
+COMMENT ON COLUMN "param_machine"."pipeline_vram_gb" IS 'pipeline 进程实际占用显存（GB）';
+
+COMMENT ON COLUMN "param_machine"."collected_at" IS '节点资源采集时间（UTC）';
+
+COMMENT ON COLUMN "param_machine"."deployment_json" IS '部署参数快照：运行时生效参数与仓库声明参数分栏（密钥已掩码）';
 
 COMMENT ON COLUMN "param_machine"."state" IS '机器状态：pending_register、ok、warn、draining 或 bad';
 
@@ -1091,6 +1113,32 @@ UPDATE alembic_version SET version_num='0011_machine_command_queue' WHERE alembi
 ALTER TABLE param_machine_workload ADD COLUMN params_json JSON DEFAULT '{}' NOT NULL;
 
 UPDATE alembic_version SET version_num='0012_workload_observability' WHERE alembic_version.version_num = '0011_machine_command_queue';
+
+-- Running upgrade 0012_workload_observability -> 0013_machine_deploy_details
+
+ALTER TABLE param_machine ADD COLUMN gpu_util_pct INTEGER;
+
+ALTER TABLE param_machine ADD COLUMN cpu_pct FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN load_avg JSON DEFAULT '[]' NOT NULL;
+
+ALTER TABLE param_machine ADD COLUMN mem_total_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN mem_used_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN mem_pct FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN gpu_mem_used_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN gpu_mem_total_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN pipeline_vram_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN collected_at VARCHAR(40) DEFAULT '' NOT NULL;
+
+ALTER TABLE param_machine ADD COLUMN deployment_json JSON DEFAULT '{}' NOT NULL;
+
+UPDATE alembic_version SET version_num='0013_machine_deploy_details' WHERE alembic_version.version_num = '0012_workload_observability';
 
 COMMIT;
 

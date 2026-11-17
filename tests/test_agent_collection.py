@@ -93,3 +93,82 @@ def test_vram_probe_parses_real_pid_usage(monkeypatch):
         "speech_to_speech.agent.pipeline_inspect.subprocess.run", lambda *a, **k: _Proc()
     )
     assert pipeline_inspect._nvidia_smi_vram() == 2.0
+
+
+def test_package_version_uses_installed_metadata(monkeypatch):
+    monkeypatch.setattr(pipeline_inspect.metadata, "version", lambda name: "1.1.0")
+    assert pipeline_inspect.package_version() == "1.1.0"
+
+
+def test_node_metrics_reads_cpu_mem_gpu_model_and_utilization(monkeypatch):
+    class _Proc:
+        def __init__(self, stdout):
+            self.stdout = stdout
+
+    def _fake_run(args, **kwargs):
+        joined = " ".join(args)
+        if "compute-apps" in joined:
+            return _Proc("1234, 2048 MiB\n")
+        return _Proc("0, NVIDIA L40S, 64, 49152, 20480\n")
+
+    monkeypatch.setattr(pipeline_inspect, "_supervisor_pid", lambda: 1234)
+    monkeypatch.setattr(pipeline_inspect.subprocess, "run", _fake_run)
+    monkeypatch.setattr(
+        pipeline_inspect,
+        "_cpu_mem",
+        lambda: {
+            "cpu_pct": 12.5,
+            "load_avg": [1.0, 0.5, 0.25],
+            "mem_total_gb": 64.0,
+            "mem_used_gb": 20.0,
+            "mem_pct": 31.2,
+        },
+    )
+    metrics = pipeline_inspect.collect_node_metrics()
+    assert metrics["cpu_pct"] == 12.5
+    assert metrics["mem_total_gb"] == 64.0
+    assert metrics["gpu_name"] == "NVIDIA L40S"
+    assert metrics["gpu_util_pct"] == 64
+    assert metrics["gpu_mem_total_gb"] == 48.0
+    assert metrics["pipeline_vram_gb"] == 2.0
+
+
+def test_deployment_params_split_runtime_and_declared_manifest(agent_env, tmp_path):
+    manifest = tmp_path / "deployment-manifest.json"
+    manifest.write_text(
+        json.dumps({
+            "generatedBy": "scripts/generate_deployment_manifest.py",
+            "services": {
+                "pipeline": {
+                    "compose": "docker-compose.voiceprint.yml",
+                    "image": "speech-to-speech-local:cu130-1.3-voiceprint",
+                    "command": ["--tts", "qwen3", "--min_silence_ms", "700"],
+                    "env": {"LLM_API_KEY": "sk-secret-must-not-leak", "MIN_SILENCE_MS": "700"},
+                    "deviceIds": ["0"],
+                }
+            },
+        }),
+        encoding="utf-8",
+    )
+    settings = SimpleNamespace(
+        target_yaml=agent_env.target_yaml,
+        deployment_manifest=str(manifest),
+    )
+    payload = pipeline_inspect.collect_deployment_params(settings)
+    assert payload["runtime"]["stt.qwen3_asr_model_name"] == "/models/asr-1.7b"
+    assert payload["declared"]["pipeline.compose"] == "docker-compose.voiceprint.yml"
+    assert payload["declared"]["pipeline.env.LLM_API_KEY"] == "***"
+    assert "sk-secret-must-not-leak" not in json.dumps(payload)
+
+
+def test_container_log_tail_is_bounded_and_redacted(tmp_path):
+    log = tmp_path / "pipeline-stdout.log"
+    log.write_text(
+        "INFO ok\nERROR api_key=sk-secret-abcdef payload=abc\nWARN done\n", encoding="utf-8"
+    )
+    settings = SimpleNamespace(pipeline_log=str(log), container_log_max_lines=100)
+    rows = pipeline_inspect.collect_container_logs(settings)
+    assert [row["source"] for row in rows] == ["stdout"]
+    assert "sk-secret-abcdef" not in " ".join(rows[0]["lines"])
+    assert "api_key=***" in " ".join(rows[0]["lines"])
+    assert len(rows[0]["lines"]) == 3

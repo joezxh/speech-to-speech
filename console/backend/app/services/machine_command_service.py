@@ -19,7 +19,7 @@ from app.repositories.audit_repository import AuditRepository
 from app.repositories.machine_command_repository import MachineCommandRepository
 from app.repositories.machine_repository import MachineRepository
 
-KINDS = frozenset({"drain", "resume", "reboot", "recover", "health_check"})
+KINDS = frozenset({"drain", "resume", "reboot", "config_restart", "recover", "health_check"})
 DEFAULT_TTL_S = 120
 DEFAULT_LIMIT = 20
 

@@ -109,3 +109,41 @@ def test_poll_and_run_reports_each_command_even_when_execution_fails(settings, m
     )
     assert commands.poll_and_run(client, "token", settings) == 1
     assert client.calls[-1] == ("report", "c1", False, {"reason": "failed"}, "boom")
+
+
+def test_config_restart_syncs_config_then_restarts(settings, monkeypatch):
+    steps = []
+
+    def _sync(client, token, cfg):
+        steps.append("sync")
+        return {"configVersion": 7}
+
+    monkeypatch.setattr(commands.config_sync, "sync_config", _sync)
+    monkeypatch.setattr(
+        commands.config_sync, "restart_pipeline", lambda cfg: steps.append("restart")
+    )
+    ok, result, error = commands.execute(
+        {"kind": "config_restart", "payload": {}}, settings, FakeClient(), "token"
+    )
+    assert (ok, error) == (True, "")
+    assert steps == ["sync", "restart"]
+    assert result["config"]["configVersion"] == 7
+    assert result["restart"]["restarted"] is True
+
+
+def test_config_restart_reports_failed_stage(settings, monkeypatch):
+    def _failure(client, token, cfg):
+        raise RuntimeError("config pull failed")
+
+    monkeypatch.setattr(commands.config_sync, "sync_config", _failure)
+    restarted = []
+    monkeypatch.setattr(
+        commands.config_sync, "restart_pipeline", lambda cfg: restarted.append(True)
+    )
+    ok, _, error = commands.execute(
+        {"kind": "config_restart", "payload": {}}, settings, FakeClient(), "token"
+    )
+    assert ok is False
+    assert "config stage failed" in error
+    assert "config pull failed" in error
+    assert restarted == []

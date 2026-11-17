@@ -494,3 +494,29 @@ ALTER TABLE param_machine_workload ADD COLUMN params_json JSON DEFAULT '{}' NOT 
 
 UPDATE alembic_version SET version_num='0012_workload_observability' WHERE alembic_version.version_num = '0011_machine_command_queue';
 
+-- Running upgrade 0012_workload_observability -> 0013_machine_deploy_details
+
+ALTER TABLE param_machine ADD COLUMN gpu_util_pct INTEGER;
+
+ALTER TABLE param_machine ADD COLUMN cpu_pct FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN load_avg JSON DEFAULT '[]' NOT NULL;
+
+ALTER TABLE param_machine ADD COLUMN mem_total_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN mem_used_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN mem_pct FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN gpu_mem_used_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN gpu_mem_total_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN pipeline_vram_gb FLOAT;
+
+ALTER TABLE param_machine ADD COLUMN collected_at VARCHAR(40) DEFAULT '' NOT NULL;
+
+ALTER TABLE param_machine ADD COLUMN deployment_json JSON DEFAULT '{}' NOT NULL;
+
+UPDATE alembic_version SET version_num='0013_machine_deploy_details' WHERE alembic_version.version_num = '0012_workload_observability';
+

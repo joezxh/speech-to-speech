@@ -7,6 +7,7 @@ import {
   filterMachines,
   healthState,
   latestHealth,
+  nodeMetricSummary,
   serviceIdOf,
   testStepsToView,
   vramSummary,
@@ -148,8 +149,8 @@ const command = (over: Partial<MachineCommandView>): MachineCommandView => ({
 })
 
 describe('commandActions (prototype machine row actions)', () => {
-  it('offers drain and reboot on a healthy machine', () => {
-    expect(commandActions('ok', []).map((a) => a.kind)).toEqual(['drain', 'reboot'])
+  it('offers drain, reboot and config-then-restart on a healthy machine', () => {
+    expect(commandActions('ok', []).map((a) => a.kind)).toEqual(['drain', 'reboot', 'config_restart'])
   })
 
   it('offers resume while draining and recover when unreachable', () => {
@@ -161,9 +162,29 @@ describe('commandActions (prototype machine row actions)', () => {
   it('disables only the kinds with an in-flight command', () => {
     expect(commandActions('ok', ['drain'])).toEqual([
       { kind: 'drain', labelKey: 'machines.action.drain', disabled: true },
-      { kind: 'reboot', labelKey: 'machines.action.reboot', disabled: false }
+      { kind: 'reboot', labelKey: 'machines.action.reboot', disabled: false },
+      { kind: 'config_restart', labelKey: 'machines.action.config_restart', disabled: false }
     ])
     expect(commandActions('draining', ['resume'])[0].disabled).toBe(true)
+  })
+})
+
+describe('nodeMetricSummary', () => {
+  it('formats real node metrics and keeps missing values as dash', () => {
+    expect(nodeMetricSummary({
+      cpuPct: 12.5, memUsedGb: 20, memTotalGb: 64, memPct: 31.2,
+      gpuUtilPct: 64, gpuMemUsedGb: 20.5, collectedAt: '2026-11-17T12:00:00Z'
+    })).toEqual([
+      { key: 'cpu', value: '12.5%' },
+      { key: 'mem', value: '20 / 64 GB (31.2%)' },
+      { key: 'gpu', value: '64%' },
+      { key: 'gpuMem', value: '20.5 GB' },
+      { key: 'collectedAt', value: '2026-11-17T12:00:00Z' }
+    ])
+    expect(nodeMetricSummary({})).toEqual([
+      { key: 'cpu', value: '—' }, { key: 'mem', value: '—' }, { key: 'gpu', value: '—' },
+      { key: 'gpuMem', value: '—' }, { key: 'collectedAt', value: '—' }
+    ])
   })
 })
 

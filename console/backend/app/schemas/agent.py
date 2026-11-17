@@ -16,6 +16,29 @@ class AgentMachineIdentity(BaseModel):
     gpu_total_gb: float | None = Field(default=None, ge=0)
     role: str = Field(default="agent", max_length=16)
     uptime_s: int | None = Field(default=None, ge=0)
+    # 节点资源与 pipeline 版本（agent 真源；采集失败 = None，不编造）。
+    version: str = Field(default="", max_length=64)
+    gpu_util_pct: int | None = Field(default=None, ge=0, le=100)
+    cpu_pct: float | None = Field(default=None, ge=0, le=100)
+    load_avg: list[float] = Field(default_factory=list)
+    mem_total_gb: float | None = Field(default=None, ge=0)
+    mem_used_gb: float | None = Field(default=None, ge=0)
+    mem_pct: float | None = Field(default=None, ge=0, le=100)
+    gpu_mem_used_gb: float | None = Field(default=None, ge=0)
+    gpu_mem_total_gb: float | None = Field(default=None, ge=0)
+    pipeline_vram_gb: float | None = Field(default=None, ge=0)
+    collected_at: str = Field(default="", max_length=40)
+
+
+class AgentLogBatchIn(BaseModel):
+    """容器日志批次：agent 已脱敏且有界，console 再收口一次。"""
+
+    source: str = Field(default="stdout", max_length=16)
+    lines: list[str] = Field(default_factory=list)
+
+
+class AgentLogsIn(BaseModel):
+    logs: list[AgentLogBatchIn] = Field(default_factory=list)
 
 
 class AgentWorkload(BaseModel):

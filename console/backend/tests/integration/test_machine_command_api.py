@@ -58,6 +58,13 @@ def _issue(client, headers, kind="drain", **payload):
     )
 
 
+def test_config_restart_is_supported_command(client, db_session):
+    _machine_and_token(client, db_session)
+    created = _issue(client, _auth(client), kind="config_restart")
+    assert created.status_code == 200
+    assert created.json()["data"]["kind"] == "config_restart"
+
+
 def test_admin_can_issue_and_list_commands(client, db_session):
     _machine_and_token(client, db_session)
     auth = _auth(client)

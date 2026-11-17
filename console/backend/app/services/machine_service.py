@@ -15,6 +15,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.machine import ParamMachine
+from app.models.machine_config import ParamAgentConfigVersion
+from app.models.param_audit import ParamAudit
 from app.models.param_instance import ParamInstance
 from app.models.param_instance_runtime import ParamInstanceRuntime
 from app.repositories.audit_repository import AuditRepository
@@ -107,6 +109,22 @@ class MachineOut(BaseModel):
     protocolVersion: int = 1
     lastSeen: str | None = None
     workloads: list[WorkloadOut] = Field(default_factory=list)
+    # 部署详情（真源派生，无来源为 None/空）
+    gpuUtilPct: int | None = None
+    cpuPct: float | None = None
+    loadAvg: list[float] = Field(default_factory=list)
+    memTotalGb: float | None = None
+    memUsedGb: float | None = None
+    memPct: float | None = None
+    gpuMemUsedGb: float | None = None
+    gpuMemTotalGb: float | None = None
+    pipelineVramGb: float | None = None
+    collectedAt: str | None = None
+    deployment: dict = Field(default_factory=dict)
+    deployedAt: str | None = None
+    configSource: str | None = None
+    lastPushAt: str | None = None
+    lastPushBy: str = ""
 
 
 class MachineDetail(MachineOut):
@@ -146,7 +164,38 @@ def _workload_out(row: ParamMachineWorkload) -> WorkloadOut:
     )
 
 
-def _machine_out(db: Session, row: ParamMachine) -> MachineOut:
+def _detail_context(db: Session, rows: list[ParamMachine]) -> dict[str, tuple[ParamAudit | None, bool]]:
+    """一次查询批量取最近下发审计与配置快照，避免机器列表 N+1。"""
+    ids = [row.machine_id for row in rows]
+    if not ids:
+        return {}
+    audits = db.scalars(
+        select(ParamAudit)
+        .where(ParamAudit.action == "machine.config.deploy", ParamAudit.profile.in_(ids))
+        .order_by(ParamAudit.id.desc())
+    ).all()
+    latest: dict[str, ParamAudit] = {}
+    for audit in audits:
+        latest.setdefault(audit.profile, audit)
+    with_config = set(
+        db.scalars(
+            select(ParamAgentConfigVersion.machine_id).where(
+                ParamAgentConfigVersion.machine_id.in_(ids)
+            )
+        ).all()
+    )
+    return {machine_id: (latest.get(machine_id), machine_id in with_config) for machine_id in ids}
+
+
+def _machine_out(
+    db: Session,
+    row: ParamMachine,
+    context: dict[str, tuple[ParamAudit | None, bool]] | None = None,
+) -> MachineOut:
+    audit, has_config = (context or {}).get(row.machine_id, (None, False))
+    if context is None:
+        audit, has_config = _detail_context(db, [row]).get(row.machine_id, (None, False))
+    pushed_at = iso_utc(audit.at) if audit is not None else None
     return MachineOut(
         machineId=row.machine_id,
         clusterId=row.cluster_id,
@@ -162,6 +211,21 @@ def _machine_out(db: Session, row: ParamMachine) -> MachineOut:
         protocolVersion=row.protocol_version,
         lastSeen=iso_utc(row.last_seen_at) if row.last_seen_at else None,
         workloads=[_workload_out(w) for w in MachineRepository(db).list_workloads(row.machine_id)],
+        gpuUtilPct=row.gpu_util_pct,
+        cpuPct=row.cpu_pct,
+        loadAvg=list(row.load_avg or []),
+        memTotalGb=row.mem_total_gb,
+        memUsedGb=row.mem_used_gb,
+        memPct=row.mem_pct,
+        gpuMemUsedGb=row.gpu_mem_used_gb,
+        gpuMemTotalGb=row.gpu_mem_total_gb,
+        pipelineVramGb=row.pipeline_vram_gb,
+        collectedAt=row.collected_at or None,
+        deployment=row.deployment_json or {},
+        deployedAt=pushed_at,
+        configSource="console" if has_config else None,
+        lastPushAt=pushed_at,
+        lastPushBy=audit.actor if audit is not None else "",
     )
 
 
@@ -183,7 +247,9 @@ def _get_row(db: Session, machine_id: str) -> ParamMachine:
 
 
 def list_machines(db: Session, cluster: str | None = None) -> list[MachineOut]:
-    return [_machine_out(db, row) for row in MachineRepository(db).list(cluster)]
+    rows = MachineRepository(db).list(cluster)
+    context = _detail_context(db, rows)
+    return [_machine_out(db, row, context) for row in rows]
 
 
 def get_machine(db: Session, machine_id: str) -> MachineDetail:

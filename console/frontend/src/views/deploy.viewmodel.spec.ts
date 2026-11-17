@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   applyScenario,
+  deployDetailRows,
   deployKpis,
   deployStack,
   diffRows,
@@ -44,6 +45,53 @@ describe('deploy viewmodel', () => {
     const rows = diffRows(scene, { 'vad.min_silence_ms': '300', 'tts.chunk_size': '4' })
     expect(rows.find((r) => r.key === 'vad.min_silence_ms')?.state).toBe('same')
     expect(rows.find((r) => r.key === 'tts.chunk_size')?.state).toBe('diff')
+  })
+})
+
+describe('deployDetailRows (prototype 7-field order)', () => {
+  const machine = {
+    machineId: 'node-a01',
+    addr: '10.12.0.11:8765',
+    state: 'ok',
+    version: '1.1.0',
+    deployedAt: '2026-11-17 12:00',
+    configSource: 'console',
+    gpu: 'L40S 48G',
+    gpuUtilPct: 64,
+    lastPushAt: '2026-11-17 12:00',
+    lastPushBy: 'alice',
+  }
+
+  it('keeps the exact prototype field order and omits extra rows', () => {
+    expect(deployDetailRows(machine).map((row) => row.labelKey)).toEqual([
+      'machines.admin.columns.machine',
+      'deploy.field.version',
+      'deploy.field.deployedAt',
+      'deploy.field.configSource',
+      'deploy.field.gpu',
+      'deploy.field.status',
+      'deploy.field.lastPush',
+    ])
+  })
+
+  it('formats values and tag classes exactly as the prototype', () => {
+    const rows = deployDetailRows(machine)
+    expect(rows[0].value).toBe('node-a01 · 10.12.0.11:8765')
+    expect(rows[1]).toMatchObject({ value: '1.1.0', tagClass: 'ok' })
+    expect(rows[2].value).toBe('2026-11-17 12:00')
+    expect(rows[4].value).toBe('L40S 48G · 64%')
+    expect(rows[6]).toMatchObject({
+      valueKey: 'deploy.lastPush',
+      params: { pushed: '2026-11-17 12:00', by: 'alice' }
+    })
+  })
+
+  it('maps real states to prototype tag classes and leaves missing values empty', () => {
+    expect(deployDetailRows({ ...machine, state: 'draining' })[1].tagClass).toBe('orange')
+    expect(deployDetailRows({ ...machine, state: 'bad' })[1].tagClass).toBe('bad')
+    expect(deployDetailRows({ ...machine, version: '', gpuUtilPct: null })[1].value).toBeNull()
+    expect(deployDetailRows({ ...machine, gpuUtilPct: null })[4].value).toBe('L40S 48G')
+    expect(deployDetailRows({ ...machine, lastPushBy: '' })[6].value).toBeNull()
   })
 })
 
