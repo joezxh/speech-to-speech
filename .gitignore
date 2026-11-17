@@ -266,6 +266,8 @@ console/backend/data/
 .env.thirdparty.tmp
 /.agents/
 /.claude/
+# s2s-agent 本地运行态（token 落盘 + 本机声明 + 日志，禁止入库）
+/.run/
 /.codebuddy/
 /.github/
 /.jbeval/
