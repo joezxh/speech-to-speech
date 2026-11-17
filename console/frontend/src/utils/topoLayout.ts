@@ -30,6 +30,10 @@ export interface TopoMachine {
   onlineCount: number
   chips: TopoChip[]
   active: boolean
+  /** param_machine.machine_id（注册机器才有）。 */
+  label: string
+  /** 负载模型行（kind·model），拓扑盒展示；实例派生的机器为空数组。 */
+  models: string[]
 }
 
 export interface TopoLb {
@@ -53,7 +57,14 @@ export interface TopoInput {
   registry: string
   policy: string
   sessions: number | null
-  machines: Array<{ host: string; online: boolean }>
+  machines: Array<{
+    host: string
+    online: boolean
+    /** param_machine.machine_id（注册机器才有；实例派生的机器为空）。 */
+    label?: string
+    /** 该机器声明的负载模型（workloads 的 kind·model），拓扑盒上展示。 */
+    models?: string[]
+  }>
   instances: Array<{
     id: string
     status: string
@@ -119,7 +130,9 @@ export function layoutTopo(input: TopoInput): TopoLayout {
       onlineCount: rows.filter((instance) => instance.status === 'online').length,
       chips,
       // 原型：该机器下任一实例 inUse>0 就把这一行的连线全部点亮为 flow。
-      active: rows.some((instance) => (instance.inUse ?? 0) > 0)
+      active: rows.some((instance) => (instance.inUse ?? 0) > 0),
+      label: machine.label ?? '',
+      models: machine.models ?? []
     }
   })
 

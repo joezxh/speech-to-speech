@@ -110,7 +110,7 @@ describe('testStepsToView', () => {
 describe('clusterOptions', () => {
   it('lists cluster names and keeps the current value even when absent from the table', () => {
     const options = clusterOptions(
-      [{ id: 1, name: 'default', note: '', createdAt: '' }, { id: 2, name: 'edge', note: '', createdAt: '' }],
+      [{ name: 'default' }, { name: 'edge' }],
       'staging'
     )
     expect(options.map((o) => o.value)).toEqual(['default', 'edge', 'staging'])

@@ -78,4 +78,21 @@ describe('layoutTopo (prototype topoSVG horizontal geometry)', () => {
     })
     expect(many.height).toBe(8 * 80 + 30)
   })
+
+  it('carries machine id and workload model rows for machines without instances (用户反馈：注册机器不上拓扑)', () => {
+    const layout = layoutTopo({
+      ...input,
+      machines: [
+        { host: '10.0.0.9', online: false, label: 'node-a01', models: ['pipeline·qwen3-tts', 'llm·qwen-plus'] }
+      ],
+      instances: []
+    })
+    expect(layout.machines).toHaveLength(1)
+    expect(layout.machines[0]).toMatchObject({
+      host: '10.0.0.9',
+      label: 'node-a01',
+      models: ['pipeline·qwen3-tts', 'llm·qwen-plus'],
+      instanceCount: 0
+    })
+  })
 })

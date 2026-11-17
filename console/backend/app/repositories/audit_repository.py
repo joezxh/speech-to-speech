@@ -93,3 +93,18 @@ class AuditRepository:
             .limit(limit)
         )
         return list(self.session.scalars(stmt))
+
+    def list_any_prefix(self, action_prefixes: list[str], *, limit: int = 4) -> list[ParamAudit]:
+        """多个 action 前缀合并取最新 N 行（总览事件卡：cluster.* ∪ machine.*）。
+        机器增删改记 machine.*——只看 cluster.* 时添加机器不产生事件（用户反馈）。"""
+        from sqlalchemy import or_  # noqa: PLC0415
+
+        if not action_prefixes:
+            return []
+        stmt = (
+            select(ParamAudit)
+            .where(or_(*[ParamAudit.action.like(f"{prefix}%") for prefix in action_prefixes]))
+            .order_by(ParamAudit.id.desc())
+            .limit(limit)
+        )
+        return list(self.session.scalars(stmt))

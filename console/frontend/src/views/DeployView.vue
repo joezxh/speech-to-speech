@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 
 import ScenarioAdvisor from '@/components/proto/ScenarioAdvisor.vue'
 import { machineConfigApi, type MachineParamRow } from '@/api/machineConfig'
-import { useMachinesStore } from '@/stores/machine'
+import { useMachineStore as useMachinesStore } from '@/stores/machine'
 import { DASH } from '@/utils/format'
 import { SCENES } from './scenes'
 import { rowTone } from './deploy.viewmodel'

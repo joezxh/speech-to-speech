@@ -90,8 +90,13 @@ const occupancy = (inUse: number | null, size: number | null): string =>
       @keydown.enter="emit('machine', machine.host)"
     >
       <rect class="topo__mx-box" :x="MX_X" :y="machine.y" :width="MX_W" :height="MX_H" rx="8" />
-      <text class="topo__t-md" :x="MX_X + 14" :y="machine.y + 24">{{ machine.host }}</text>
-      <text class="topo__t-sm" :x="MX_X + 14" :y="machine.y + 42">
+      <text class="topo__t-md" :x="MX_X + 14" :y="machine.y + 24">
+        {{ machine.label || machine.host }}
+      </text>
+      <text class="topo__t-sm" :x="MX_X + 14" :y="machine.y + 40">
+        {{ machine.models.length ? machine.models.join(' / ') : machine.host }}
+      </text>
+      <text class="topo__t-sm" :x="MX_X + 14" :y="machine.y + 56">
         {{ t('overview.topology.machineMeta', { n: machine.instanceCount, m: machine.onlineCount }) }}
       </text>
       <circle

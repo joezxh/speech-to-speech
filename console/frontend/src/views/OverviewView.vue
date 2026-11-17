@@ -76,12 +76,31 @@ function categoryOf(action: string): string {
   return EVENT_CATEGORIES.includes(prefix) ? prefix : 'other'
 }
 
-// 机器层不是表：从当前集群实例的 base_url host 去重派生（spec §3）。
+// 机器层：param_machine 行（含 label 与负载模型）∪ 实例 host 派生（同 host 去重）。
+// 只按实例派生时，注册了机器但还没绑实例的节点不上拓扑（用户反馈）。
 const topo = computed(() => {
-  const hosts = new Map<string, boolean>()
+  const byHost = new Map<
+    string,
+    { host: string; online: boolean; label?: string; models?: string[] }
+  >()
+  for (const machine of machines.value) {
+    if (machine.clusterId !== clusterStore.current) continue
+    byHost.set(hostOf(machine.addr), {
+      host: hostOf(machine.addr),
+      online: machine.state === 'ok',
+      label: machine.machineId,
+      models: machine.workloads.map((w) => (w.model ? `${w.kind}·${w.model}` : w.kind))
+    })
+  }
   for (const row of instances.value) {
     const host = hostOf(row.base_url)
-    hosts.set(host, (hosts.get(host) ?? false) || row.status === 'online')
+    const existing = byHost.get(host)
+    byHost.set(host, {
+      host,
+      online: (existing?.online ?? false) || row.status === 'online',
+      label: existing?.label,
+      models: existing?.models
+    })
   }
   const current = clusterStore.currentRow
   return layoutTopo({
@@ -89,7 +108,7 @@ const topo = computed(() => {
     registry: current?.registry ?? '',
     policy: current?.policy ?? 'least',
     sessions: summary.value?.slots_in_use ?? null,
-    machines: [...hosts].map(([host, online]) => ({ host, online })),
+    machines: [...byHost.values()],
     instances: instances.value.map((row) => ({
       id: row.instance_id,
       status: row.status,

@@ -66,9 +66,10 @@ def cluster_events(
     limit: int = 4,
     user: CurrentUser = Depends(require_permission("console:cluster:query")),
 ):
-    """最近集群审计事件（spec §5.2-5）：复用 param_audit，action 前缀 'cluster.'。"""
+    """最近集群审计事件（spec §5.2-5）：cluster.* ∪ machine.*——机器增删改
+    也是集群运营事件，只看 cluster.* 时总览页添加机器后事件区为空（用户反馈）。"""
     limit = max(1, min(int(limit), 20))
-    rows = AuditRepository(db).list_prefix("cluster.", limit=limit)
+    rows = AuditRepository(db).list_any_prefix(["cluster.", "machine."], limit=limit)
     return ok([
         {
             "auditId": str(row.id),
