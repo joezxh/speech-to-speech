@@ -83,7 +83,7 @@ const columns: PColumn[] = [
   { key: 'vram', label: t('machines.admin.columns.vram'), width: 150 },
   { key: 'clusterId', label: t('machines.admin.columns.cluster'), width: 110 },
   { key: 'addr', label: t('machines.admin.columns.addr'), width: 140, cls: 'mono' },
-  { key: 'actions', label: t('machines.admin.columns.actions'), width: 200, sticky: 'end' }
+  { key: 'actions', label: t('machines.admin.columns.actions'), width: 560, sticky: 'end' }
 ]
 
 function toggleExpand(id: string): void {
@@ -242,7 +242,7 @@ onBeforeUnmount(() => clearInterval(pollTimer))
               </td>
               <td>{{ row.clusterId || '—' }}</td>
               <td>{{ row.addr || '—' }}</td>
-              <td @click.stop @dblclick.stop>
+              <td class="actions-cell" @click.stop @dblclick.stop>
                 <button
                   v-for="action in actionsFor(row)"
                   :key="action.kind"
@@ -357,6 +357,9 @@ onBeforeUnmount(() => clearInterval(pollTimer))
   gap: 12px;
 }
 .empty-cell { text-align: center; opacity: 0.65; }
+.mtbl th:last-child,
+.mtbl td.actions-cell { white-space: nowrap; }
+.mtbl td.actions-cell .btn { white-space: nowrap; margin-right: 6px; }
 .param-list {
   max-height: 220px;
   max-width: 520px;
