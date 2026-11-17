@@ -39,8 +39,11 @@ export const routes: RouteRecordRaw[] = [
           // ops 段
           { path: 'machines', name: 'machines', component: () => import('@/views/InstancesView.vue'),
             meta: { navGroup: 'ops', navKey: 'nav.machines', navIcon: 'server', navOrder: 10 } },
-          { path: 'deploy', name: 'deploy', component: () => import('@/views/ParamsView.vue'),
+          { path: 'deploy', name: 'deploy', component: () => import('@/views/DeployView.vue'),
             meta: { navGroup: 'ops', navKey: 'nav.deploy', navIcon: 'cpu', navOrder: 20 } },
+          // 旧的 profile 参数树保留为子页（草稿/发布仍可用）。
+          { path: 'deploy/profile', name: 'deploy-profile', component: () => import('@/views/ParamsView.vue'),
+            meta: { navGroup: 'ops', navIcon: 'sliders', navOrder: 21, hidden: true } },
           { path: 'session-update', name: 'session-update', component: () => import('@/views/SessionsView.vue'),
             meta: { navGroup: 'ops', navKey: 'nav.sessionUpdate', navIcon: 'sliders', navOrder: 30 } },
           { path: 'voices', name: 'voices', component: () => import('@/views/VoicesView.vue'),
