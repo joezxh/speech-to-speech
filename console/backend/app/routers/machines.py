@@ -16,6 +16,7 @@ from app.schemas.common import ok
 from app.schemas.machine import (
     AutoRegisterIn,
     MachineCreate,
+    MachineDeployIn,
     MachineDraftPut,
     MachineUpdate,
     RegisterTestIn,
@@ -179,6 +180,29 @@ def clear_draft(
     """D5：清除草稿。"""
     machine_config_service.clear_draft(db, machine_id, actor=user.username)
     return ok({"cleared": True})
+
+
+@router.post("/{machine_id}/deploy")
+def deploy_config(
+    machine_id: str,
+    payload: MachineDeployIn,
+    db: DbSession,
+    user: CurrentUser = Depends(require_permission("console:machine:update")),
+):
+    """D6：push（期望+草稿）/ rollback（最近 ack 成功快照）；非 canary 需确认词。"""
+    try:
+        return ok(
+            machine_config_service.deploy(
+                db,
+                machine_id,
+                payload.rows,
+                payload.mode,
+                actor=user.username,
+                confirm_word=payload.confirm_word,
+            )
+        )
+    except KeyError:
+        raise ApiError("not_found", f"machine {machine_id} does not exist", 404) from None
 
 
 @router.post("/register-test")

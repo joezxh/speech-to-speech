@@ -23,9 +23,18 @@ class MachineDraftPut(BaseModel):
     patch: dict[str, str]
     base_version: int = 0
 
+
+class MachineDeployIn(BaseModel):
+    """D6：push/rollback；非 canary 机器的 push 需 confirm_word == machine_id。"""
+
+    mode: str = "push"
+    rows: list[str] | None = None
+    confirm_word: str = ""
+
 __all__ = [
     "AutoRegisterIn",
     "MachineCreate",
+    "MachineDeployIn",
     "MachineDraftPut",
     "MachineUpdate",
     "RegisterTestIn",

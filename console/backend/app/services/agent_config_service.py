@@ -94,8 +94,18 @@ def peek_version(db: Session, machine_id: str) -> int:
     return int(current or 0)
 
 
-def render_target(db: Session, machine_id: str) -> tuple[int, str, str]:
-    """渲染机器目标配置并落版本快照；返回 (config_version, etag, yaml_text)。"""
+def render_target(
+    db: Session,
+    machine_id: str,
+    *,
+    patch: set[str] | None = None,
+    source_text: str | None = None,
+) -> tuple[int, str, str]:
+    """渲染机器目标配置并落版本快照；返回 (config_version, etag, yaml_text)。
+
+    patch（D6 行级下发）：只叠加指定键；None=全部草稿。
+    source_text（回滚）：用 ack 快照文本作基底覆盖草稿，不再从 profile live 渲染。
+    """
     machine = _machine_row(db, machine_id)
     profile = _resolve_profile(db, machine)
 
@@ -109,9 +119,14 @@ def render_target(db: Session, machine_id: str) -> tuple[int, str, str]:
     patches = {
         row.param_key: _coerce_draft(row.value, known.get(row.param_key))
         for row in draft_rows
+        if patch is None or row.param_key in patch
     }
 
-    text, _applied, refused = renderer_service.render_yaml(base, profile, patches, known)
+    if source_text is not None:
+        # ack 快照回滚：snapshot 就是曾经下发成功的全文，直接复用。
+        text, refused = source_text, []
+    else:
+        text, _applied, refused = renderer_service.render_yaml(base, profile, patches, known)
     if refused:
         raise ApiError(
             "invalid_parameter",
@@ -238,9 +253,13 @@ def ack(db: Session, machine_id: str, config_version: int, ok: bool, error: str 
 
     快照本身在 render_target 时已落行——ack 只决定它去留。
     """
+    row = db.get(ParamAgentConfigVersion, (machine_id, config_version))
     if not ok:
-        stale = db.get(ParamAgentConfigVersion, (machine_id, config_version))
-        if stale is not None:
-            db.delete(stale)
+        if row is not None:
+            db.delete(row)
             db.commit()
+    elif row is not None and not row.yaml_hash.startswith("ack:"):
+        # 回滚只能回到 ack 成功的版本（Task 22）：打标记，不新增表列。
+        row.yaml_hash = "ack:" + row.yaml_hash
+        db.commit()
     return {"accepted": True}

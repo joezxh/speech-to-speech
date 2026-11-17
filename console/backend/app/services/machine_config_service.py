@@ -13,7 +13,7 @@ from app.core.errors import ApiError
 from app.db.base import utcnow
 from app.models.param_audit import ParamAudit
 
-from app.models.machine_config import ParamMachineConfig, ParamMachineDraft
+from app.models.machine_config import ParamAgentConfigVersion, ParamMachineConfig, ParamMachineDraft
 from app.repositories.machine_repository import MachineRepository
 from app.services import agent_config_service, layout_service as layout
 from app.services import publish_flow_service, renderer_service
@@ -175,3 +175,62 @@ def clear_draft(db: Session, machine_id: str, *, actor: str) -> None:
         db.delete(row)
     db.add(ParamAudit(actor=actor, action="machine.draft.clear", profile=machine_id, fields=[], at=utcnow()))
     db.commit()
+
+
+# ---- D6：下发与回滚（ack 快照） -------------------------------------------
+
+
+def deploy(
+    db: Session,
+    machine_id: str,
+    rows: list[str] | None,
+    mode: str,
+    *,
+    actor: str,
+    confirm_word: str = "",
+) -> dict:
+    """push=期望值+草稿叠加；rollback=最近 ack 成功版本快照重新下发。"""
+    machine = MachineRepository(db).get(machine_id)
+    if machine is None:
+        raise KeyError(machine_id)
+    # 风控：push 会改变线上配置，非 canary 机器需显式确认词；rollback 是回到
+    # 曾经 ack 成功的快照（更保守），不额外要求确认词。
+    if mode == "push" and machine.role != "canary" and confirm_word != machine_id:
+        raise ApiError("forbidden", f"confirm_word must be {machine_id} for non-canary machines", 403)
+
+    if mode == "rollback":
+        snapshot = (
+            db.scalars(
+                select(ParamAgentConfigVersion)
+                .where(
+                    ParamAgentConfigVersion.machine_id == machine_id,
+                    ParamAgentConfigVersion.yaml_hash.startswith("ack:"),
+                )
+                .order_by(ParamAgentConfigVersion.config_version.desc())
+            ).all()
+        )
+        # 只有 ack 成功的快照才能作为回滚目标（ack 在 yaml_hash 上打标记）。
+        if not snapshot:
+            raise ApiError("conflict", "no acked snapshot to roll back to", 409)
+        source_text = snapshot[0].yaml_text
+    elif mode == "push":
+        source_text = None
+    else:
+        raise ApiError("invalid_request", f"unknown deploy mode {mode}", 400)
+
+    allowed = set(rows) if rows else None
+    version, _etag, text = agent_config_service.render_target(
+        db, machine_id, patch=allowed, source_text=source_text
+    )
+    restored = machine.role
+    db.add(
+        ParamAudit(
+            actor=actor,
+            action="machine.config.deploy",
+            profile=machine_id,
+            fields=sorted(allowed) if allowed else [],
+            at=utcnow(),
+        )
+    )
+    db.commit()
+    return {"config_version": version, "mode": mode, "machine_id": machine_id, "role": restored}
