@@ -44,7 +44,7 @@ export default {
     empty: '该集群还没有机器 —— 请先在「机器管理」添加机器。',
     poolSessions: '/v1/pool · {n} 会话',
     machineMeta: '{n} 实例 · {m} 在线',
-    occupancy: '{inUse}/{size}'
+    occupancy: '{inUse}/{size} · {rpm} rpm'
   },
   policy: {
     least: 'least-in-use',

@@ -43,9 +43,13 @@ def derive_machine_counts(rows: list, status_lookup) -> tuple[int, int]:
     return len(hosts), len(online_hosts)
 
 
-def _error_fields(db, cluster: str | None) -> dict:
+def _alloc_window(db, cluster: str | None) -> list[dict]:
     since = datetime.now(UTC) - timedelta(seconds=ERROR_RATE_WINDOW_S)
-    per_instance = InstanceMetricRepository(db).alloc_window_by_cluster(cluster, since=since)
+    return InstanceMetricRepository(db).alloc_window_by_cluster(cluster, since=since)
+
+
+def _error_fields(db, cluster: str | None, *, per_instance: list[dict] | None = None) -> dict:
+    per_instance = _alloc_window(db, cluster) if per_instance is None else per_instance
     ok_total = sum(r["ok"] for r in per_instance)
     fail_503 = sum(r["fail_503"] for r in per_instance)
     fail_none = sum(r["fail_none"] for r in per_instance)
@@ -136,6 +140,12 @@ def _collect_registry(
     info = process_probe.get_probe().state(console.supervisor_program)
     alerts: list[str] = []
     instances: list[dict[str, Any]] = []
+    # 5m 分配窗口一次查询，同时喂 error_rate 汇总与每实例 rpm（拓扑 chip 真源）。
+    metric_rows = _alloc_window(db, cluster)
+    rpm_by_id = {
+        r["instance_id"]: round((r["ok"] + r["fail_503"] + r["fail_none"]) / ERROR_RATE_WINDOW_S * 60, 1)
+        for r in metric_rows
+    }
     for row in rows:
         state = view.get(row.instance_id)
         reachable = state is not None and state.pool is not None
@@ -161,6 +171,8 @@ def _collect_registry(
                 "stuck": state.pool.stuck if reachable else None,
                 "probe_ms": state.probe_ms if state else None,
                 "p95_probe_ms": state.p95_probe_ms if state else None,
+                # 每分钟分配尝试数（5m 窗口，ok+503+no_instance）：无样本 = null，绝不 0。
+                "rpm_5m": rpm_by_id.get(row.instance_id),
                 # 能力指纹（spec §5.1）：派生状态，只驻留内存。空数组 = 还没探测过。
                 "capabilities": sorted(state.capabilities) if state else [],
                 "capability_issues": dict(state.capability_issues) if state else {},
@@ -191,7 +203,7 @@ def _collect_registry(
     }
     machines_total, machines_online = derive_machine_counts(rows, view.get)
     summary.update({"machines_total": machines_total, "machines_online": machines_online})
-    summary.update(_error_fields(db, cluster))
+    summary.update(_error_fields(db, cluster, per_instance=metric_rows))
     legacy_pool = local.pool if local is not None and local.pool else None
     return {
         "profile": profile,

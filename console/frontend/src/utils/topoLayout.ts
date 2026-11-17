@@ -7,7 +7,8 @@
  *
  * 数据来源全部真实：集群名/registry/policy 来自 ClusterRow，会话数来自
  * /instances summary，机器由实例 base_url 的 host 派生，chip 的占用来自
- * InstanceRow.in_use / size —— 没有来源的字段（role / ver / util / rpm）一律省略。
+ * InstanceRow.in_use / size，rpm 来自 InstanceRow.rpm_5m（5m 分配窗口真源，
+ * 无样本 = null）；没有来源的字段（role / ver / util）一律省略。
  */
 export type TopoTone = 'ok' | 'warn' | 'draining' | 'bad' | 'muted'
 
@@ -17,6 +18,8 @@ export interface TopoChip {
   tone: TopoTone
   inUse: number | null
   size: number | null
+  /** 每分钟分配尝试数（5m 窗口）；无样本 = null。 */
+  rpm: number | null
   x: number
   y: number
 }
@@ -71,6 +74,7 @@ export interface TopoInput {
     host: string
     inUse?: number | null
     size?: number | null
+    rpm?: number | null
   }>
 }
 
@@ -118,6 +122,7 @@ export function layoutTopo(input: TopoInput): TopoLayout {
       tone: toneForInstance(instance.status),
       inUse: instance.inUse ?? null,
       size: instance.size ?? null,
+      rpm: instance.rpm ?? null,
       x: CHIP_X0 + j * CHIP_GAP,
       y: y + 16
     }))

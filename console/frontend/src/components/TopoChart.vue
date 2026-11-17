@@ -32,10 +32,12 @@ const POLICIES = ['least', 'rr', 'lat']
 const policyLabel = (policy: string): string =>
   POLICIES.includes(policy) ? t(`overview.policy.${policy}`) : policy
 
-const occupancy = (inUse: number | null, size: number | null): string =>
+const occupancy = (inUse: number | null, size: number | null, rpm: number | null): string =>
+  // 原型 chip 第二行：`inUse/size · rpm rpm`；无样本 rpm 显示 —（不编造）。
   t('overview.topology.occupancy', {
     inUse: inUse ?? '—',
-    size: size ?? '—'
+    size: size ?? '—',
+    rpm: rpm ?? '—'
   })
 </script>
 
@@ -120,7 +122,7 @@ const occupancy = (inUse: number | null, size: number | null): string =>
       />
       <text class="topo__t-sm" :x="chip.x + 8" :y="chip.y + 13">{{ chip.label }}</text>
       <text class="topo__t-sm" :x="chip.x + 8" :y="chip.y + 25">
-        {{ occupancy(chip.inUse, chip.size) }}
+        {{ occupancy(chip.inUse, chip.size, chip.rpm) }}
       </text>
     </g>
   </svg>

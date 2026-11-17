@@ -120,3 +120,22 @@ def test_top_error_instance_tie_breaks_lexicographically(client, db_session):
     db_session.commit()
     data = client.get("/api/v1/instances", params={"cluster": "gray-01"}, headers=_auth(client)).json()["data"]
     assert data["summary"]["top_error_instance"] == "pipe-b"  # 并列取字典序最小
+
+
+def test_instance_rpm_5m_derived_from_alloc_deltas(client, db_session):
+    # 用户反馈：拓扑 chip 要显示真实 rpm。真源 = 5m 分配计数器窗口（ok+503+no_instance）。
+    _seed_registry(db_session)
+    db_session.add(ParamInstanceMetric(instance_id="pipe-b", observed_by="c1", kind="sample", status="online",
+                                       alloc_ok=10))
+    db_session.commit()
+    data = client.get("/api/v1/instances", params={"cluster": "gray-01"}, headers=_auth(client)).json()["data"]
+    row = data["instances"][0]
+    assert row["instance_id"] == "pipe-b"
+    assert row["rpm_5m"] == pytest.approx(2.0)  # 10 allocs / 300s * 60
+
+
+def test_instance_rpm_5m_null_without_samples(client, db_session):
+    # 无样本 = null，绝不 0（与 error_rate_5m 同口径，需求确认点 4）。
+    _seed_registry(db_session)
+    data = client.get("/api/v1/instances", params={"cluster": "gray-01"}, headers=_auth(client)).json()["data"]
+    assert data["instances"][0]["rpm_5m"] is None

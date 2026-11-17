@@ -11,7 +11,7 @@ const point = (over: Partial<InstanceMetricPoint>): InstanceMetricPoint => ({
 const row = (over: Partial<InstanceRow>): InstanceRow => ({
   instance_id: 'pipe-a', machine_id: null, base_url: 'http://a:8765', status: 'online', weight: 1,
   enabled: true, drain_requested: false, size: 4, in_use: 1, free: 3, stuck: 0,
-  probe_ms: 10, p95_probe_ms: 20, units: [], last_error: '', observed_by: 'console-1',
+  probe_ms: 10, p95_probe_ms: 20, rpm_5m: null, units: [], last_error: '', observed_by: 'console-1',
   declared_mismatch: false, ...over,
 })
 

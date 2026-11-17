@@ -12,7 +12,7 @@ const input: TopoInput = {
     { host: 'host2', online: false }
   ],
   instances: [
-    { id: 'pipe-a', status: 'online', host: 'host1', inUse: 2, size: 4 },
+    { id: 'pipe-a', status: 'online', host: 'host1', inUse: 2, size: 4, rpm: 12 },
     { id: 'pipe-b', status: 'degraded', host: 'host1', inUse: 0, size: 4 },
     { id: 'pipe-c', status: 'offline', host: 'host2', inUse: 0, size: 8 }
   ]
@@ -30,7 +30,7 @@ describe('layoutTopo (prototype topoSVG horizontal geometry)', () => {
     expect(full.machines[1].chips.map((c) => c.x)).toEqual([560])
   })
 
-  it('carries only real metadata (no mock role / ver / util / rpm)', () => {
+  it('carries only real metadata (rpm from alloc counters; no mock role / ver / util)', () => {
     expect(full.lb).toMatchObject({
       cluster: 'default',
       registry: 'consul://h:8500',
@@ -39,7 +39,9 @@ describe('layoutTopo (prototype topoSVG horizontal geometry)', () => {
     })
     expect(full.machines[0].instanceCount).toBe(2)
     expect(full.machines[0].onlineCount).toBe(1)
-    expect(full.machines[0].chips[0]).toMatchObject({ label: 'pipe-a', inUse: 2, size: 4 })
+    expect(full.machines[0].chips[0]).toMatchObject({ label: 'pipe-a', inUse: 2, size: 4, rpm: 12 })
+    // 无真源 = null（原型 rpm 是 mock，这里必须来自 5m 分配窗口，缺失不编造）
+    expect(full.machines[0].chips[1].rpm).toBeNull()
   })
 
   it('maps statuses to ok / warn / draining / bad tones', () => {

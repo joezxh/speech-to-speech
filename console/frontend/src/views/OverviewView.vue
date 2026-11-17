@@ -114,7 +114,8 @@ const topo = computed(() => {
       status: row.status,
       host: hostOf(row.base_url),
       inUse: row.in_use,
-      size: row.size
+      size: row.size,
+      rpm: row.rpm_5m
     }))
   })
 })

@@ -100,6 +100,8 @@ export interface InstanceRow {
   stuck: number | null
   probe_ms: number | null
   p95_probe_ms: number | null
+  // 每分钟分配尝试数（5m 窗口）；无样本 = null。legacy 路径无 instances 列表。
+  rpm_5m: number | null
   units: PoolUnit[]
   last_error: string
   observed_by: string

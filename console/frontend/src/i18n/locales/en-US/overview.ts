@@ -44,7 +44,7 @@ export default {
     empty: 'No machines in this cluster yet — add machines on the Machines page first.',
     poolSessions: '/v1/pool · {n} sessions',
     machineMeta: '{n} instances · {m} online',
-    occupancy: '{inUse}/{size}'
+    occupancy: '{inUse}/{size} · {rpm} rpm'
   },
   policy: {
     least: 'least-in-use',
