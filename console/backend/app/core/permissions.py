@@ -35,6 +35,9 @@ PERMISSION_ROLES: dict[str, frozenset[str]] = {
     # 发布台账（Task 24）：记账写只给 admin；CI 回填走同一权限（服务凭据是 admin 角色）。
     "console:release:query": frozenset({"admin", "operator"}),
     "console:release:write": frozenset({"admin"}),
+    # 全局审计（Task 25）：查询 operator 可看；导出（含全部字段行）只给 admin。
+    "console:audit:query": frozenset({"admin", "operator"}),
+    "console:audit:export": frozenset({"admin"}),
     # 仅登记（防打字错误占位）：agent 面不走角色，按 machine token 映射（§7.3）。
     "console:agent:enroll": frozenset({"admin", "operator"}),
 }

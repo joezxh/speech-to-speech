@@ -55,6 +55,7 @@ class AuditRepository:
         until: datetime | None = None,
         page: int = 1,
         page_size: int = 50,
+        action_prefix: str = "",
     ) -> tuple[list[ParamAudit], int]:
         stmt = select(ParamAudit)
         if profile:
@@ -63,6 +64,8 @@ class AuditRepository:
             stmt = stmt.where(ParamAudit.actor == actor)
         if action:
             stmt = stmt.where(ParamAudit.action == action)
+        if action_prefix:
+            stmt = stmt.where(ParamAudit.action.like(f"{action_prefix}%"))
         if result:
             stmt = stmt.where(ParamAudit.result == result)
         if field:

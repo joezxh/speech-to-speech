@@ -11,6 +11,7 @@ def register_api_routers(app: FastAPI) -> None:
     """
     from app.routers import (  # noqa: PLC0415 - import cycle avoidance
         agent,
+        audit,
         audio_proxy,
         auth,
         catalog,
@@ -68,6 +69,8 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(lb.router)
     # 发布台账（R1–R4，Task 24）：console 只记账，CI 回填走 stage-result。
     app.include_router(releases.router)
+    # 全局审计（R5/R6，Task 25）：查询分页 + CSV 导出。
+    app.include_router(audit.router)
 
     # The demo face is anonymous and unenveloped (A.13), so it goes last among the
     # API groups but still before the SPA catch-all.
