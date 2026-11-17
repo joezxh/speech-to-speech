@@ -603,9 +603,9 @@ export function auditCategory(a: AuditRow): string
 
 - 元素按设计 §4.8/§4.9：四阶段圆点流水线（含"待回填"态）+ 新建发布模态（`PublishDialog` 内部换 PModal）/ 版本历史表（灰度条、已锁定标签、回滚禁用态）；审计 KPI×4 / 分类 chip / 导出按钮。
 
-- [ ] **Step 1: 写失败测试** —— stageDots 对 `building`（构建 active）与 `rolled_back` 的状态映射；auditCategory `machine.create→machine`。
-- [ ] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** vitest + build + i18n PASS。
-- [ ] **Step 5: Commit** `feat(console-front): 发布与审计页按原型重写`
+- [x] **Step 1: 写失败测试** —— stageDots 对 `building`（构建 active）与 `rolled_back` 的状态映射；auditCategory `machine.create→machine`。
+- [x] **Step 2:** FAIL → **Step 3:** 实现 → **Step 4:** vitest + build + i18n PASS。
+- [x] **Step 5: Commit** `feat(console-front): 发布与审计页按原型重写`
 
 ---
 
