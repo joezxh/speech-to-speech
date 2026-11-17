@@ -1,5 +1,6 @@
 import { SentAudioRecorder } from '../audio/sent-audio'
 import type { QueueTicket, SessionGrant, ToolCall, ToolDef, ToolResult } from '../types'
+import { appendRealtimeTicket } from '@/composables/useRealtimeTicket'
 import { readTurnLatency } from './turn-latency'
 
 export const AUDIO_SAMPLE_RATE = 24_000
@@ -270,7 +271,8 @@ export class S2sClient extends EventTarget {
     if (this.options.transport === 'websocket') {
       if (this.options.allowDirect) {
         this.setStatus('connecting')
-        url = this.directSocketUrl()
+        // WS 短票据（Task 28）：换不到（401/过期/网络）→ null，匿名继续不阻塞呼叫。
+        url = await appendRealtimeTicket(this.directSocketUrl())
         // 没有 grant：额度/心跳只属于 LB 模式，直连部署两者都不存在。
         this.emit('direct', { url })
       } else {
