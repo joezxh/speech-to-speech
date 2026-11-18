@@ -18,7 +18,12 @@ import soundfile as sf
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from speech_to_speech.api.openai_realtime.openapi_meta import error_response, json_response
+from speech_to_speech.api.openai_realtime.openapi_meta import (
+    detail_error_response,
+    json_response,
+    ser_error_response,
+    validation_error_response,
+)
 
 from speech_to_speech.STT.sense_voice_emotion import (
     SERRejection,
@@ -146,7 +151,7 @@ def mount_emotion_local(app: FastAPI, pool: Iterable[Any]) -> None:
         request: Request,
         file: UploadFile | None = File(
             None,
-            description="待分析的情感语音；建议 16 kHz 单声道 WAV。",
+            description="待分析的情感语音；建议 16 kHz 单声道 WAV。表单字段**可选**，留空时服务端回退读取原始请求体。",
         ),
         sample_rate: int = Form(
             16000,
@@ -238,10 +243,11 @@ def mount_emotion_local(app: FastAPI, pool: Iterable[Any]) -> None:
                 "labels_supported": _LABELS,
             },
         ),
-        409: error_response("拒答：全静音 / 置信度不足 / 判别余量不足 / 标签无法映射。", "SILENCE"),
-        429: error_response("并发已满且短截止等待超时。", "BUSY"),
-        500: error_response("推理失败。", "INFER_FAILED"),
-        503: error_response("pipeline 内没有 SenseVoice handler。", "SER_UNAVAILABLE"),
+        409: ser_error_response("拒答：全静音 / 置信度不足 / 判别余量不足 / 标签无法映射。", "LOW_CONFIDENCE"),
+        422: validation_error_response("表单参数校验失败。"),
+        429: ser_error_response("并发已满且短截止等待超时。", "BUSY"),
+        500: ser_error_response("推理失败。", "INFER_FAILED"),
+        503: detail_error_response("pipeline 内没有 SenseVoice handler。", "SER handler unavailable"),
     }
 
     app.add_api_route(

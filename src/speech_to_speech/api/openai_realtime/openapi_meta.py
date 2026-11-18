@@ -21,8 +21,13 @@ API_DESCRIPTION = """
 **通用约定**
 
 * 所有音频接口均接受 `multipart/form-data`，音频字段名为 `file`；建议 16 kHz 单声道 PCM/WAV，服务端会自动重采样。
-* 错误响应统一为 `{"error": {"code": "<机器码>", "reason": "<人读说明>"}}`（声纹接口为 `{"error":{"code","message"}}`）。
-* 声纹接口要求 `Authorization: Bearer <token>`，其余接口无需鉴权（仅监听回环地址时使用）。
+* 错误响应分五族，按接口族区分，调用方请按对应字段解析：
+  * `{"detail": "..."}` —— ASR / TTS / 口型 / 情感未就绪，走 FastAPI `HTTPException`；
+  * `{"error": {"code", "stage", "reason"}}` —— 情感识别（SER）的拒答与并发拒绝；
+  * `{"error": {"code", "message", "stage", "retryable"}}` —— 声纹（Voiceprint），`code` 为穷举枚举；
+  * `{"error": {"code", "message", "details"}}` —— 管理端（`/admin/*`、挂断通话）；
+  * `{"error": {"message", "type"}}` —— LLM 代理，OpenAI 兼容信封。
+* 声纹接口要求 `Authorization: Bearer <token>`（缺失 401 / 凭据不匹配 403），其余接口无需鉴权（仅监听回环地址时使用）。
 * 所有示例中的 `http://localhost:8765` 可替换为实际部署地址。
 """
 
@@ -82,6 +87,137 @@ def error_response(description: str, example_code: str = "INTERNAL_ERROR") -> di
                     "reason": {"type": "string", "example": description},
                 },
                 "required": ["code", "reason"],
+            }
+        },
+    }
+    return {"description": description, "content": {"application/json": {"schema": schema}}}
+
+
+def detail_error_response(description: str, example_detail: str = "detail") -> dict[str, Any]:
+    """Document a FastAPI ``HTTPException`` body: ``{"detail": "..."}``.
+
+    Used by the ASR / TTS / viseme routes, which raise ``HTTPException`` rather
+    than returning a structured ``error`` envelope.
+    """
+    schema = {
+        "type": "object",
+        "properties": {
+            "detail": {
+                "type": "string",
+                "description": "人读错误说明。",
+                "example": example_detail,
+            }
+        },
+        "required": ["detail"],
+    }
+    return {"description": description, "content": {"application/json": {"schema": schema}}}
+
+
+def ser_error_response(description: str, example_code: str = "LOW_CONFIDENCE") -> dict[str, Any]:
+    """Document the SER error body: ``{"error": {"code", "stage", "reason"}}``."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "error": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "example": example_code},
+                    "stage": {"type": "string", "example": "SER"},
+                    "reason": {"type": "string", "example": description},
+                },
+                "required": ["code", "stage", "reason"],
+            }
+        },
+    }
+    return {"description": description, "content": {"application/json": {"schema": schema}}}
+
+
+def voiceprint_error_response(description: str, example_code: str = "INTERNAL_ERROR") -> dict[str, Any]:
+    """Document the voiceprint error body: ``{"error": {code, message, stage, retryable}}``."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "error": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "机器可读错误码（穷举枚举）。", "example": example_code},
+                    "message": {"type": "string", "description": "固定文案，不含底层异常原文。", "example": description},
+                    "stage": {
+                        "type": "string",
+                        "description": "失败阶段：AUTH / PREPROCESS / INFER / CAPACITY / INTERNAL。",
+                        "example": "PREPROCESS",
+                    },
+                    "retryable": {"type": "boolean", "description": "调用方是否可重试。", "example": False},
+                },
+                "required": ["code", "message", "stage", "retryable"],
+            }
+        },
+    }
+    return {"description": description, "content": {"application/json": {"schema": schema}}}
+
+
+def validation_error_response(description: str = "请求参数校验失败。") -> dict[str, Any]:
+    """Document FastAPI's 422 body: ``{"detail": [{loc, msg, type}]}``."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "detail": {
+                "type": "array",
+                "description": "逐项校验错误。",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "loc": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "出错位置（body 字段名 / query 参数名）。",
+                            "example": ["body", "file"],
+                        },
+                        "msg": {"type": "string", "example": "field required"},
+                        "type": {"type": "string", "example": "missing"},
+                    },
+                },
+            }
+        },
+    }
+    return {"description": description, "content": {"application/json": {"schema": schema}}}
+
+
+def admin_error_response(description: str, example_code: str = "invalid_request_error") -> dict[str, Any]:
+    """Document the admin error body: ``{"error": {"code", "message", "details"}}``."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "error": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "example": example_code},
+                    "message": {"type": "string", "example": description},
+                    "details": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "补充明细（可为空数组）。",
+                    },
+                },
+                "required": ["code", "message"],
+            }
+        },
+    }
+    return {"description": description, "content": {"application/json": {"schema": schema}}}
+
+
+def openai_error_response(description: str, example_type: str = "invalid_request_error") -> dict[str, Any]:
+    """Document the OpenAI-compatible error envelope: ``{"error": {"message", "type"}}``."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "error": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string", "example": description},
+                    "type": {"type": "string", "example": example_type},
+                },
+                "required": ["message", "type"],
             }
         },
     }
@@ -213,6 +349,43 @@ async def m():\\n  async with websockets.connect('ws://localhost:8765/v1/realtim
 asyncio.run(m())" """
 
 
+def _promote_binary_file_fields(schema: dict[str, Any]) -> None:
+    """Render multipart ``file`` fields as binary so Swagger UI shows a file picker.
+
+    FastAPI types an *optional* upload as ``UploadFile | None`` and emits
+    ``anyOf: [{type: string, contentMediaType: application/octet-stream},
+    {type: null}]``. Swagger UI does not recognise that shape and draws a
+    plain text box, so the property is rewritten to the canonical
+    ``{type: string, format: binary}`` the UI turns into a "Choose File"
+    control. The runtime contract is untouched — the field stays optional.
+    """
+    for name, body_schema in schema.get("components", {}).get("schemas", {}).items():
+        if not name.startswith("Body_") or not isinstance(body_schema, dict):
+            continue
+        for prop_name, prop in (body_schema.get("properties") or {}).items():
+            if not isinstance(prop, dict):
+                continue
+            options = prop.get("anyOf")
+            if not isinstance(options, list):
+                continue
+            binary = next(
+                (
+                    option
+                    for option in options
+                    if isinstance(option, dict) and option.get("contentMediaType") == "application/octet-stream"
+                ),
+                None,
+            )
+            if binary is None:
+                continue
+            title = binary.get("title") or prop.get("title") or prop_name
+            description = prop.get("description")
+            prop.clear()
+            prop.update({"type": "string", "format": "binary", "title": title})
+            if description:
+                prop["description"] = description
+
+
 def install_websocket_docs(app: Any) -> None:
     """Patch ``app.openapi`` so the WebSocket route shows up in Swagger UI."""
     original_openapi = app.openapi
@@ -226,6 +399,7 @@ def install_websocket_docs(app: Any) -> None:
             paths[WS_PATH] = WS_SCHEMA
         schema["info"]["title"] = API_TITLE
         schema["info"]["version"] = API_VERSION
+        _promote_binary_file_fields(schema)
         app.openapi_schema = schema
         return schema
 
@@ -240,9 +414,15 @@ __all__ = [
     "OPENAPI_TAGS",
     "WS_CURL",
     "WS_PATH",
+    "admin_error_response",
     "curl",
+    "detail_error_response",
     "error_response",
     "install_websocket_docs",
     "json_response",
+    "openai_error_response",
+    "ser_error_response",
     "text_response",
+    "validation_error_response",
+    "voiceprint_error_response",
 ]

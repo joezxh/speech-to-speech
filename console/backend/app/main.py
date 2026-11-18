@@ -31,6 +31,28 @@ from app.services import (
 
 configure_logging(app_settings.log_level)
 
+# The console's own API surface, rendered as the info block of /docs.
+#
+# FastAPI serves the Swagger page from a CDN and boots it with an inline
+# <script>, so the security middleware keeps a CSP of its own for the docs
+# routes (see middleware/security_headers.py). Everything else on this service
+# stays on the strict 'self'-only CSP.
+_API_DESCRIPTION = """
+控制台后端 HTTP API。
+
+**接口分组**
+
+* `/api/v1/*` —— 管理面，需 `Authorization: Bearer <JWT>`，按 `console:<资源>:<动作>` 权限码鉴权。
+* `/api/*` —— 匿名演示面（demo）。
+* `/v1/*` —— 对 pipeline 的反向代理：实时语音（WebSocket）、ASR / TTS / 声纹 / 情感。
+
+**通用约定**
+
+* 成功响应统一为 `{"code": 200, "message": "success", "data": ...}`（`/health`、`/api/config` 例外）。
+* 失败响应统一为 `{"code": "<机器码>", "message": "<人读说明>", "detail": [], "requestId": "..."}`。
+* 本页为 OpenAPI 文档；`/openapi.json` 是同一份 schema 的机器可读版本。
+"""
+
 
 async def _usage_sweeper() -> None:
     """回收静默掉的计量会话（崩了 / 关页没发 beacon）（demo/server.py:227-233）。"""
@@ -154,7 +176,19 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="s2s-console", docs_url=None, redoc_url=None, lifespan=lifespan)
+    # docs_url/redoc_url/openapi_url used to be None: with them off, /docs fell
+    # through to the SPA catch-all, the browser booted the console bundle and the
+    # router guard bounced it to /console/login?next=/ — the API reference was
+    # unreachable behind the login page. FastAPI registers these three routes
+    # inside __init__, i.e. before mount_spa's catch-all, so they win the match.
+    app = FastAPI(
+        title="s2s-console",
+        description=_API_DESCRIPTION,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+        lifespan=lifespan,
+    )
     app.add_middleware(
         SecurityHeadersMiddleware,
         max_body_bytes=app_settings.max_body_bytes,

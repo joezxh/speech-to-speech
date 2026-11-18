@@ -15,7 +15,7 @@ import soundfile as sf
 from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 
-from speech_to_speech.api.openai_realtime.openapi_meta import error_response
+from speech_to_speech.api.openai_realtime.openapi_meta import detail_error_response, validation_error_response
 
 ASR_PATH = "/v1/audio/transcriptions"
 TTS_PATH = "/v1/audio/speech"
@@ -130,16 +130,17 @@ def mount_audio_services(app: FastAPI, pool: Iterable[Any]) -> None:
                     }
                 },
             },
-            400: error_response("音频缺失或无法解码。", "INVALID_AUDIO"),
-            500: error_response("模型推理失败。", "ASR_FAILED"),
-            503: error_response("pipeline 内没有可用的 STT handler。", "STT_UNAVAILABLE"),
+            400: detail_error_response("音频缺失或无法解码。", "no audio provided / decode failed"),
+            422: validation_error_response("表单参数校验失败。"),
+            500: detail_error_response("模型推理失败。", "asr failed: ..."),
+            503: detail_error_response("pipeline 内没有可用的 STT handler。", "STT handler unavailable"),
         },
     )
     async def transcriptions(
         request: Request,
         file: UploadFile | None = File(
             None,
-            description="待转写音频文件；建议 16 kHz 单声道 WAV。",
+            description="待转写音频文件；建议 16 kHz 单声道 WAV。表单字段**可选**，留空时服务端回退读取原始请求体（`audio/wav` 等）。",
         ),
         language: str = Form(
             "auto",
@@ -185,9 +186,9 @@ def mount_audio_services(app: FastAPI, pool: Iterable[Any]) -> None:
                 "description": "合成成功，返回 audio/wav（RIFF）。",
                 "content": {"audio/wav": {"schema": {"type": "string", "format": "binary"}}},
             },
-            400: error_response("输入文本为空。", "EMPTY_INPUT"),
-            500: error_response("合成失败。", "TTS_FAILED"),
-            503: error_response("pipeline 内没有可用的 TTS handler。", "TTS_UNAVAILABLE"),
+            400: detail_error_response("输入文本为空。", "empty input"),
+            500: detail_error_response("合成失败。", "tts failed: ..."),
+            503: detail_error_response("pipeline 内没有可用的 TTS handler。", "TTS handler unavailable"),
         },
         openapi_extra={
             "requestBody": {

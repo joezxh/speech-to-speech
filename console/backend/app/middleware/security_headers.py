@@ -17,6 +17,22 @@ _CSP = (
     "style-src 'self' 'unsafe-inline'"
 )
 
+# The API reference page is not the console bundle: FastAPI's Swagger UI pulls
+# its JS/CSS from a CDN and boots with an inline <script>, so the strict
+# 'self'-only policy above would render /docs as a blank page. This policy is
+# applied to the docs routes only — every other page keeps the strict one.
+_DOCS_CSP = (
+    "default-src 'self'; "
+    "connect-src 'self'; "
+    "img-src 'self' data: https://cdn.jsdelivr.net; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "font-src 'self' data: https://cdn.jsdelivr.net"
+)
+
+#: Paths served with the docs policy instead of the strict one.
+DOCS_PATHS = ("/docs", "/redoc")
+
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     def __init__(
@@ -26,6 +42,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         upload_body_bytes: int | None = None,
         upload_paths: tuple[str, ...] = ("/api/v1/voices",),
         exempt_paths: tuple[str, ...] = (),
+        docs_paths: tuple[str, ...] = DOCS_PATHS,
     ) -> None:
         super().__init__(app)
         self.max_body_bytes = max_body_bytes
@@ -38,6 +55,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         # face answers 413 in the pipeline error shape, and two different 413
         # shapes for the same limit is worse than one (spec §5.4).
         self.exempt_paths = exempt_paths
+        self.docs_paths = docs_paths
 
     async def dispatch(self, request: Request, call_next):
         declared = request.headers.get("content-length")
@@ -56,5 +74,6 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "same-origin"
         if response.headers.get("content-type", "").startswith("text/html"):
-            response.headers["Content-Security-Policy"] = _CSP
+            policy = _DOCS_CSP if request.url.path in self.docs_paths else _CSP
+            response.headers["Content-Security-Policy"] = policy
         return response

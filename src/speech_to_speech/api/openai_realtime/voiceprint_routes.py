@@ -13,7 +13,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from loguru import logger
 
-from speech_to_speech.api.openai_realtime.openapi_meta import error_response
+from speech_to_speech.api.openai_realtime.openapi_meta import voiceprint_error_response
 
 from speech_to_speech.voiceprint import service as voiceprint_service
 from speech_to_speech.voiceprint.errors import VoiceprintErrorCode, error_body, http_status
@@ -24,11 +24,14 @@ CAPABILITY_PATH = "/v1/audio/embeddings/capability"
 EMBEDDINGS_DESCRIPTION = """
 **声纹嵌入（Voiceprint）**。把一段人声转成 L2 归一化的声纹向量，用于说话人注册与验证。
 
-* **需要鉴权**：`Authorization: Bearer <token>`，token 由 `VOICEPRINT_API_KEY` 配置；缺失或错误返回 401。
+* **需要鉴权**：`Authorization: Bearer <token>`，token 由 `VOICEPRINT_API_KEY` 配置。
+  * 请求头缺失或不是 `Bearer` 形式 → **401 `UNAUTHORIZED`**；
+  * token 与配置不匹配 → **403 `FORBIDDEN`**。
 * 请求体 `multipart/form-data`，音频放 `file` 字段；输入采样率不限，服务端重采样到 24 kHz（speaker encoder 采样率）。
 * 输出维度见 `/v1/audio/embeddings/capability`（当前为 2048 维）。
 * 音频只在内存中处理，不落盘、不进日志。
 * `model` 传错（如 `model=rr`）返回 400 `MODEL_MISMATCH`；`purpose` 仅作审计标注，不参与校验。
+* 错误体固定为 `{"error": {"code", "message", "stage", "retryable"}}`，`code` 为穷举枚举，调用方请按 `code` 分支、不要解析 `message`。
 
 ```bash
 curl -X POST http://localhost:8765/v1/audio/embeddings \\
@@ -48,8 +51,9 @@ curl -H "Authorization: Bearer $VOICEPRINT_API_KEY" \\
 CAPABILITY_DESCRIPTION = """
 **声纹能力查询**。返回声纹服务的维度、就绪状态、设备与限制，便于调用方在注册前自检。
 
-* 同样需要 `Authorization: Bearer <token>`。
+* 同样需要 `Authorization: Bearer <token>`：缺失 401，token 不匹配 403。
 * `ready=false` 表示 encoder 尚未加载完成或未启用。
+* 错误体与 `/v1/audio/embeddings` 一致：`{"error": {"code", "message", "stage", "retryable"}}`。
 
 ```bash
 curl -H "Authorization: Bearer $VOICEPRINT_API_KEY" \\
@@ -114,19 +118,22 @@ def mount_voiceprint(app: FastAPI, pool: Iterable[Any]) -> None:
                     }
                 },
             },
-            400: error_response("音频非法、模型不匹配或超限。", "INVALID_AUDIO"),
-            401: error_response("缺少或错误的 Bearer 令牌。", "UNAUTHORIZED"),
-            413: error_response("音频超过体积/时长上限。", "PAYLOAD_TOO_LARGE"),
-            429: error_response("并发已满。", "TOO_MANY_REQUESTS"),
-            500: error_response("推理失败。", "INTERNAL_ERROR"),
-            503: error_response("声纹服务未启用或 encoder 未就绪。", "SERVICE_UNAVAILABLE"),
+            400: voiceprint_error_response("缺少音频文件（INVALID_REQUEST）或 model 与服务端配置不一致（MODEL_MISMATCH）。", "MODEL_MISMATCH"),
+            401: voiceprint_error_response("缺少 Bearer 凭据，或请求头不是 `Bearer <token>` 形式。", "UNAUTHORIZED"),
+            403: voiceprint_error_response("Bearer 凭据与 `VOICEPRINT_API_KEY` 不匹配。", "FORBIDDEN"),
+            409: voiceprint_error_response("音频为静音（AUDIO_SILENT）、有效语音过短（AUDIO_TOO_SHORT）或未检测到语音（SPEECH_NOT_DETECTED）。", "AUDIO_SILENT"),
+            413: voiceprint_error_response("音频超过体积上限。", "AUDIO_TOO_LARGE"),
+            422: voiceprint_error_response("音频超过时长上限（AUDIO_TOO_LONG）或解码失败（AUDIO_UNDECODABLE）。", "AUDIO_UNDECODABLE"),
+            500: voiceprint_error_response("推理失败或向量维度漂移。", "INFERENCE_FAILED"),
+            503: voiceprint_error_response("服务端未配置凭据（AUTH_NOT_CONFIGURED）、模型不可用（MODEL_UNAVAILABLE）或队列已满（QUEUE_FULL）。", "QUEUE_FULL"),
+            504: voiceprint_error_response("声纹推理超时（`VOICEPRINT_INFER_TIMEOUT_MS`，默认 3000 ms）。", "INFERENCE_TIMEOUT"),
         },
     )
     async def embeddings(
         request: Request,
         file: UploadFile | None = File(
             None,
-            description="待提取声纹的音频文件；采样率不限，服务端重采样到 24 kHz。",
+            description="待提取声纹的音频文件；采样率不限，服务端重采样到 24 kHz。表单字段**可选**，留空时服务端回退读取原始请求体。",
         ),
         model: str = Form(
             "",
@@ -188,7 +195,9 @@ def mount_voiceprint(app: FastAPI, pool: Iterable[Any]) -> None:
                     }
                 },
             },
-            401: error_response("缺少或错误的 Bearer 令牌。", "UNAUTHORIZED"),
+            401: voiceprint_error_response("缺少 Bearer 凭据，或请求头不是 `Bearer <token>` 形式。", "UNAUTHORIZED"),
+            403: voiceprint_error_response("Bearer 凭据与 `VOICEPRINT_API_KEY` 不匹配。", "FORBIDDEN"),
+            503: voiceprint_error_response("服务端未配置凭据（AUTH_NOT_CONFIGURED），端点按 fail-closed 关闭。", "AUTH_NOT_CONFIGURED"),
         },
     )
     async def capability(request: Request):

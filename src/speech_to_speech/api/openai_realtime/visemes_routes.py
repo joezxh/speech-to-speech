@@ -16,7 +16,7 @@ import soundfile as sf
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from speech_to_speech.api.openai_realtime.openapi_meta import error_response
+from speech_to_speech.api.openai_realtime.openapi_meta import detail_error_response, validation_error_response
 
 VISEMES_PATH = "/v1/audio/visemes"
 CAPABILITY_PATH = "/v1/audio/visemes/capability"
@@ -119,14 +119,15 @@ def mount_visemes(app: FastAPI, pool: Iterable[Any]) -> None:
                     }
                 },
             },
-            400: error_response("音频缺失或无法解码。", "INVALID_AUDIO"),
-            500: error_response("口型推理失败。", "VISEMES_FAILED"),
-            503: error_response("STV handler 未就绪（模型不可达或未启用）。", "STV_UNAVAILABLE"),
+            400: detail_error_response("音频缺失或无法解码。", "decode failed: invalid wav header"),
+            422: validation_error_response("表单参数校验失败。"),
+            500: detail_error_response("口型推理失败。", "visemes failed: ..."),
+            503: detail_error_response("STV handler 未就绪（模型不可达或未启用）。", "STV handler unavailable"),
         },
     )
     async def visemes(request: Request, file: UploadFile | None = File(
         None,
-        description="待转换的语音音频；建议 16 kHz 单声道 WAV。",
+        description="待转换的语音音频；建议 16 kHz 单声道 WAV。表单字段**可选**，留空时服务端回退读取原始请求体。",
     )):
         handler = find_stv_handler(pool)
         if handler is None:

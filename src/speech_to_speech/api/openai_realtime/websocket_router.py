@@ -32,6 +32,7 @@ from speech_to_speech.api.openai_realtime.openapi_meta import (
     API_TITLE,
     API_VERSION,
     OPENAPI_TAGS,
+    admin_error_response,
     install_websocket_docs,
 )
 from speech_to_speech.api.openai_realtime.pipeline_unit import PipelineUnit, SessionState
@@ -1108,9 +1109,9 @@ def create_app(
                     }
                 },
             },
-            400: {"description": "请求体非法（JSON 错误、缺少 session 字段、scope 与 target 不匹配）。"},
-            401: {"description": "缺少或错误的 Bearer 令牌。"},
-            503: {"description": "未配置 `S2S_ADMIN_TOKEN`（fail-closed）。"},
+            400: admin_error_response("请求体非法（JSON 错误、缺少 session 字段、scope 与 target 不匹配）。", "invalid_request_error"),
+            401: admin_error_response("缺少或错误的 Bearer 令牌。", "unauthorized"),
+            503: admin_error_response("未配置 `S2S_ADMIN_TOKEN`（fail-closed）。", "admin_disabled"),
         },
         openapi_extra={
             "requestBody": {
@@ -1225,6 +1226,7 @@ def create_app(
 
     @app.post(
         "/v1/realtime/calls",
+        status_code=201,
         summary="WebRTC 通话建立（SDP 握手）",
         description=(
             "**WebRTC 方式的实时通话入口**（OpenAI Realtime GA `calls` 接口语义）。\n\n"
@@ -1235,6 +1237,7 @@ def create_app(
             "* `Content-Type` 不是 `application/sdp` 返回 415。\n"
             "* 实例槽位占满返回 503 `session_limit_reached`。\n"
             "* 响应 `Location` 头给出挂断地址：`DELETE /v1/realtime/calls/{call_id}`。\n\n"
+            "* 成功返回 **201**，响应体是 SDP answer（`application/sdp`）。\n\n"
             "```bash\ncurl -X POST http://localhost:8765/v1/realtime/calls \\\n"
             "  -H \"Content-Type: application/sdp\" \\\n"
             "  --data-binary @offer.sdp \\\n"
@@ -1245,14 +1248,41 @@ def create_app(
         tags=["实时对话"],
         response_description="SDP answer",
         responses={
-            200: {
+            201: {
                 "description": "SDP answer；`Location` 头给出挂断地址。",
                 "content": {"application/sdp": {"schema": {"type": "string", "format": "binary"}}},
+                "headers": {
+                    "Location": {
+                        "description": "挂断地址 `DELETE /v1/realtime/calls/{call_id}`。",
+                        "schema": {"type": "string", "example": "/v1/realtime/calls/call_abc123"},
+                    }
+                },
             },
-            415: {"description": "Content-Type 不是 application/sdp。"},
-            500: {"description": "WebRTC 会话建立失败。"},
-            501: {"description": "未安装 webrtc 扩展。"},
-            503: {"description": "所有实例槽位已被占用（session_limit_reached）。"},
+            400: {"description": "SDP offer 无法协商（`text/plain`）。"},
+            415: {"description": "Content-Type 不是 application/sdp（`text/plain`）。"},
+            500: {"description": "WebRTC 会话建立失败（`text/plain`）。"},
+            501: {"description": "未安装 webrtc 扩展（`text/plain`）。"},
+            503: {
+                "description": "所有实例槽位已被占用；返回 OpenAI 兼容的 error 事件（`session_limit_reached`）。",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "type": {"type": "string", "example": "error"},
+                                "error": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {"type": "string"},
+                                        "type": {"type": "string", "example": "session_limit_reached"},
+                                    },
+                                },
+                                "event_id": {"type": "string"},
+                            },
+                        }
+                    }
+                },
+            },
         },
         openapi_extra={
             "requestBody": {
@@ -1401,10 +1431,10 @@ def create_app(
         tags=["实时对话"],
         response_description="挂断结果",
         responses={
-            200: {"description": "通话已挂断。", "content": {"application/json": {"schema": {"type": "object"}}}},
-            401: {"description": "缺少或错误的 Bearer 令牌。"},
-            404: {"description": "找不到该 call id。"},
-            503: {"description": "未配置 `S2S_ADMIN_TOKEN`（fail-closed）。"},
+            200: {"description": "通话已挂断（响应体为空）。", "content": {"application/json": {"schema": {"type": "object"}}}},
+            401: admin_error_response("缺少或错误的 Bearer 令牌。", "unauthorized"),
+            404: {"description": "找不到该 call id（`text/plain`）。"},
+            503: admin_error_response("未配置 `S2S_ADMIN_TOKEN`（fail-closed）。", "admin_disabled"),
         },
     )
     async def webrtc_hangup_endpoint(call_id: str, request: Request) -> Response:

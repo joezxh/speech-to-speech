@@ -22,6 +22,8 @@ from pydantic import BaseModel
 from starlette.background import BackgroundTask
 from starlette.responses import StreamingResponse
 
+from speech_to_speech.api.openai_realtime.openapi_meta import openai_error_response
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_UPSTREAM_BASE_URL = "https://api.openai.com/v1"
@@ -282,9 +284,9 @@ def _mount_passthrough(
                     }
                 },
             },
-            400: {"description": "请求体不是合法 JSON 对象。"},
-            502: {"description": "上游返回异常。"},
-            504: {"description": "上游超时。"},
+            400: openai_error_response("请求体不是合法 JSON 对象。", "invalid_request_error"),
+            502: openai_error_response("上游返回异常。", "upstream_unreachable"),
+            504: openai_error_response("上游超时。", "upstream_timeout"),
         },
         openapi_extra={
             "requestBody": {
