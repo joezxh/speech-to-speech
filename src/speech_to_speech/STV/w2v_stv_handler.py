@@ -60,10 +60,17 @@ class Wav2Vec2STVHandler(BaseHandler[AudioOutItem, AudioOutItem]):
         self.device = resolve_device(device, STV_DEVICES, "Speech-to-viseme")
         resource = files("speech_to_speech.STV").joinpath("phoneme_viseme_map.json")
         self.phoneme_viseme_map = json.loads(resource.read_text(encoding="utf-8"))
-        self.asr_pipeline = pipeline("automatic-speech-recognition", model=model_name, device=self.device)
-        if self.asr_pipeline.feature_extractor.sampling_rate != self.SAMPLE_RATE:
-            raise ValueError("The viseme checkpoint must accept 16000 Hz audio.")
-        self.warmup()
+        try:
+            self.asr_pipeline = pipeline("automatic-speech-recognition", model=model_name, device=self.device)
+            if self.asr_pipeline.feature_extractor.sampling_rate != self.SAMPLE_RATE:
+                raise ValueError("The viseme checkpoint must accept 16000 Hz audio.")
+            self.warmup()
+        except Exception as exc:
+            # Visemes are an optional enhancement (visual only). A missing or
+            # unreachable phoneme model must never take down the audio pipeline.
+            logger.warning("STV model unavailable (%s); disabling viseme stage", exc)
+            self.asr_pipeline = None
+            self.skip = True
 
     def _reset(self) -> None:
         self._pending: list[bytes] = []

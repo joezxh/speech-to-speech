@@ -1,4 +1,6 @@
-# 本机启用 speech-to-speech 独立服务（ASR / TTS / 声纹 / 情感）
+# 本机启用 speech-to-speech 独立服务（ASR / TTS / 声纹 / 情感 / 口型）
+
+> 2026-11-18 更新：STT 已切 SenseVoiceSmall（非自回归，RTF≈0.06）；LLM 已切 GPUStack `qwen3.5-2b`；情感新增内嵌 SenseVoice（`SER_PROVIDER=local`，`/recognize` 双端点）与 emotion2vec 代理（`proxy`）二选一；新增口型端点 `/v1/audio/visemes`。详见 §9 与 `docs/sensevoice-ser-a-b-CN.md`、`docs/full-duplex-voice-pipeline-CN.md`。
 
 > 适用：PyCharm 里以源码启动的 `s2s-pipeline-prod`（`127.0.0.1:8765`），console 后端独立在 `127.0.0.1:8000`，前端 `:3000`。
 > 参照部署：`docker-compose.voiceprint.yml` + `.env.thirdparty`（声纹），以及 `D:/work/mediation_platform/mediation-deploy/ser`（情感识别）。
@@ -12,7 +14,8 @@
 | ASR 独立服务 | ❌ 无 REST 入口 | 新增 `POST /v1/audio/transcriptions`，复用同进程 `Qwen3ASRSTTHandler`（16k 解码 → `asyncio.to_thread(_transcribe)`） |
 | TTS 独立服务 | ❌ 无 REST 入口 | 新增 `POST /v1/audio/speech`，复用同进程 `Qwen3TTSHandler`（克隆/预设音色分流，wav 输出） |
 | 声纹识别 | ❌ 无 REST 入口 | 新增 `POST /v1/audio/embeddings`、`GET /v1/audio/embeddings/capability`；`VoiceprintService` 方案 C（CPU 独立 speaker encoder，2048 维，对称 Bearer） |
-| 情感识别 | ❌ 全仓未实现 | 新增 `POST /v1/audio/emotion`、`GET /v1/audio/emotion/health`；代理到现成 `emotion2vec_plus_large` SER 服务 |
+| 情感识别 | ❌ 全仓未实现 | `POST /v1/audio/emotion`、`GET /v1/audio/emotion/health`；`SER_PROVIDER=local` 走内嵌 SenseVoice（另含 `POST /recognize`），`proxy` 走 emotion2vec 8023 |
+| 口型（STV） | ❌ 无 REST 入口 | 新增 `POST /v1/audio/visemes`、`GET /v1/audio/visemes/capability`；复用 pipeline 内 `Wav2Vec2STVHandler`；默认英语音素模型本机不可达，capability 标 `ready=false` |
 
 启用前 8765 的 OpenAPI 只有 7 条路径（`/v1/pool`、`/v1/usage`、`/v1/realtime/calls` POST/DELETE、`/v1/responses`、`/v1/chat/completions`、`/admin/sessions/update`）；WebSocket 路由不进 OpenAPI。
 
@@ -162,4 +165,30 @@ curl.exe -s -F "file=@models\example\test.wav" -F "sample_rate=16000" -F "langua
 > 走 console 的 `/v1/audio/*`（`http://host:8000/v1/audio/transcriptions` 等），浏览器
 > 走同源 `/v1/realtime`。本文里的 `curl http://127.0.0.1:8765/...` 仍适用于本机源码
 > 调试与 `docker-compose.local.yml`（它保留 publish）。
+
+## 9. 本轮服务扩展（2026-11-18）
+
+### 9.1 内嵌 SenseVoice 情感服务（替代/并存 emotion2vec）
+- `config/prod.env` 的 `SER_PROVIDER=local|proxy` 二选一（默认 `local`）：
+  - `local`：`api/openai_realtime/emotion_local_service.py::mount_emotion_local(app, pool)` 从 pool 复用 `SenseVoiceSTTHandler`，注册 `POST /recognize`、`POST /v1/audio/emotion`、`GET /v1/audio/emotion/health`； emotion proxy 因路径已占用自动跳过。
+  - `proxy`：恢复原 emotion2vec 代理（需填 `SER_API_KEY`，走 8023）。
+- 置信度/margin：`STT/sense_voice_emotion.py` 用 `register_forward_hook` 抓 `ctc.ctc_lo` 输出，在 rich-info 情感位（position 1）取 9 类 token softmax；`confidence=top1`、`margin=top1−top2`，阈值 `SER_MIN_CONFIDENCE=0.55`、`SER_MIN_MARGIN=0.15`。
+- 6 类映射：HAPPY→happy（新增第 6 类，结合 `<|Laughter|>` AED 事件）、SURPRISED/DISGUSTED→agitated、FEARFUL/SAD→anxious、ANGRY→anger、NEUTRAL→calm；EMO_UNKNOWN/静音/低置信/低 margin 返回结构化 `409 {"error":{"code","stage":"SER","reason"}}`。
+- 并发：`SER_MAX_INFLIGHT=2`，满时短截止等待 `SER_WAIT_TIMEOUT_S=0.5` 后才 429。
+- 情感文字注入 LLM：STT 的富标签转 `[情绪：xxx]` 随 `Transcription.emotion` → `TranscriptionCompletedEvent.emotion` → `service.py::with_emotion_text()` 注入 user message；客户端转录回显与 `/v1/audio/transcriptions` 保持干净。
+
+### 9.2 口型服务（STV）
+- `api/openai_realtime/visemes_routes.py::mount_visemes(app, pool)`：`POST /v1/audio/visemes`、`GET /v1/audio/visemes/capability`，复用 pool 内 `Wav2Vec2STVHandler`，单实例锁串行。
+- `config/prod.yaml` 已打开 `pipelines.prod.options.enable_visemes=true`（stv_device=cpu，模型路径走 `S2S_STV_MODEL_DIR`）。默认英语音素模型 `bookbot/wav2vec2-ljspeech-gruut` 本机 HF/hf-mirror 不可达、ModelScope 无镜像——`setup()` 已改为 soft-fail（记日志、skip、不阻断音频链路），capability 返回 `ready=false`；拿到模型放本地目录后自动启用。前端 `S2sClient` 已内建 `speech_to_speech.output_audio.visemes` 事件透传。
+- 复用 handler 而非另载模型，零额外显存；中文口型效果未验证，不夸大。
+
+### 9.3 模型切换
+- STT：`config/prod.yaml` stt backend 已从 `qwen3-asr` 切为 `sense-voice`（本地 `cache/sensevoice-small`），RTF 从 0.47~0.90 降到约 0.06。
+- LLM：`config/prod.env` `GPUSTACK_MODEL=qwen3.5-2b`（原 Qwen3-8B），关思考链保持有效（实测 0.37s/4 tokens）。
+
+### 9.4 验证与 A/B
+- 契约测试：`tests/test_sensevoice_emotion.py`、`test_sensevoice_ser_service.py`、`test_ser_provider_switch.py`、`test_sense_voice_recognize.py`、`test_emotion_inject_llm.py`、`test_visemes_routes.py`、`test_stv_soft_fail.py`（本轮 48+20 项全绿）。
+- A/B 脚本：`scripts/ser_ab_verify.ps1`、`ser_ab_latency.ps1`、`ser_ab_smoke.ps1`（CSV 增 AED 笑声事件与 margin 列）；裁决指标与步骤见 `docs/sensevoice-ser-a-b-CN.md`。
+
+> 所有配置改动需重启 8765 生效；源码进程不热加载 YAML/env。
 

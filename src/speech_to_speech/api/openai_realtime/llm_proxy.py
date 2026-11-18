@@ -178,7 +178,43 @@ def mount_llm_proxy(app: FastAPI, config: LLMProxyConfig | None) -> LLMProxyUsag
 
 
 def _mount_unavailable(app: FastAPI, path: str, reason: str) -> None:
-    @app.post(path)
+    @app.post(
+        path,
+        summary=f"LLM 补全接口（{path}，当前后端不可用）",
+        description=(
+            f"OpenAI 兼容的 LLM 补全接口 **{path}**。\n\n"
+            f"当前服务运行的后端不提供该接口形态，因此调用会得到 501 与明确原因：\n\n"
+            f"> {reason}\n\n"
+            "请改用服务端实际支持的路径（见响应体的 `error.message`）。\n\n"
+            "```bash\ncurl -X POST http://localhost:8765%s \\\n"
+            "  -H \"Content-Type: application/json\" \\\n"
+            "  -d '{\"model\":\"qwen3.5-2b\",\"messages\":[{\"role\":\"user\",\"content\":\"你好\"}]}'\n```" % path
+        ),
+        tags=["LLM 代理"],
+        response_description="错误说明",
+        responses={
+            501: {
+                "description": "该后端形态未启用。",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "type": "object",
+                                    "properties": {
+                                        "message": {"type": "string"},
+                                        "type": {"type": "string", "example": "not_implemented"},
+                                    },
+                                }
+                            },
+                        },
+                        "example": {"error": {"message": reason, "type": "not_implemented"}},
+                    }
+                },
+            }
+        },
+    )
     async def unavailable_endpoint() -> Response:
         return _error_response(501, reason, "not_implemented")
 
@@ -192,7 +228,107 @@ def _mount_passthrough(
     base_url = (config.upstream_base_url or DEFAULT_UPSTREAM_BASE_URL).rstrip("/")
     upstream_url = base_url + path.removeprefix("/v1")
 
-    @app.post(path)
+    @app.post(
+        path,
+        summary=f"LLM 补全接口（{path}）",
+        description=(
+            f"OpenAI 兼容的 LLM 补全接口 **{path}**，转发到上游 LLM 服务"
+            f"（`{base_url}`）。\n\n"
+            "* 请求体与 OpenAI Chat Completions / Responses API 一致，"
+            "服务端会覆盖 `model` 为配置的模型；Responses 形态强制 `store=false`。\n"
+            "* `stream=true` 时上游帧逐条透传（含最终 usage 帧）。\n"
+            "* 上游错误按原状态码透传；请求体不是合法 JSON 对象返回 400。\n\n"
+            "```bash\ncurl -X POST http://localhost:8765%s \\\n"
+            "  -H \"Content-Type: application/json\" \\\n"
+            "  -d '{\"model\":\"qwen3.5-2b\",\"messages\":[{\"role\":\"user\",\"content\":\"用一句话介绍你自己\"}],\"stream\":false}'\n```" % path
+        ),
+        tags=["LLM 代理"],
+        response_description="上游响应（原样透传）",
+        responses={
+            200: {
+                "description": "上游响应（原样透传）。",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string", "example": "chatcmpl-abc123"},
+                                "model": {"type": "string", "example": "qwen3.5-2b"},
+                                "choices": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "message": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "role": {"type": "string", "example": "assistant"},
+                                                    "content": {"type": "string", "example": "你好，我是一个语音助手。"},
+                                                },
+                                            }
+                                        },
+                                    },
+                                },
+                                "usage": {
+                                    "type": "object",
+                                    "properties": {
+                                        "prompt_tokens": {"type": "integer", "example": 16},
+                                        "completion_tokens": {"type": "integer", "example": 4},
+                                        "total_tokens": {"type": "integer", "example": 20},
+                                    },
+                                },
+                            },
+                        },
+                    }
+                },
+            },
+            400: {"description": "请求体不是合法 JSON 对象。"},
+            502: {"description": "上游返回异常。"},
+            504: {"description": "上游超时。"},
+        },
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "model": {
+                                    "type": "string",
+                                    "description": "模型名；服务端会覆盖为配置的模型。",
+                                    "example": "qwen3.5-2b",
+                                },
+                                "messages": {
+                                    "type": "array",
+                                    "description": "对话消息列表。",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "role": {"type": "string", "example": "user"},
+                                            "content": {"type": "string", "example": "用一句话介绍你自己"},
+                                        },
+                                    },
+                                },
+                                "stream": {
+                                    "type": "boolean",
+                                    "description": "是否流式返回。",
+                                    "example": False,
+                                },
+                                "temperature": {"type": "number", "example": 0.7},
+                            },
+                            "required": ["messages"],
+                        },
+                        "example": {
+                            "model": "qwen3.5-2b",
+                            "messages": [{"role": "user", "content": "用一句话介绍你自己"}],
+                            "stream": False,
+                        },
+                    }
+                },
+            }
+        },
+    )
     async def passthrough_endpoint(request: Request) -> Response:
         response = await _proxy(request)
         usage.record_status(response.status_code)

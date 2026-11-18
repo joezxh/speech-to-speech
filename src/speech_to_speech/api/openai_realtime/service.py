@@ -101,6 +101,17 @@ from speech_to_speech.utils.utils import _generate_id, audio_to_wav_base64
 
 logger = logging.getLogger(__name__)
 
+
+def with_emotion_text(transcript: str, emotion: str | None) -> str:
+    """Append the SenseVoice emotion annotation to the text sent to the LLM.
+
+    The client-facing transcription event is emitted before this is applied, so
+    the annotation only reaches the LLM and never pollutes displayed transcript.
+    """
+    if not emotion:
+        return transcript
+    return f"{transcript} {emotion}".strip()
+
 # Speculative turn work that stops being relevant once its turn is superseded.
 _TURN_INPUT_EVENTS = (
     PartialTranscriptionEvent,
@@ -922,12 +933,14 @@ class RealtimeService:
         if event.speaker_attribution is not None:
             transcript = event.speaker_attribution.for_llm(transcript)
         user_item_id = accounting.user_item_id if accounting is not None else None
-        user_message = make_user_message(transcript)
+        # 情感注释只进入 LLM 输入；客户端转录事件（L906 之前 emit）保持干净。
+        llm_text = with_emotion_text(transcript, getattr(event, "emotion", None))
+        user_message = make_user_message(llm_text)
         if protocol_item_id is not None:
             user_message.id = protocol_item_id
         if transcript:
             if accounting is not None and user_item_id:
-                replaced = cfg.chat.replace_user_message_text(user_item_id, transcript)
+                replaced = cfg.chat.replace_user_message_text(user_item_id, llm_text)
                 if not replaced:
                     item = cfg.chat.add_item(user_message)
                     accounting.user_item_id = item.id

@@ -71,6 +71,7 @@ class PartialTranscription(PipelineMessage):
 
     tag: Literal["partial_transcription"] = "partial_transcription"
     text: str
+    emotion: str | None = None
     turn_id: str | None = None
     turn_revision: int | None = None
 
@@ -80,6 +81,7 @@ class Transcription(PipelineMessage):
 
     tag: Literal["transcription"] = "transcription"
     text: str
+    emotion: str | None = None
     speaker_attribution: SpeakerAttribution | None = None
     language_code: Optional[str] = None
     turn_id: str | None = None

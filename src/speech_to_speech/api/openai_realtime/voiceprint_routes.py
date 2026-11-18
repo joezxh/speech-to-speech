@@ -9,15 +9,53 @@ from __future__ import annotations
 import os
 from typing import Any, Iterable
 
-from fastapi import FastAPI, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import JSONResponse
 from loguru import logger
+
+from speech_to_speech.api.openai_realtime.openapi_meta import error_response
 
 from speech_to_speech.voiceprint import service as voiceprint_service
 from speech_to_speech.voiceprint.errors import VoiceprintErrorCode, error_body, http_status
 
 EMBEDDINGS_PATH = "/v1/audio/embeddings"
 CAPABILITY_PATH = "/v1/audio/embeddings/capability"
+
+EMBEDDINGS_DESCRIPTION = """
+**声纹嵌入（Voiceprint）**。把一段人声转成 L2 归一化的声纹向量，用于说话人注册与验证。
+
+* **需要鉴权**：`Authorization: Bearer <token>`，token 由 `VOICEPRINT_API_KEY` 配置；缺失或错误返回 401。
+* 请求体 `multipart/form-data`，音频放 `file` 字段；输入采样率不限，服务端重采样到 24 kHz（speaker encoder 采样率）。
+* 输出维度见 `/v1/audio/embeddings/capability`（当前为 2048 维）。
+* 音频只在内存中处理，不落盘、不进日志。
+* `model` 传错（如 `model=rr`）返回 400 `MODEL_MISMATCH`；`purpose` 仅作审计标注，不参与校验。
+
+```bash
+curl -X POST http://localhost:8765/v1/audio/embeddings \\
+  -H "Authorization: Bearer $VOICEPRINT_API_KEY" \\
+  -F "file=@voice.wav" \\
+  -F "model=qwen3-tts-base-speaker" \\
+  -F "purpose=registration"
+```
+
+```bash
+# 查看能力（维度、是否就绪、设备）
+curl -H "Authorization: Bearer $VOICEPRINT_API_KEY" \\
+  http://localhost:8765/v1/audio/embeddings/capability
+```
+"""
+
+CAPABILITY_DESCRIPTION = """
+**声纹能力查询**。返回声纹服务的维度、就绪状态、设备与限制，便于调用方在注册前自检。
+
+* 同样需要 `Authorization: Bearer <token>`。
+* `ready=false` 表示 encoder 尚未加载完成或未启用。
+
+```bash
+curl -H "Authorization: Bearer $VOICEPRINT_API_KEY" \\
+  http://localhost:8765/v1/audio/embeddings/capability
+```
+"""
 
 
 def _flag(name: str, default: str = "") -> bool:
@@ -49,12 +87,57 @@ def mount_voiceprint(app: FastAPI, pool: Iterable[Any]) -> None:
     )
     service.attach_pool(pool, os.environ.get("VOICEPRINT_ENCODER_DIR") or None)
 
-    @app.post(EMBEDDINGS_PATH)
+    @app.post(
+        EMBEDDINGS_PATH,
+        summary="声纹嵌入（Voiceprint）",
+        description=EMBEDDINGS_DESCRIPTION,
+        tags=["音频能力"],
+        response_description="声纹向量",
+        responses={
+            200: {
+                "description": "嵌入成功",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "embedding": {
+                                    "type": "array",
+                                    "items": {"type": "number", "format": "float"},
+                                    "description": "L2 归一化后的声纹向量，维度见 capability 接口。",
+                                },
+                                "dim": {"type": "integer", "description": "向量维度。", "example": 2048},
+                                "model": {"type": "string", "description": "模型标识。", "example": "standalone-speaker-encoder@qwen3-speaker-encoder"},
+                            },
+                        },
+                        "example": {"embedding": [0.0123, -0.0456], "dim": 2048, "model": "standalone-speaker-encoder@qwen3-speaker-encoder"},
+                    }
+                },
+            },
+            400: error_response("音频非法、模型不匹配或超限。", "INVALID_AUDIO"),
+            401: error_response("缺少或错误的 Bearer 令牌。", "UNAUTHORIZED"),
+            413: error_response("音频超过体积/时长上限。", "PAYLOAD_TOO_LARGE"),
+            429: error_response("并发已满。", "TOO_MANY_REQUESTS"),
+            500: error_response("推理失败。", "INTERNAL_ERROR"),
+            503: error_response("声纹服务未启用或 encoder 未就绪。", "SERVICE_UNAVAILABLE"),
+        },
+    )
     async def embeddings(
         request: Request,
-        file: UploadFile | None = None,
-        model: str = Form(""),
-        purpose: str = Form(""),
+        file: UploadFile | None = File(
+            None,
+            description="待提取声纹的音频文件；采样率不限，服务端重采样到 24 kHz。",
+        ),
+        model: str = Form(
+            "",
+            description="模型名，须为 `qwen3-tts-base-speaker`（或留空使用默认）；传其它值返回 400 MODEL_MISMATCH。",
+            examples=["qwen3-tts-base-speaker"],
+        ),
+        purpose: str = Form(
+            "",
+            description="用途标注（仅审计，不参与校验），如 `registration` / `verification`。",
+            examples=["registration"],
+        ),
     ):
         try:
             service.authorize(request.headers.get("authorization"))
@@ -72,7 +155,42 @@ def mount_voiceprint(app: FastAPI, pool: Iterable[Any]) -> None:
             return JSONResponse(status_code=http_status(code), content=error_body(code))
         return result
 
-    @app.get(CAPABILITY_PATH)
+    @app.get(
+        CAPABILITY_PATH,
+        summary="声纹能力查询",
+        description=CAPABILITY_DESCRIPTION,
+        tags=["音频能力"],
+        response_description="声纹服务能力",
+        responses={
+            200: {
+                "description": "能力信息",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "model": {"type": "string", "example": "standalone-speaker-encoder@qwen3-speaker-encoder"},
+                                "ready": {"type": "boolean", "description": "encoder 是否已就绪。", "example": True},
+                                "device": {"type": "string", "description": "推理设备；`inherit` 表示跟随 pipeline 实际设备（当前为 CPU）。", "example": "inherit"},
+                                "dim": {"type": "integer", "description": "输出向量维度。", "example": 2048},
+                                "maxAudioMs": {"type": "integer", "description": "最长音频时长（毫秒）。", "example": 30000},
+                                "maxBytes": {"type": "integer", "description": "最大请求体字节数。", "example": 10485760},
+                            },
+                        },
+                        "example": {
+                            "model": "standalone-speaker-encoder@qwen3-speaker-encoder",
+                            "ready": True,
+                            "device": "inherit",
+                            "dim": 2048,
+                            "maxAudioMs": 30000,
+                            "maxBytes": 10485760,
+                        },
+                    }
+                },
+            },
+            401: error_response("缺少或错误的 Bearer 令牌。", "UNAUTHORIZED"),
+        },
+    )
     async def capability(request: Request):
         try:
             service.authorize(request.headers.get("authorization"))

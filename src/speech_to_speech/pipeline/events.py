@@ -73,6 +73,7 @@ class PartialTranscriptionEvent(PipelineEvent):
 class TranscriptionCompletedEvent(PipelineEvent):
     type: Literal["transcription_completed"] = "transcription_completed"
     transcript: str
+    emotion: str | None = None
     speaker_attribution: SpeakerAttribution | None = None
     language_code: Optional[str] = None
     turn_id: str | None = None

@@ -27,6 +27,13 @@ from openai.types.realtime import (
 from pydantic import BaseModel, ValidationError
 
 from speech_to_speech.api.openai_realtime.llm_proxy import LLMProxyConfig, mount_llm_proxy
+from speech_to_speech.api.openai_realtime.openapi_meta import (
+    API_DESCRIPTION,
+    API_TITLE,
+    API_VERSION,
+    OPENAPI_TAGS,
+    install_websocket_docs,
+)
 from speech_to_speech.api.openai_realtime.pipeline_unit import PipelineUnit, SessionState
 from speech_to_speech.api.openai_realtime.service import (
     PIPELINE_SAMPLE_RATE,
@@ -659,7 +666,19 @@ def create_app(
 
         lifespan = integrated_lifespan
 
-    app = FastAPI(lifespan=lifespan)
+    app = FastAPI(
+        lifespan=lifespan,
+        title=API_TITLE,
+        version=API_VERSION,
+        description=API_DESCRIPTION,
+        openapi_tags=OPENAPI_TAGS,
+        docs_url="/docs",
+        redoc_url="/redoc",
+        openapi_url="/openapi.json",
+    )
+    # FastAPI cannot express WebSocket routes in OpenAPI; inject the /v1/realtime
+    # entry so the realtime entry point is documented in Swagger UI too.
+    install_websocket_docs(app)
 
     llm_proxy_usage = mount_llm_proxy(app, llm_proxy_config)
 
@@ -667,12 +686,18 @@ def create_app(
     # the container image. Mount them here so a source-tree start exposes the
     # same endpoint set. All three read their switches from the process env.
     from speech_to_speech.api.openai_realtime.audio_services import mount_audio_services
+    from speech_to_speech.api.openai_realtime.emotion_local_service import mount_emotion_local
     from speech_to_speech.api.openai_realtime.emotion_routes import mount_emotion
     from speech_to_speech.api.openai_realtime.voiceprint_routes import mount_voiceprint
+    from speech_to_speech.api.openai_realtime.visemes_routes import mount_visemes
 
     mount_audio_services(app, pool)
     mount_voiceprint(app, pool)
+    # SER_PROVIDER=local registers the in-process SenseVoice SER endpoints
+    # first; mount_emotion() then sees the path exists and skips the proxy.
+    mount_emotion_local(app, pool)
     mount_emotion(app)
+    mount_visemes(app, pool)
 
     def _claim_unit(transport: SessionTransport | None) -> PipelineUnit | None:
         """Atomically (between asyncio yield points) reserve the first idle unit.
@@ -749,13 +774,103 @@ def create_app(
             # can be skipped/cancelled by Starlette's runner and never resume.
             _release_session(unit, session_id)
 
-    @app.get("/v1/realtime/capabilities")
+    @app.get(
+        "/v1/realtime/capabilities",
+        summary="实时能力探测",
+        description=(
+            "返回每个 pipeline 实例支持的语种与能力矩阵（STT/TTS 自动语言检测、会话语种等）。\n\n"
+            "调用方可据此决定会话该用哪种语言，或在前端做能力驱动的降级提示。\n\n"
+            "```bash\ncurl http://localhost:8765/v1/realtime/capabilities\n```"
+        ),
+        tags=["观测与运维"],
+        response_description="能力矩阵",
+        responses={
+            200: {
+                "description": "每个实例的能力矩阵。",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "pipelines": {
+                                    "type": "array",
+                                    "description": "各 pipeline 实例的能力。",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "index": {"type": "integer", "example": 0},
+                                            "stt": {"type": "object", "description": "STT 支持的语言与自动检测能力。"},
+                                            "tts": {"type": "object", "description": "TTS 支持的语言与自动检测能力。"},
+                                            "conversation": {"type": "object", "description": "会话可选语言。"},
+                                        },
+                                    },
+                                }
+                            },
+                        },
+                        "example": {"pipelines": [{"index": 0, "stt": {"supports_auto": False}}]},
+                    }
+                },
+            }
+        },
+    )
     async def capabilities_endpoint() -> dict[str, Any]:
         return {
             "pipelines": [{"index": unit.index, **unit.service.get_language_capabilities()} for unit in pool],
         }
 
-    @app.get("/v1/usage")
+    @app.get(
+        "/v1/usage",
+        summary="累计用量统计",
+        description=(
+            "返回自进程启动以来的累计用量：会话数、轮次、输入/输出 token、"
+            "错误计数（按类型聚合）以及 LLM 代理流量。\n\n"
+            "数值字段跨实例求和，字典字段逐叶子合并。\n\n"
+            "```bash\ncurl http://localhost:8765/v1/usage\n```"
+        ),
+        tags=["观测与运维"],
+        response_description="累计用量",
+        responses={
+            200: {
+                "description": "累计用量统计。",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "connections": {"type": "integer", "description": "累计会话连接数。", "example": 3},
+                                "turns": {"type": "integer", "description": "累计对话轮次。", "example": 20},
+                                "input_tokens": {"type": "integer", "description": "累计输入 token。", "example": 1109},
+                                "output_tokens": {"type": "integer", "description": "累计输出 token。", "example": 41416},
+                                "responses_completed": {"type": "integer", "description": "正常完成的响应数。", "example": 11},
+                                "responses_cancelled": {"type": "integer", "description": "被取消/打断的响应数。", "example": 2},
+                                "errors_by_type": {
+                                    "type": "object",
+                                    "description": "按错误类型聚合的计数。",
+                                    "additionalProperties": {"type": "integer"},
+                                    "example": {"response_failed": 0},
+                                },
+                                "llm_proxy": {
+                                    "type": "object",
+                                    "description": "LLM 代理流量统计。",
+                                    "additionalProperties": True,
+                                },
+                            },
+                        },
+                        "example": {
+                            "connections": 3,
+                            "turns": 20,
+                            "input_tokens": 1109,
+                            "output_tokens": 41416,
+                            "responses_completed": 11,
+                            "responses_cancelled": 2,
+                            "errors_by_type": {},
+                            "llm_proxy": {"requests": 0},
+                        },
+                    }
+                },
+            }
+        },
+    )
     async def usage_endpoint() -> dict[str, Any]:
         # Aggregate usage across the pool. Numeric fields sum; dict fields (e.g.
         # errors_by_type) merge with numeric leaves summed too, so per-unit error
@@ -779,7 +894,59 @@ def create_app(
         total["llm_proxy"] = llm_proxy_usage.model_dump()
         return total
 
-    @app.get("/v1/pool")
+    @app.get(
+        "/v1/pool",
+        summary="实例池状态",
+        description=(
+            "返回 pipeline 实例池的容量与占用情况。\n\n"
+            "* `size`：实例总数；`in_use`：当前被会话占用的实例数。\n"
+            "* `units[].state` 取值：`idle`（空闲）、`active`（会话进行中）、"
+            "`draining`（客户端已断开，等待 SESSION_END 排空）、`stuck`（排空超时，需人工介入）。\n\n"
+            "```bash\ncurl http://localhost:8765/v1/pool\n```"
+        ),
+        tags=["观测与运维"],
+        response_description="实例池状态",
+        responses={
+            200: {
+                "description": "实例池容量与占用。",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "size": {"type": "integer", "description": "实例总数。", "example": 1},
+                                "in_use": {"type": "integer", "description": "被占用的实例数。", "example": 1},
+                                "units": {
+                                    "type": "array",
+                                    "description": "各实例状态。",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "index": {"type": "integer", "example": 0},
+                                            "state": {
+                                                "type": "string",
+                                                "enum": ["idle", "active", "draining", "stuck"],
+                                                "description": "实例状态。",
+                                                "example": "active",
+                                            },
+                                            "session_id": {"type": "string", "nullable": True, "example": "session_abc123"},
+                                            "draining_for_s": {"type": "number", "description": "已排空的秒数（仅 draining/stuck）。"},
+                                            "stuck_for_s": {"type": "number", "description": "卡住的秒数（仅 stuck）。"},
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        "example": {
+                            "size": 1,
+                            "in_use": 1,
+                            "units": [{"index": 0, "state": "active", "session_id": "session_abc123"}],
+                        },
+                    }
+                },
+            }
+        },
+    )
     async def pool_endpoint() -> dict[str, Any]:
         now = time.monotonic()
 
@@ -895,7 +1062,91 @@ def create_app(
             return [unit for unit in live if unit.session.session_id == target], None
         return [], _admin_error(400, "invalid_request_error", "scope must be one of: all, pipeline, session")
 
-    @app.post("/admin/sessions/update")
+    @app.post(
+        "/admin/sessions/update",
+        summary="热更新当前会话配置",
+        description=(
+            "**不重启即可修改当前已打开的会话**（Chain B）。请求体是一个 `session.update` 事件，"
+            "服务端原样交给会话处理器做深合并与语种校验。\n\n"
+            "* **需要鉴权**：`Authorization: Bearer <S2S_ADMIN_TOKEN>`；未配置 token 时 fail-closed 返回 503。\n"
+            "* `scope`：`all`（全部会话）/ `pipeline`（指定 pipeline，需配合 `target` 为索引）/ "
+            "`session`（指定会话，需配合 `target` 为 session id）。\n"
+            "* **不持久化**：只影响此刻存在的连接；要让改动在重启后仍生效请改 YAML 后重启（Chain A）。\n\n"
+            "```bash\ncurl -X POST http://localhost:8765/admin/sessions/update \\\n"
+            "  -H \"Authorization: Bearer $S2S_ADMIN_TOKEN\" \\\n"
+            "  -H \"Content-Type: application/json\" \\\n"
+            "  -d '{\"scope\":\"all\",\"session\":{\"type\":\"realtime\",\"instructions\":\"你只用一句话回答\"}}'\n```"
+        ),
+        tags=["观测与运维"],
+        response_description="更新结果",
+        responses={
+            200: {
+                "description": "更新完成；`updated` 为成功的 session id 列表，`failed` 为失败明细。",
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "updated": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "example": ["session_abc123"],
+                                },
+                                "failed": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "session_id": {"type": "string"},
+                                            "error": {"type": "string"},
+                                        },
+                                    },
+                                },
+                            },
+                        },
+                        "example": {"updated": ["session_abc123"], "failed": []},
+                    }
+                },
+            },
+            400: {"description": "请求体非法（JSON 错误、缺少 session 字段、scope 与 target 不匹配）。"},
+            401: {"description": "缺少或错误的 Bearer 令牌。"},
+            503: {"description": "未配置 `S2S_ADMIN_TOKEN`（fail-closed）。"},
+        },
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "scope": {
+                                    "type": "string",
+                                    "enum": ["all", "pipeline", "session"],
+                                    "description": "作用范围。",
+                                    "example": "all",
+                                },
+                                "target": {
+                                    "type": "string",
+                                    "description": "目标：scope=pipeline 时为 pipeline 索引，scope=session 时为 session id。",
+                                    "example": "0",
+                                },
+                                "session": {
+                                    "type": "object",
+                                    "description": "要合并进会话的配置，内容同 `session.update` 事件的 `session` 字段。",
+                                },
+                            },
+                            "required": ["session"],
+                        },
+                        "example": {
+                            "scope": "all",
+                            "session": {"type": "realtime", "instructions": "你只用一句话回答"},
+                        },
+                    }
+                },
+            }
+        },
+    )
     async def admin_sessions_update(request: Request) -> Response:
         """Chain B (spec §5): change the sessions that are open, without a restart.
 
@@ -972,7 +1223,49 @@ def create_app(
         logger.info(f"hot update {body.get('scope', 'all')}: {len(updated)} updated, {len(failed)} failed")
         return JSONResponse(content={"updated": updated, "failed": failed})
 
-    @app.post("/v1/realtime/calls")
+    @app.post(
+        "/v1/realtime/calls",
+        summary="WebRTC 通话建立（SDP 握手）",
+        description=(
+            "**WebRTC 方式的实时通话入口**（OpenAI Realtime GA `calls` 接口语义）。\n\n"
+            "客户端以 `Content-Type: application/sdp` POST 一个 SDP offer，服务端返回 SDP answer；"
+            "随后音频走 WebRTC 媒体轨道，事件走 `oai-events` DataChannel，"
+            "**JSON 协议与 WebSocket 通道完全一致**。\n\n"
+            "* 需要安装 webrtc 扩展：`pip install 'speech-to-speech[webrtc]'`，否则返回 501。\n"
+            "* `Content-Type` 不是 `application/sdp` 返回 415。\n"
+            "* 实例槽位占满返回 503 `session_limit_reached`。\n"
+            "* 响应 `Location` 头给出挂断地址：`DELETE /v1/realtime/calls/{call_id}`。\n\n"
+            "```bash\ncurl -X POST http://localhost:8765/v1/realtime/calls \\\n"
+            "  -H \"Content-Type: application/sdp\" \\\n"
+            "  --data-binary @offer.sdp \\\n"
+            "  -D headers.txt -o answer.sdp\n\n"
+            "# 挂断\ncurl -X DELETE http://localhost:8765/v1/realtime/calls/<call_id> \\\n"
+            "  -H \"Authorization: Bearer $S2S_ADMIN_TOKEN\"\n```"
+        ),
+        tags=["实时对话"],
+        response_description="SDP answer",
+        responses={
+            200: {
+                "description": "SDP answer；`Location` 头给出挂断地址。",
+                "content": {"application/sdp": {"schema": {"type": "string", "format": "binary"}}},
+            },
+            415: {"description": "Content-Type 不是 application/sdp。"},
+            500: {"description": "WebRTC 会话建立失败。"},
+            501: {"description": "未安装 webrtc 扩展。"},
+            503: {"description": "所有实例槽位已被占用（session_limit_reached）。"},
+        },
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/sdp": {
+                        "schema": {"type": "string", "format": "binary"},
+                        "example": "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n",
+                    }
+                },
+            }
+        },
+    )
     async def webrtc_calls_endpoint(request: Request) -> Response:
         """WebRTC SDP handshake (OpenAI GA Realtime 'calls' endpoint).
 
@@ -1095,7 +1388,25 @@ def create_app(
             headers={"Location": f"/v1/realtime/calls/{session_id}"},
         )
 
-    @app.delete("/v1/realtime/calls/{call_id}")
+    @app.delete(
+        "/v1/realtime/calls/{call_id}",
+        summary="挂断 WebRTC 通话",
+        description=(
+            "挂断指定的 WebRTC 通话（`POST /v1/realtime/calls` 响应 `Location` 头给出的地址）。\n\n"
+            "* **需要鉴权**：`Authorization: Bearer <S2S_ADMIN_TOKEN>`；未配置时 fail-closed 返回 503。\n"
+            "* `call_id` 是可猜测的，因此挂断同样要求管理员令牌，避免任意断他人通话。\n\n"
+            "```bash\ncurl -X DELETE http://localhost:8765/v1/realtime/calls/<call_id> \\\n"
+            "  -H \"Authorization: Bearer $S2S_ADMIN_TOKEN\"\n```"
+        ),
+        tags=["实时对话"],
+        response_description="挂断结果",
+        responses={
+            200: {"description": "通话已挂断。", "content": {"application/json": {"schema": {"type": "object"}}}},
+            401: {"description": "缺少或错误的 Bearer 令牌。"},
+            404: {"description": "找不到该 call id。"},
+            503: {"description": "未配置 `S2S_ADMIN_TOKEN`（fail-closed）。"},
+        },
+    )
     async def webrtc_hangup_endpoint(call_id: str, request: Request) -> Response:
         """Hang up a WebRTC call — the Location URL advertised by the POST above.
 

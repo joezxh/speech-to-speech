@@ -96,6 +96,7 @@ class TranscriptionNotifier(BaseHandler[STTOut, LLMIn]):
             self.text_output_queue.put(
                 TranscriptionCompletedEvent(
                     transcript=transcript,
+                    emotion=(transcription.emotion if isinstance(transcription, Transcription) else None),
                     speaker_attribution=(
                         transcription.speaker_attribution if isinstance(transcription, Transcription) else None
                     ),
