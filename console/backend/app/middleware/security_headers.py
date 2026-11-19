@@ -7,13 +7,20 @@ from starlette.responses import JSONResponse
 # worker-src blob: is required by the local VAD (it spawns a blob worker) and
 # media-src blob: by the playback queue. Narrow either and the voice page dies
 # in a way that only shows up in the browser console.
+#
+# 'unsafe-eval' is required by vue-i18n's full build: its runtime message
+# compiler calls `new Function`, which CSP blocks unless eval is allowed. The
+# console bundle ships only local, static messages (no remote/user-supplied
+# translation templates), so the eval surface is limited to our own assets.
+# Runtime-only vue-i18n would avoid this, but requires build-time message
+# precompilation; until then this is the minimal fix for a blank login page.
 _CSP = (
     "default-src 'self'; "
     "connect-src 'self' ws: wss:; "
     "img-src 'self' data: blob:; "
     "media-src 'self' blob:; "
     "worker-src 'self' blob:; "
-    "script-src 'self' 'wasm-unsafe-eval'; "
+    "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; "
     "style-src 'self' 'unsafe-inline'"
 )
 

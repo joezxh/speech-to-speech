@@ -69,6 +69,6 @@ def test_docs_page_gets_its_own_csp(client):
         "img-src 'self' data: blob:; "
         "media-src 'self' blob:; "
         "worker-src 'self' blob:; "
-        "script-src 'self' 'wasm-unsafe-eval'; "
+        "script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval'; "
         "style-src 'self' 'unsafe-inline'"
     )
