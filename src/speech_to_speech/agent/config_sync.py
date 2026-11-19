@@ -15,12 +15,94 @@ import os
 import socket
 import tempfile
 import xmlrpc.client
+from collections.abc import Iterable
 from pathlib import Path
 
+import yaml
+from loguru import logger
+
 from speech_to_speech.agent.client import AgentClient
+from speech_to_speech.agent.collectors import pipeline_port
 from speech_to_speech.agent.settings import AgentSettings
 
 CALL_TIMEOUT = 60.0
+
+# hot 参数 → 会话字段：只有明确是「会话字段」的键才下发到
+# /internal/sessions/update。模型路径、端口这类键不属于会话配置，硬塞进去
+# 会被 session.update 的 schema 直接拒绝。
+SESSION_HOT_FIELDS = frozenset(
+    {
+        "instructions",
+        "voice",
+        "modalities",
+        "temperature",
+        "max_response_output_tokens",
+        "turn_detection",
+        "input_audio_format",
+        "output_audio_format",
+        "input_audio_transcription",
+        "truncation",
+        "response_format",
+        "tool_choice",
+        "include",
+    }
+)
+
+
+def hot_session_payload(values: dict) -> tuple[dict, list[str]]:
+    """把 hot 参数切成 (会话字段字典, 无法映射的键)。
+
+    无法映射的键不是错误——它们可能本来就是「改了要重启」的参数，只是被
+    声明成了 hot；调用方会记一条日志，而不是假装已经生效。
+    """
+
+    session: dict = {}
+    unmapped: list[str] = []
+    for key, value in values.items():
+        field = str(key).rsplit(".", 1)[-1]
+        if field in SESSION_HOT_FIELDS:
+            session[field] = value
+        else:
+            unmapped.append(str(key))
+    return session, unmapped
+
+
+def _lookup_dotted(document: object, dotted_key: str) -> object | None:
+    """按 ``a.b.c`` 取嵌套 YAML 里的值；取不到返回 None。"""
+
+    current = document
+    for part in dotted_key.split("."):
+        if not isinstance(current, dict) or part not in current:
+            return None
+        current = current[part]
+    return current
+
+
+def values_for_keys(yaml_text: str, keys: Iterable[str]) -> dict[str, str]:
+    """从渲染好的配置 YAML 里取出指定参数键的**实际值**。
+
+    ``effects`` 只说明「这个键该走哪条生效链路」，值本身在 console 渲染出来
+    的 YAML 里。回报给 console 的必须是值（漂移判定靠它），不是效果名。
+    """
+
+    wanted = list(keys)
+    if not wanted:
+        return {}
+    try:
+        document = yaml.safe_load(yaml_text) or {}
+    except Exception:  # noqa: BLE001 - YAML 坏了不该让整轮同步失败
+        logger.warning("rendered config yaml could not be parsed; no hot values extracted")
+        return {}
+    values: dict[str, str] = {}
+    for key in wanted:
+        value = _lookup_dotted(document, key)
+        if value is None:
+            continue
+        if isinstance(value, (dict, list)):
+            values[key] = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        else:
+            values[key] = str(value)
+    return values
 
 
 def declared_effects(settings: AgentSettings) -> dict[str, str]:
@@ -87,14 +169,33 @@ def restart_pipeline(settings: AgentSettings) -> None:
 
 
 def hot_update(settings: AgentSettings, values: dict) -> None:
-    """hot 类参数逐项下发到本机 pipeline 的既有会话更新端点。"""
-    connection = http.client.HTTPConnection("127.0.0.1", 8765, timeout=CALL_TIMEOUT)
+    """hot 类参数逐项下发到本机 pipeline 的既有会话更新端点。
+
+    端点是 fail-closed 的：必须带 `S2S_INTERNAL_TOKEN` 的 Bearer 头，否则一律
+    401/503。端口也不再硬编码——服务可能跑在非 8765 上。
+    """
+    host = os.environ.get("S2S_AGENT_PIPELINE_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    port = int(os.environ.get("S2S_AGENT_PIPELINE_PORT", "0").strip() or 0) or pipeline_port(settings)
+    token = os.environ.get("S2S_INTERNAL_TOKEN", "").strip()
+
+    session, unmapped = hot_session_payload(values)
+    if unmapped:
+        logger.warning(
+            "hot params are not session fields and were not pushed to live sessions: {}",
+            ", ".join(sorted(unmapped)),
+        )
+
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    payload = {"scope": "all", "target": None, "session": session}
+    connection = http.client.HTTPConnection(host, port, timeout=CALL_TIMEOUT)
     try:
         connection.request(
             "POST",
             "/internal/sessions/update",
-            body=json.dumps({"values": values}),
-            headers={"Content-Type": "application/json"},
+            body=json.dumps(payload),
+            headers=headers,
         )
         response = connection.getresponse()
         if response.status >= 400:
@@ -103,8 +204,18 @@ def hot_update(settings: AgentSettings, values: dict) -> None:
         connection.close()
 
 
-def sync_config(client: AgentClient, token: str, settings: AgentSettings) -> dict | None:
-    """一轮配置同步。返回 ack 结果；任何失败由调用方（主循环）吞掉并退避。"""
+def sync_config(
+    client: AgentClient,
+    token: str,
+    settings: AgentSettings,
+    *,
+    allow_restart: bool = True,
+) -> dict | None:
+    """一轮配置同步。返回 ack 结果；任何失败由调用方（主循环）吞掉并退避。
+
+    ``allow_restart=False`` 用于内嵌形态：此时 pipeline 就是当前进程，
+    从进程内部重启自己不可行，``start`` 类参数只登记不生效（并如实回报）。
+    """
     machine_id = settings.machine_id
     if not settings.target_yaml or not machine_id:
         return None
@@ -122,20 +233,31 @@ def sync_config(client: AgentClient, token: str, settings: AgentSettings) -> dic
 
     effects = declared_effects(settings)
     start_keys = [key for key, effect in effects.items() if effect == "start"]
-    hot_values = {
-        key: value for key, effect in effects.items() if effect == "hot"
-    }
+    hot_keys = [key for key, effect in effects.items() if effect == "hot"]
+    hot_values = values_for_keys(data["yaml_text"], hot_keys)
+    start_values = values_for_keys(data["yaml_text"], start_keys)
+
+    applied: dict[str, str] = {}
     if start_keys:
-        restart_pipeline(settings)
+        if allow_restart:
+            restart_pipeline(settings)
+            applied.update(start_values)
+        else:
+            logger.warning(
+                "config has start-effect params but the agent runs inside the pipeline "
+                "process; they were not applied: {}",
+                ", ".join(sorted(start_keys)),
+            )
     elif hot_values:
         hot_update(settings, hot_values)
+        applied.update(hot_values)
 
     client.report(
         token,
         {
             "config_version": data["config_version"],
             "applied_at": data.get("rendered_at", ""),
-            "values": hot_values or {},
+            "values": applied,
         },
     )
     return client.ack(

@@ -76,8 +76,19 @@ def _health_check(settings, service_id: str) -> tuple[bool, dict, str]:
     )
 
 
-def execute(command: dict, settings, client, token: str) -> tuple[bool, dict, str]:
-    """返回 (ok, result, error)；未知类型按失败回执，绝不静默成功。"""
+def execute(
+    command: dict,
+    settings,
+    client,
+    token: str,
+    *,
+    allow_restart: bool = True,
+) -> tuple[bool, dict, str]:
+    """返回 (ok, result, error)；未知类型按失败回执，绝不静默成功。
+
+    ``allow_restart=False`` 用于内嵌形态：此时 pipeline 就是当前进程，
+    从进程内部通过 supervisor 重启自己不可行，重启类命令一律明确失败。
+    """
     kind = str(command.get("kind") or "")
     payload = command.get("payload") or {}
     if kind == "drain":
@@ -85,8 +96,18 @@ def execute(command: dict, settings, client, token: str) -> tuple[bool, dict, st
     if kind == "resume":
         return _drain(client, token, False)
     if kind == "reboot":
+        if not allow_restart:
+            return False, {"reason": "not_supported_in_embedded_mode"}, (
+                "restarting the pipeline is not supported while the agent runs "
+                "inside the pipeline process"
+            )
         return _reboot(settings)
     if kind == "config_restart":
+        if not allow_restart:
+            return False, {"reason": "not_supported_in_embedded_mode"}, (
+                "restarting the pipeline is not supported while the agent runs "
+                "inside the pipeline process"
+            )
         return _config_restart(settings, client, token)
     if kind == "recover":
         return _recover(client, token)
@@ -95,17 +116,71 @@ def execute(command: dict, settings, client, token: str) -> tuple[bool, dict, st
     return False, {"reason": "unsupported_kind"}, f"unsupported command kind: {kind}"
 
 
-def poll_and_run(client, token: str, settings, *, limit: int = 10) -> int:
-    """每 tick 的独立步骤：任何单条命令失败都照常回执，绝不影响主循环。"""
+def execute_command(
+    command: dict,
+    settings,
+    client,
+    token: str,
+    allow_restart: bool = True,
+) -> tuple[bool, dict, str]:
+    """Call :func:`execute` with the restart switch only when it matters.
+
+    The default path keeps the historical four-argument call shape, so an
+    existing override of ``execute`` (a stub, a wrapper) keeps working.
+    """
+
+    if allow_restart:
+        return execute(command, settings, client, token)
+    return execute(command, settings, client, token, allow_restart=False)
+
+
+def poll_and_run_detailed(
+    client,
+    token: str,
+    settings,
+    *,
+    limit: int = 10,
+    allow_restart: bool = True,
+) -> list[dict]:
+    """每 tick 的独立步骤：任何单条命令失败都照常回执，绝不影响主循环。
+
+    返回逐条回执，供控制接口展示；:func:`poll_and_run` 只关心条数。
+    """
     commands = client.pull_commands(token, limit=limit)
+    receipts: list[dict] = []
     for command in commands:
         command_id = str(command.get("command_id") or "")
         try:
-            ok, result, error = execute(command, settings, client, token)
+            ok, result, error = execute_command(command, settings, client, token, allow_restart)
         except Exception as exc:  # noqa: BLE001 - 命令失败要回执给 console，不是吞掉
             ok, result, error = False, {}, f"{type(exc).__name__}: {exc}"
             logger.warning("machine command {} failed: {}", command_id, exc)
         client.report_command(
             token, command_id, ok=ok, result=result, error=error[:512]
         )
-    return len(commands)
+        receipts.append(
+            {
+                "command_id": command_id,
+                "kind": str(command.get("kind") or ""),
+                "ok": ok,
+                "result": result,
+                "error": error,
+            }
+        )
+    return receipts
+
+
+def poll_and_run(
+    client,
+    token: str,
+    settings,
+    *,
+    limit: int = 10,
+    allow_restart: bool = True,
+) -> int:
+    """拉取并执行本机待办命令，返回执行条数。"""
+    return len(
+        poll_and_run_detailed(
+            client, token, settings, limit=limit, allow_restart=allow_restart
+        )
+    )

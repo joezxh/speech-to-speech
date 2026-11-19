@@ -1,7 +1,7 @@
 import logging
 import threading
 from threading import Event
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import uvicorn
 
@@ -31,7 +31,10 @@ class RealtimeServer:
         host: str = "0.0.0.0",
         port: int = 8765,
         llm_proxy_config: LLMProxyConfig | None = None,
-        console_attachment: ConsoleAttachment | None = None,
+        # Quoted: ConsoleAttachment is imported under TYPE_CHECKING only, so an
+        # unquoted annotation would be evaluated at import time and raise NameError.
+        console_attachment: "ConsoleAttachment | None" = None,
+        agent: Any | None = None,
     ) -> None:
         if not pool:
             raise ValueError("RealtimeServer requires at least one PipelineUnit in the pool")
@@ -41,6 +44,9 @@ class RealtimeServer:
         self.port = port
         self.llm_proxy_config = llm_proxy_config
         self.console_attachment = console_attachment
+        # The embedded agent (serve --with-agent). None keeps the agent
+        # endpoints registered but disabled (503 agent_disabled).
+        self.agent = agent
         # Only meaningful with the console integrated: a bare realtime server keeps
         # today's exit-code behaviour untouched.
         self.startup_failed = False
@@ -52,6 +58,7 @@ class RealtimeServer:
             stop_event=self.stop_event,
             llm_proxy_config=self.llm_proxy_config,
             console_attachment=self.console_attachment,
+            agent=self.agent,
         )
 
         logger.info(

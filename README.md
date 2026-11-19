@@ -683,6 +683,166 @@ speech-to-speech serve \
 
 Both commands also work with `--mac-optimal-settings`; explicit `--stt` flags override the defaults it sets.
 
+## Service Capabilities & Chinese-First Deployment
+
+Beyond the base VAD → STT → LLM → TTS pipeline, speech-to-speech exposes a layered capability surface so deployments can pick only what they need. This section enumerates every shipped capability, then focuses on the **Chinese-first stack** (the project's original large-scale production target) and the **extension points** available for second-generation modifications.
+
+### Capability Map
+
+| Capability | How to enable | Where to find it |
+|---|---|---|
+| **Voice Activity Detection (VAD)** | Built-in — powered by [silero-vad](https://github.com/snakers4/silero-vad) through [fie-red-vad](https://github.com/fie-red/fie-red-vad) | `speech_to_speech/VAD/` |
+| **Smart Turn-Taking** | `--vad_mode smart` · coalesces overlapping speech, short utterances, and speculative completions | `speech_to_speech/VAD/smart_turn.py` |
+| **Streaming STT (partial + final)** | Default pipeline behavior — every STT backend emits incremental parts | `speech_to_speech/STT/streaming_handler.py` |
+| **Live Transcription (WS / RTC events)** | `--enable_live_transcription` · surfaces partial/final transcript on the Realtime bus | `api/openai_realtime/handlers/` |
+| **Streaming Speaker Diarization** | `--diarization` · speaker-labeled transcription turns via pyannote | `speech_to_speech/diarization/` |
+| **Echo Cancellation (AEC)** | `--echo_cancellation` · WebRTC AEC3 suppresses assistant playback from re-entering STT | `api/openai_realtime/echo_canceller.py` · [guide](docs/echo-cancellation.md) |
+| **Language Detection (per turn)** | `--language auto` · Lingua detects STT language per user utterance | `pipeline/language_detection.py` |
+| **LLM-Output Language Detection** | `--detect_llm_output_language` · detects the language each assistant chunk writes, sends to TTS | same as above |
+| **Prompt the LLM in the User's Language** | `--enable_lang_prompt` · appends *"Please reply to my message in …"* per turn | arguments_classes |
+| **Tool Calling (Python, HTTP, Web search)** | Packaged client: `--tool-module` · Realtime server: full Chat Completions tool path | `LLM/tool_call/` · [design doc](src/speech_to_speech/api/openai_realtime/README.md#tool-calling) |
+| **Reasoning / Extended Thinking** | `--reasoning_effort low\|medium\|high` (OpenAI-compatible LLM) · reasoning is stripped from speech by default | `api/openai_realtime/reasoning.py` |
+| **Streaming Viseme (mouth shapes)** | `--enable_visemes` · wav2vec2 → phoneme → viseme JSON for avatar / robot clients | `speech_to_speech/STV/` |
+| **Voiceprint Embeddings (声纹)** | `--enable_voiceprint` · ECAPA-TDNN embeddings, enroll + verify, per-session speaker binding | `speech_to_speech/voiceprint/` · `api/openai_realtime/voiceprint_routes.py` |
+| **Emotion Detection (from STT transcript)** | SenseVoice STT tags carry `<\|HAPPY\|>`, `<\|SAD\|>`, … stripped by default; `sense_voice_emotion.py` keeps them | `STT/sense_voice_emotion.py` · `api/openai_realtime/emotion_routes.py` |
+| **Speech-to-Speech via Voice Prompt (no intermediate text)** | `--llm_prompt_mode voice` · LLM takes raw audio, returns audio (e.g. Qwen3-Audio) | `LLM/voice_prompt.py` |
+| **Response Compaction (LLM conversation compaction)** | `--enable_compaction` · mid-session summarisation to keep KV-cache bounded across long calls | `LLM/compaction_prompt.py` |
+| **WebRTC Sessions** | Default Realtime server behavior — SFU-agnostic WebRTC over `/v1/realtime` | `api/openai_realtime/webrtc_session.py` · [LiveKit section](#webrtc--livekit) |
+| **Packaged CLI Client** | `speech-to-speech talk` / `local` · microphone → VAD → server → speakers, with Ctrl+C interruption | `examples/clients/` |
+
+### Chinese-First Deployment Stack
+
+The project was originally tuned for **Mandarin + dialects** on thousands of Reachy Mini robots. The Chinese-first stack pairs native Alibaba DAMO / Qwen models with dialect-aware STT and emotion-aware TTS:
+
+| Layer | Recommended backend | Why |
+|---|---|---|
+| **STT · 语音识别** | `sense-voice-small` ([FunASR](https://github.com/modelscope/FunASR)) | 中文、粤语、川话、吴语等 17 种汉藏 + 东南亚语言；自带 ITN（数字归一化，`"一九九八"` → `"1998"`）和情感标签（`<|HAPPY|>` `<|SAD|>` `<|ANGRY|>`），可直接做情感路由 |
+| **STT (lightweight)** | `paraformer` / `paraformer-zh` | FunASR 的中文专用 Paraformer，比 SenseVoice 更小更快，适合边缘部署 |
+| **STT (high fidelity)** | `qwen3-asr-1.7b` | Qwen3-Audio 系原生 STT，可与 Qwen LLM 共享音频 tokenizer |
+| **LLM · 大模型** | `qwen3.8-flash-next` / `qwen3.8-27b` / `qwen3.5-9b` | 中文字符覆盖完整，支持 tool calling、reasoning、音频输入；3.8-Flash-Next 是 Alibaba 中文场景下的推荐主力 |
+| **TTS · 语音合成** | `qwen3-tts-12hz-1.7b-customvoice` | 内置中文音素（19 kHz 输出，pipeline 下采样到 16 kHz）；CustomVoice 支持零样本声纹克隆，参考音频 5–30 秒即可 |
+| **TTS (emotion + dialect control)** | `cosyvoice2` ([CosyVoice](https://github.com/FunAudioLLM/CosyVoice)) | 通过 instruct prompt 控制，例 `"用四川话说这句话，语气悲伤"` · 零样本声纹克隆；24 kHz 输出，pipeline 自动重采样 |
+| **Embedding / Rerank** | `qwen3-vl-embedding-2b` / `qwen3-vl-reranker-2b` | 中文字符、多模态对齐；典型 RAG 场景 |
+| **Voiceprint · 声纹** | ECAPA-TDNN ([`speechbrain`](https://github.com/speechbrain/speechbrain)) · bundled in `speech_to_speech/voiceprint/` | 192 维嵌入，注册 + 验证 + 会话绑定；可搭配 [`CompreFace`](https://github.com/exadel-inc/CompreFace) 做人脸 —— 声纹多模态身份核验 |
+| **Echo Cancellation · 回声消除** | `echo_canceller.py` · WebRTC AEC3 | 避免机器人/现场音箱的 TTS 播放再次被 STT 听到；中文部署标配 |
+| **LiveKit · 视频会议** | Standalone CPU service | 见下方 [LiveKit 集成](#webrtc--livekit) |
+
+#### Quick Start — Chinese-optimised all-in-one
+
+```bash
+# 1. Install Chinese extras
+pip install "speech-to-speech[sensevoice,qwen3-asr]"
+
+# 2. Chinese-only server (Mandarin + dialects, emotion-aware)
+speech-to-speech serve \
+    --stt sense-voice \
+    --sensevoice_language auto \
+    --sensevoice_use_itn true \
+    --language zh \
+    --tts qwen3 \
+    --llm_backend transformers \
+    --model_name Qwen/Qwen3.5-9B-Instruct \
+    --detect_llm_output_language \
+    --enable_lang_prompt \
+    --enable_voiceprint \
+    --echo_cancellation
+
+# 3. All-in-one shell (server + mic + speaker)
+speech-to-speech local --stt sense-voice --tts qwen3 --language zh
+```
+
+#### Chinese-specific flags at a glance
+
+| Flag | Value | Effect |
+|---|---|---|
+| `--sensevoice_language` | `auto` / `zh` / `zh_en` / `yue` | 强制 SenseVoice 停留在中文 / 粤语，或让它自动检测 |
+| `--sensevoice_use_itn` | `true` *(default)* | 中文数字归一化：`"二零二六年"` → `"2026"`、`"三千五百"` → `"3500"` |
+| `--language` | `zh` | Whisper / Faster-Whisper 系后端锁定中文 |
+| `--llm_prompt_mode` | `voice` | 直接把用户音频喂给 Qwen3-Audio 系列 LLM（中文语音 → 中文语音回复，无中间文本） |
+| `--tts cosyvoice` + `--cosyvoice_tts_instruct` | `"用四川话，语气开心"` | 方言 + 情感双重控制 |
+| `--cosyvoice_tts_prompt_wav` | `/path/to/ref.wav` | 零样本声纹克隆参考音频，5–30 秒 |
+
+### Second-Generation Extension Points
+
+speech-to-speech is deliberately modular: every stage has a **base class + registry + argument class** trio, so a new backend can be added with one new file and one registration line — no pipeline changes. The `backend_registry.py` and `model_registry.py` mechanisms make discovery automatic.
+
+#### Write a new STT / TTS / LLM backend
+
+```python
+# src/speech_to_speech/STT/my_awesome_stt.py
+from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
+from speech_to_speech.pipeline.handler_types import STTIn, STTOut
+
+class MyAwesomeSTTHandler(BaseSTTHandler):
+    def setup(self, model_name: str = "...", device: str = "cuda") -> None:
+        self.model = load_model(model_name, device=device)
+
+    def run(self, audio: STTIn) -> Iterator[STTOut]:
+        for partial in self.model.transcribe_streaming(audio):
+            yield PartialTranscription(text=partial, final=False)
+        yield Transcription(text=self.model.transcribe_full(audio), final=True)
+```
+
+Then register it:
+
+```python
+# src/speech_to_speech/backend_registry.py — add to the STT registry dict
+"my-awesome": {
+    "handler_class": MyAwesomeSTTHandler,
+    "arguments_class": MyAwesomeSTTHandlerArguments,
+    "capabilities": BackendCapabilities(streaming_partials=True, diarization=False),
+},
+```
+
+Create one matching arguments class in `arguments_classes/` (use `@dataclass` and inherit from `ModuleArguments`), and a CLI flag `--stt my-awesome` automatically becomes available with `speech-to-speech serve -h`.
+
+#### Hook custom tools into the LLM tool-call path
+
+Packaged client path:
+```python
+# my_tools.py — any callable becomes a tool via its docstring + type hints
+def search_weather(city: str) -> str:
+    """Return today's weather for a Chinese city.
+    Args:
+        city: City name in Chinese or pinyin, e.g. "北京" or "beijing"
+    """
+    return requests.get(f"https://api.weather/{city}").json()["summary"]
+```
+
+```bash
+speech-to-speech talk --tool-module my_tools
+```
+
+Realtime server path: POST a tool schema to the session via the WebSocket `conversation.item.create` event — the server's Chat Completions path handles the rest. See the [tool-call design doc](src/speech_to_speech/api/openai_realtime/README.md#tool-calling).
+
+#### Build custom pipeline stages
+
+All events flow through a small typed envelope in `speech_to_speech/pipeline/messages.py`: `PartialTranscription`, `Transcription`, `PartialResponse`, `Response`, `EndOfResponse`, `Viseme`, `DiarizationTurn`, `EmotionTag`, `Usage`. Add a stage by subscribing to the typed queues in `s2s_pipeline.py` — the existing `diarization/`, `voiceprint/`, and `pipeline/visemes.py` are all examples of mid-pipeline stages that tap into these envelopes without touching VAD/STT/LLM/TTS code.
+
+#### ZeroGPU — run everything on CPU for prototyping / edge
+
+Every major backend (LLM, STT, TTS) has a ZeroGPU variant (`zerogpu_handler.py` in each submodule, plus top-level `--zerogpu` flag) that routes to MLX on Apple Silicon, or llama.cpp + GGML + ONNX on Linux/Windows without any CUDA device. The ZeroGPU path shares the same pipeline and Realtime server — you only swap `--llm_backend`, `--stt`, `--tts`.
+
+### WebRTC + LiveKit
+
+speech-to-speech exposes the same Realtime protocol over raw WebSocket (`/v1/realtime`) and over a WebRTC SFU. It is SFU-agnostic out of the box — LiveKit is the recommended choice for production because it handles NAT traversal, media relay, and recording natively:
+
+```bash
+# 1. Start LiveKit server (CPU-only, see README-CN for sizing)
+docker run --rm -p 7880:7880 -p 7881:7881 livekit/livekit-server \
+    --node-ip 0.0.0.0 --dev
+
+# 2. Start speech-to-speech Realtime server pointing at LiveKit
+speech-to-speech serve \
+    --transport webrtc \
+    --webrtc_url ws://localhost:7880 \
+    --webrtc_api_key devkey \
+    --webrtc_api_secret secret \
+    --stt sense-voice --tts qwen3 --language zh
+```
+
+Front-end clients (browser, mobile, desktop) connect through LiveKit's standard SDKs; speech-to-speech never sees raw media packets — it only receives negotiated tracks and emits TTS audio back through the same SFU. This makes multi-party meetings, recording, and screen sharing trivial — they are all LiveKit features, not pipeline concerns.
+
 ## OmniVoice
 
 OmniVoice provides voice cloning, voice design, and automatic voice selection across 600+ languages. Install its opt-in dependencies and provide a reference clip plus its transcript for voice cloning. This example uses CUDA on Linux or Windows; use `--omnivoice_device mps` on Apple Silicon, `--omnivoice_device xpu` with an Intel XPU-enabled PyTorch installation, or `--omnivoice_device npu` with an Ascend `torch_npu` installation:
@@ -1006,3 +1166,101 @@ If you use this pipeline, please also cite the component models you run. The def
 ```
 
 Citations for optional backends such as Kokoro, KittenTTS, Pocket TTS, ChatTTS, Whisper variants, Paraformer, and MMS live in the respective [component READMEs](./src/speech_to_speech).
+
+## Deployment Sizing: GPU / CPU / Memory by Model Combo and Concurrency
+
+This section estimates hardware requirements for **three model combos** across **three concurrency tiers**, plus CPU-side services that run alongside the speech pipeline. The sizing follows the **"large-memory + mature inference engine"** approach: prioritize enough VRAM to hold the model weights comfortably with room for KV cache batching, then pair with engines proven for sustained throughput — vLLM for LLM, faster-whisper / GGML for STT and TTS, ONNX Runtime for embedding / rerank. All numbers are conservative baselines; actual throughput depends on prompt length, response length, batching strategy, and whether you quantize weights.
+
+### Model Combos
+
+| Tier | LLM | STT | TTS | Embedding / Rerank |
+|---|---|---|---|---|
+| **Premium** | Qwen3.8-Flash-Next | Qwen3-ASR-1.7B | Qwen3-TTS-12Hz-1.7B-CustomVoice | qwen3-vl-embedding-2b / qwen3-vl-reranker-2b |
+| **Standard** | Qwen3.8-27B | sense-voice-small | Qwen3-TTS-12Hz-0.6B-CustomVoice | qwen3-vl-embedding-2b / qwen3-vl-reranker-2b |
+| **Budget** | Qwen3.5-9B | sense-voice-small | Qwen3-TTS-12Hz-0.6B-CustomVoice | *(optional, same as Standard)* |
+
+**Optional downgrades for edge / constrained environments**: LLM → Qwen3.6 (≈7B), STT → Qwen3-ASR-0.6B, TTS → Qwen3-TTS-12Hz-0.6B-Base fine-tuned. These trim VRAM by 30–40% each.
+
+### Baseline: Raw Model Footprints (FP16 unless noted)
+
+| Model | Param Count | Weight Size | Inference Engine |
+|---|---|---|---|
+| Qwen3.8-Flash-Next | ~30B | ~60 GB (FP16) · ~16 GB (INT4-AWQ) | vLLM / TensorRT-LLM |
+| Qwen3.8-27B | 27B | ~54 GB (FP16) · ~14 GB (INT4-AWQ) | vLLM / TensorRT-LLM |
+| Qwen3.5-9B | 9B | ~18 GB (FP16) · ~5 GB (INT4-AWQ) | vLLM / Transformers |
+| Qwen3.6 | ~7B | ~14 GB (FP16) · ~4 GB (INT4-AWQ) | vLLM / llama.cpp |
+| Qwen3-ASR-1.7B | 1.7B | ~3.4 GB | Transformers / GGML |
+| Qwen3-ASR-0.6B | 0.6B | ~1.2 GB | Transformers |
+| sense-voice-small | ~0.4B | ~0.8 GB | FunASR / ONNX |
+| Qwen3-TTS-12Hz-1.7B | 1.7B | ~3.4 GB | GGML (faster-qwen3-tts) |
+| Qwen3-TTS-12Hz-0.6B | 0.6B | ~1.2 GB | GGML |
+| qwen3-vl-embedding-2b | 2B | ~4 GB | Transformers / ONNX Runtime |
+| qwen3-vl-reranker-2b | 2B | ~4 GB | Transformers / ONNX Runtime |
+
+---
+
+### Tier 1: Concurrency 5 – 20 (Small Team / Office)
+
+Single-node, moderate GPU. STT + TTS + VAD + embedding all fit on the same GPU as the LLM. CPU runs LiveKit and CompreFace alongside.
+
+| Combo | GPU Recommendation | GPU Utilisation Breakdown | CPU | RAM | Notes |
+|---|---|---|---|---|---|
+| **Premium** | 1 × RTX 4090D / L40S (48 GB) or 2 × RTX 4080S (16 GB each, tensor parallel) | LLM Flash-Next INT4 ~16 GB + KV cache ~8 GB + STT ~4 GB + TTS ~4 GB + embed/rerank ~8 GB ≈ 40 GB | 16–24 cores | 64 GB DDR5 | vLLM with PagedAttention, continuous batching. TTS/STT on same GPU to avoid PCIe round-trip. |
+| **Standard** | 1 × RTX 4090D / L40S (48 GB) or 1 × RTX 4070Ti Super (16 GB) | LLM 27B INT4 ~14 GB + KV cache ~6 GB + STT ~1 GB + TTS ~1 GB + embed/rerank ~8 GB ≈ 30 GB | 12–16 cores | 32–64 GB DDR5 | Everything fits comfortably on a single 4090D; room for KV cache growth with `--gpu_memory_utilization 0.85`. |
+| **Budget** | 1 × RTX 4060 Ti 16 GB or 1 × A10 (24 GB) | LLM 9B INT4 ~5 GB + KV cache ~4 GB + STT ~1 GB + TTS ~1 GB + *(optional embed ~4 GB)* ≈ 11 GB | 8–12 cores | 32 GB DDR5 | Significant headroom; can run 2–3 isolated pipelines in parallel or move embed to CPU. |
+
+**CPU-side services for all Tier 1 combos**:
+- **LiveKit**: single Docker container, 4 cores, 2–4 GB RAM per media server instance (one per 20 concurrent users).
+- **CompreFace**: single Docker container, 4–6 cores, 2–4 GB RAM.
+
+---
+
+### Tier 2: Concurrency 20 – 50 (Mid-Size Deployment)
+
+Single machine, two GPUs. LLM gets one GPU (tensor parallel or separate engine); STT / TTS / embedding share the second.
+
+| Combo | GPU Recommendation | GPU Breakdown | CPU | RAM | Notes |
+|---|---|---|---|---|---|
+| **Premium** | 2 × RTX 4090D (48 GB each) or 1 × H100 PCIe (80 GB) | GPU 1: Flash-Next INT4 ~16 GB + KV cache ~24 GB ≈ 40 GB · GPU 2: STT + TTS + embed/rerank ≈ 16 GB | 24–32 cores | 128 GB DDR5 | vLLM tensor parallel across GPUs for Flash-Next. Second GPU acts as audio sidecar. |
+| **Standard** | 2 × RTX 4090D (48 GB each) or 2 × L40S | GPU 1: 27B INT4 ~14 GB + KV cache ~20 GB ≈ 34 GB · GPU 2: STT + TTS + embed/rerank ≈ 16 GB | 16–24 cores | 64–128 GB DDR5 | Can also run both LLM + audio on one 80 GB GPU if budget is tight; split is cleaner for isolation. |
+| **Budget** | 2 × RTX 4080 Super (16 GB each) or 1 × L40 (48 GB) | GPU 1: 9B FP16 ~18 GB + KV cache ~12 GB ≈ 30 GB · GPU 2: STT + TTS optional embed ≈ 2–6 GB | 12–16 cores | 64 GB DDR5 | Single L40 also works; split GPUs protect audio latency from LLM load spikes. |
+
+**CPU-side services for Tier 2**:
+- **LiveKit**: 2–3 media server containers, 4 cores + 2 GB each.
+- **CompreFace**: 1 container, 6 cores, 4 GB RAM.
+- Reserve 4–8 cores and 8 GB RAM for OS, networking, container overhead.
+
+---
+
+### Tier 3: Concurrency 50 – 500 (Large / Production)
+
+Multi-node or high-end workstation with 4+ GPUs. LLM sharded across multiple GPUs; STT, TTS, and embedding each get their own GPU or share one with LLM offloaded to another node.
+
+| Combo | GPU Recommendation | GPU Breakdown | CPU | RAM | Notes |
+|---|---|---|---|---|---|
+| **Premium** | 4 × H100 80 GB / A100 80 GB or 8 × RTX 4090D 48 GB | GPU 1–2: Flash-Next INT4 tensor parallel + KV cache (~2 × 60 GB) · GPU 3: STT + TTS sidecar (~8 GB) · GPU 4: embed + rerank + extra KV cache (~24 GB) | 48+ cores | 512+ GB DDR5 | vLLM with 2-way TP + continuous batching. Consider TensorRT-LLM on H100 for another 15–25% throughput gain. |
+| **Standard** | 2 × H100 80 GB or 4 × RTX 4090D 48 GB | GPU 1–2: 27B INT4 TP + KV cache (~2 × 40 GB) · GPU 3: audio sidecar · GPU 4: embed + rerank | 32–48 cores | 256 GB DDR5 | A single H100 can hold 27B FP8 + ~40 GB KV cache alone; second GPU for audio keeps latency predictable. |
+| **Budget** | 2 × L40 48 GB or 2 × RTX 4090D | GPU 1: 9B FP16 + KV cache (~30 GB) · GPU 2: STT + TTS + embed (~12 GB) | 16–24 cores | 128 GB DDR5 | Can even run on a single A100 80 GB; split GPUs recommended for SLA isolation. |
+
+**CPU-side services for Tier 3**:
+- **LiveKit**: 4–10 media server instances on a dedicated CPU node, 4 cores + 2 GB each, autoscaled by room count.
+- **CompreFace**: 1–2 container(s) on the same CPU node, 8–12 cores, 8 GB RAM, scaled by face recognition QPS.
+- Reserve 8–16 cores and 16 GB RAM for OS, kubelet / containerd, observability.
+
+---
+
+### Inference Engine Recommendation Per Combo
+
+| Combo | LLM Engine | STT Engine | TTS Engine | Embed/Rerank Engine |
+|---|---|---|---|---|
+| **Premium** | vLLM (PagedAttention + tensor parallel); TensorRT-LLM on H100 | Transformers + Flash Attention 2 | faster-qwen3-tts (GGML CUDA) | ONNX Runtime FP16 / vLLM embeddings |
+| **Standard** | vLLM (AWQ/GPTQ INT4 quantized weights) | FunASR ONNX for sense-voice-small | faster-qwen3-tts (GGML) | ONNX Runtime INT8 |
+| **Budget** | vLLM / Transformers INT4; llama.cpp GGUF if single GPU only | FunASR ONNX | faster-qwen3-tts (GGML CPU fallback ok) | ONNX Runtime (can co-locate with LLM) |
+
+### Summary Hardware Checklist
+
+- **VRAM budget rule of thumb**: LLM weights (quantized) + 2 × model size for KV cache + 6 GB overhead for STT/TTS/embed + 10% safety margin. For example, 27B INT4 on 48 GB GPU: 14 + 27 + 6 + 4 ≈ 51 → needs 80 GB GPU, or reduce KV cache with `--max_model_len` in vLLM.
+- **CPU**: Ryzen 9 7950X / Xeon Gold for single-node; Xeon Platinum / AMD EPYC for multi-node production.
+- **RAM**: minimum model total + 8 GB for OS per node; 2× model total recommended for buffer headroom during bursts.
+- **Storage**: 1 TB NVMe per node for cached model weights and audio artifacts.
+- **Network**: 10 Gbps between GPU nodes (NVLink 400 GB/s is ideal for tensor parallel).

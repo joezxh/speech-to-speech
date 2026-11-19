@@ -17,6 +17,7 @@ import nltk
 import torch
 from transformers import HfArgumentParser
 
+from speech_to_speech.agent_integration import AgentOptions
 from speech_to_speech.api.openai_realtime.pipeline_unit import NotifyingQueue, OutputSignal, PipelineUnit
 from speech_to_speech.arguments_classes.language_model_arguments import MLX_DEFAULT_LM_MODEL
 from speech_to_speech.arguments_classes.local_audio_arguments import LocalAudioArguments
@@ -780,6 +781,7 @@ def build_pipeline(
     *,
     host: str | None = None,
     console_attachment: ConsoleAttachment | None = None,
+    agent_options: AgentOptions | None = None,
 ) -> ThreadManager:
     """Build a pool of pipeline units behind one server."""
     from speech_to_speech.api.openai_realtime.server import RealtimeServer
@@ -798,6 +800,19 @@ def build_pipeline(
         for index in range(module_kwargs.num_pipelines)
     ]
 
+    # The embedded agent shares the server's stop event: the server's finally
+    # block sets it on a failed bind, and ThreadManager.stop() sets it too, so
+    # the agent never keeps the process alive.
+    agent = None
+    if agent_options is not None and agent_options.autostart:
+        from speech_to_speech.agent_integration import build_embedded_agent, pool_usage_provider
+
+        agent = build_embedded_agent(
+            agent_options,
+            stop_event=stop_event,
+            usage_provider=pool_usage_provider(pool),
+        )
+
     server = RealtimeServer(
         stop_event=stop_event,
         pool=pool,
@@ -807,12 +822,15 @@ def build_pipeline(
             build_llm_proxy_config(module_kwargs, args.llm_backend) if module_kwargs.enable_llm_proxy else None
         ),
         console_attachment=console_attachment,
+        agent=agent,
     )
 
     handlers: list[Any] = []
     for unit in pool:
         handlers.extend(unit.handlers)
     handlers.append(server)
+    if agent is not None:
+        handlers.append(agent)
     return ThreadManager(handlers)
 
 
@@ -878,6 +896,7 @@ def run_pipeline_command(
     argv: Sequence[str],
     *,
     console_options: ConsoleOptions | None = None,
+    agent_options: AgentOptions | None = None,
 ) -> None:
     """Run the server alone or compose it with the loopback audio client."""
 
@@ -889,7 +908,9 @@ def run_pipeline_command(
         args.local_audio_kwargs.verbose or args.local_audio_kwargs.local_audio_print_json
     )
     with conversation_output(conversation_only):
-        _run_parsed_pipeline_command(command, args, console_options=console_options)
+        _run_parsed_pipeline_command(
+            command, args, console_options=console_options, agent_options=agent_options
+        )
 
 
 def _run_parsed_pipeline_command(
@@ -897,6 +918,7 @@ def _run_parsed_pipeline_command(
     args: ParsedArguments,
     *,
     console_options: ConsoleOptions | None = None,
+    agent_options: AgentOptions | None = None,
 ) -> None:
     """Run a parsed command with its terminal display policy already applied."""
 
@@ -935,7 +957,12 @@ def _run_parsed_pipeline_command(
         pipeline_manager = (
             build_local_pipeline(args, stop_event, console_attachment=console_attachment)
             if command == "local"
-            else build_pipeline(args, stop_event, console_attachment=console_attachment)
+            else build_pipeline(
+                args,
+                stop_event,
+                console_attachment=console_attachment,
+                agent_options=agent_options,
+            )
         )
 
     # Set up graceful shutdown handler

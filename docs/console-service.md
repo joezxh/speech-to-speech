@@ -385,9 +385,27 @@ pipeline 独立端点（`8765`，由 `create_app()` 直接挂载，非 console �
 | GET | `/v1/audio/embeddings/capability` | Bearer | 声纹能力探活（`dim` 自报） |
 | POST | `/v1/audio/emotion` | 无（服务端注入 SER 的 `X-API-Key`） | 情感代理到现成 emotion2vec_plus_large 服务 |
 | GET | `/v1/audio/emotion/health` | 同上 | 转发 SER `/health` |
+| GET | `/v1/agent/status` | 无 | 内嵌 agent 运行态快照 |
+| GET | `/v1/agent/capability` | 无 | 内嵌 agent 能力与就绪自检 |
+| GET | `/v1/agent/workloads` | 无 | 本机负载清单（声明 + 实测显存） |
+| GET | `/v1/agent/metrics` | 无 | 节点 CPU/GPU/内存指标 |
+| GET | `/v1/agent/deployment` | 无 | 部署参数（运行时 vs 声明，密钥已掩码） |
+| GET | `/v1/agent/usage` | 无 | pipeline 累计用量（与 `/v1/usage` 同源） |
+| POST | `/v1/agent/heartbeat` | Bearer `S2S_ADMIN_TOKEN` | 立即执行一次心跳 |
+| POST | `/v1/agent/config/sync` | Bearer | 立即执行一轮配置同步 |
+| POST | `/v1/agent/commands/poll` | Bearer | 拉取并执行本机待办命令 |
+| POST | `/v1/agent/commands` | Bearer | 执行一条指定机器命令 |
+| POST | `/v1/agent/register` | Bearer | 用注册码换机器令牌并落盘 |
+| POST | `/v1/agent/drain` | Bearer | 排空 / 恢复本机实例 |
+| GET | `/v1/agent/logs` | Bearer | 有界且脱敏的容器日志 |
 
 `SER_ENABLED=true` 但 `SER_API_KEY` 为空时情感路由不会注册（fail-closed）。
 完整 env 映射与错误码见 `docs/service-enablement-CN.md`。
+
+`/v1/agent/*` 需要 `speech-to-speech serve --with-agent` 才真正可用；未开启时
+这组接口**仍然注册**（Swagger 里可见），但一律返回 `503 agent_disabled`。
+只读端点免鉴权，触发类端点要求 `S2S_ADMIN_TOKEN`（未配置时 fail-closed 回
+`503 admin_disabled`）。完整接口与参数说明见 `docs/agent-api-CN.md`。
 
 前端页面统一在 `/console`（`/console/login` 为登录页）；`/assets`、`/worklets`
 走 immutable 缓存，`index.html` 走 `no-store`。

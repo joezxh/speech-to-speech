@@ -16,6 +16,7 @@ API_DESCRIPTION = """
 
 * 实时对话走 `WS /v1/realtime`（OpenAI Realtime 协议）或 `POST /v1/realtime/calls`（WebRTC SDP 握手）。
 * 独立音频能力走 `/v1/audio/*`：转写、合成、情感、声纹、口型，均**复用同进程 pipeline 已加载的模型**，不额外占用端口。
+* 运维代理走 `/v1/agent/*`：内嵌 agent 的状态、负载、指标与触发式管控动作（需 `speech-to-speech serve --with-agent` 启用）。
 * 观测端点 `/v1/pool`、`/v1/usage`、`/v1/realtime/capabilities` 用于排查与容量规划。
 
 **通用约定**
@@ -25,9 +26,11 @@ API_DESCRIPTION = """
   * `{"detail": "..."}` —— ASR / TTS / 口型 / 情感未就绪，走 FastAPI `HTTPException`；
   * `{"error": {"code", "stage", "reason"}}` —— 情感识别（SER）的拒答与并发拒绝；
   * `{"error": {"code", "message", "stage", "retryable"}}` —— 声纹（Voiceprint），`code` 为穷举枚举；
-  * `{"error": {"code", "message", "details"}}` —— 管理端（`/admin/*`、挂断通话）；
+  * `{"error": {"code", "message", "details"}}` —— 管理端（`/admin/*`、`/v1/agent/*` 的触发类接口、挂断通话）；
   * `{"error": {"message", "type"}}` —— LLM 代理，OpenAI 兼容信封。
 * 声纹接口要求 `Authorization: Bearer <token>`（缺失 401 / 凭据不匹配 403），其余接口无需鉴权（仅监听回环地址时使用）。
+* `/v1/agent/*` 的触发类接口（心跳、配置同步、命令执行、注册、排空、日志）要求
+  `Authorization: Bearer <S2S_ADMIN_TOKEN>`；未配置令牌时 fail-closed 返回 503 `admin_disabled`。
 * 所有示例中的 `http://localhost:8765` 可替换为实际部署地址。
 """
 
@@ -40,6 +43,10 @@ OPENAPI_TAGS: list[dict[str, Any]] = [
     {
         "name": "音频能力",
         "description": "独立音频接口：转写(ASR)、合成(TTS)、情感(SER)、声纹(VP)、口型(STV)。",
+    },
+    {
+        "name": "运维代理",
+        "description": "内嵌 agent 的状态观测与触发式管控：心跳、配置同步、机器命令、注册、排空、日志。",
     },
     {
         "name": "LLM 代理",

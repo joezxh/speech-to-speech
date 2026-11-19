@@ -1241,3 +1241,29 @@ def test_stream_preserves_short_tail_and_discards_pending_audio_on_cancel(
         assert list(stream) == []
     else:
         np.testing.assert_array_equal(np.concatenate([first, *stream]), expected)
+
+
+def test_empty_text_falls_back_to_a_chinese_utterance(monkeypatch):
+    """An empty LLM turn must not switch the conversation to English."""
+    handler = object.__new__(Qwen3TTSHandler)
+    handler.should_listen = Event()
+    handler.cancel_scope = None
+    handler.ref_audio = "TTS/ref_audio.wav"
+    handler.speaker = None
+    handler.instruct = None
+    handler.language = "English"
+    handler.backend = "mlx"
+    handler.queue_in = Queue()
+    handler.model = SimpleNamespace(config=SimpleNamespace(tts_model_type="base"))
+    handler._apply_session_voice_override = lambda model_type, runtime_config=None, response=None: None
+    spoken = []
+    handler._process_voice_clone = lambda text, language=None, timer=None: (
+        spoken.append(text),
+        iter([np.zeros(512, dtype=np.int16)]),
+    )[1]
+    monkeypatch.setattr(qwen3_tts_module.console, "print", lambda *args, **kwargs: None)
+
+    assert list(handler.process(TTSInput(text="   ", runtime_config=RuntimeConfig())))
+
+    assert spoken
+    assert any("\u4e00" <= char <= "\u9fff" for char in spoken[0])

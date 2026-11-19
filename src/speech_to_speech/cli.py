@@ -6,6 +6,15 @@ import sys
 from collections.abc import Sequence
 from typing import Any, Literal
 
+from speech_to_speech.agent_integration import (
+    AUTOSTART_ENV as AGENT_AUTOSTART_ENV,
+)
+from speech_to_speech.agent_integration import (
+    AgentIntegrationError,
+    AgentOptions,
+    parse_agent_arguments,
+    validate_agent_options,
+)
 from speech_to_speech.api.openai_realtime.audio_client import (
     RealtimeAudioClientConfig,
     load_realtime_tool_module,
@@ -45,6 +54,24 @@ Environment:
 
 With the switch on, "/" and "/console/*" serve the console frontend, "/api/*" serves
 the console API, and "/v1/*" keeps serving the Realtime API from the same listener.
+"""
+
+AGENT_HELP = """
+Agent integration (same process, same port):
+  --with-agent          Start the s2s-agent inside this process and publish the
+                        /v1/agent/* control endpoints on the same port. Off by default.
+  --no-with-agent       Override S2S_AGENT_AUTOSTART for this run.
+
+Environment:
+  S2S_AGENT_AUTOSTART   true/false, same as --with-agent. Default: false.
+  S2S_AGENT_CONSOLE_URL Console (control plane) base URL. Required with --with-agent.
+  S2S_AGENT_MACHINE_ID  This machine's identity. Required with --with-agent.
+  S2S_ADMIN_TOKEN       Bearer token for the /v1/agent/* action endpoints.
+
+Only "serve" hosts the agent. With the switch on, the agent reports to the
+console from inside the pipeline process and "/v1/agent/*" serves its status,
+workloads, metrics and triggerable actions; without the switch those endpoints
+answer 503 agent_disabled.
 """
 
 
@@ -247,7 +274,12 @@ def parse_talk_arguments(argv: Sequence[str]) -> RealtimeAudioClientConfig:
     )
 
 
-def _run_file_command(command: Command, command_args: list[str], console_options: ConsoleOptions) -> None:
+def _run_file_command(
+    command: Command,
+    command_args: list[str],
+    console_options: ConsoleOptions,
+    agent_options: AgentOptions,
+) -> None:
     from speech_to_speech.config import ConfigurationError, load_config, resolve_config
 
     parser = argparse.ArgumentParser(prog=f"speech-to-speech {command}", allow_abbrev=False, exit_on_error=False)
@@ -282,7 +314,12 @@ def _run_file_command(command: Command, command_args: list[str], console_options
         from speech_to_speech.configured_runtime import run_configured_command
 
         # "models" is short-circuited before _run_file_command; Command is wider than this runtime command set.
-        run_configured_command(command, config, console_options=console_options)  # type: ignore[arg-type]
+        run_configured_command(  # type: ignore[arg-type]
+            command,
+            config,
+            console_options=console_options,
+            agent_options=agent_options,
+        )
     except ConsoleIntegrationError as exc:
         parser.exit(2, f"Configuration error: {exc}\n")
     except ConfigurationError:
@@ -369,14 +406,19 @@ def _run_models_command(command_args: list[str]) -> None:
         )
 
 
-def _dispatch(command: Command, command_args: list[str], console_options: ConsoleOptions) -> None:
+def _dispatch(
+    command: Command,
+    command_args: list[str],
+    console_options: ConsoleOptions,
+    agent_options: AgentOptions,
+) -> None:
     if command == "models":
         _run_models_command(command_args)
         return
     if any(
         argument.startswith("-f") or argument == "--file" or argument.startswith("--file=") for argument in command_args
     ):
-        _run_file_command(command, command_args, console_options)
+        _run_file_command(command, command_args, console_options, agent_options)
         return
     if any(argument == "--name" or argument.startswith("--name=") for argument in command_args):
         _command_parser().error("--name requires a configuration file.")
@@ -389,7 +431,12 @@ def _dispatch(command: Command, command_args: list[str], console_options: Consol
 
     from speech_to_speech.s2s_pipeline import run_pipeline_command
 
-    run_pipeline_command(command, command_args, console_options=console_options)
+    run_pipeline_command(
+        command,
+        command_args,
+        console_options=console_options,
+        agent_options=agent_options,
+    )
 
 
 def main() -> None:
@@ -402,6 +449,12 @@ def main() -> None:
     except ConsoleIntegrationError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
+    try:
+        # Stripped before parse_command: the -f file mode rejects unknown options.
+        agent_options, argv = parse_agent_arguments(argv)
+    except AgentIntegrationError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
 
     wants_help = any(argument in {"-h", "--help"} for argument in argv)
     try:
@@ -409,6 +462,7 @@ def main() -> None:
     except SystemExit as exc:
         if exc.code == 0 and wants_help:
             print(CONSOLE_HELP)
+            print(AGENT_HELP)
         raise
 
     if command == "talk":
@@ -432,13 +486,35 @@ def main() -> None:
             print(f"Configuration error: {exc}", file=sys.stderr)
             raise SystemExit(2) from None
 
+    if command != "serve":
+        if agent_options.explicit:
+            _command_parser().error(
+                f"{command} does not accept --with-agent; only 'serve' hosts the agent."
+            )
+        if agent_options.autostart:
+            # An environment switch must not break a command that has nothing to host.
+            print(f"Warning: {AGENT_AUTOSTART_ENV}=true is ignored for '{command}'.", file=sys.stderr)
+            agent_options = AgentOptions(autostart=False, explicit=agent_options.explicit)
+    else:
+        try:
+            # Fail before any model loads: a missing console URL or machine id
+            # would otherwise only surface after the pipeline claimed the GPU.
+            validate_agent_options(agent_options)
+        except AgentIntegrationError as exc:
+            print(f"Configuration error: {exc}", file=sys.stderr)
+            raise SystemExit(2) from None
+
     try:
-        _dispatch(command, command_args, console_options)
+        _dispatch(command, command_args, console_options, agent_options)
     except SystemExit as exc:
         if exc.code == 0 and wants_help and command in {"serve", "local"}:
             print(CONSOLE_HELP)
+            print(AGENT_HELP)
         raise
     except ConsoleIntegrationError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
+    except AgentIntegrationError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
     except StartupError as exc:

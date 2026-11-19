@@ -70,7 +70,13 @@ blocks:
       # 每攒 1 句就送 TTS，首音最快（默认 3 句会多等 1-2 句的生成时间）。
       stream_batch_sentences: 1
       init_chat_role: system
-      init_chat_prompt: "You are a helpful voice assistant. Keep every reply very short: one or two spoken sentences unless the user asks for detail. Reply in the user's language."
+      # 中文提示词：整段 system prompt 的模板（LLM/voice_prompt.py）仍是英文，
+      # 这里把会话人格部分换成中文，模型回答语言会随提示词一起偏回中文。
+      init_chat_prompt: "你是一个语音助手。请始终用中文回答，回复要简短：一两句话即可，除非用户要求展开细节。"
+      # 注入语言指令（"Please reply to my message in <language>."）。
+      # 依赖 STT 产出 language_code —— sense-voice handler 已提供（按 SenseVoice
+      # 实际听到的语种判定），否则这一段不会注入。
+      enable_lang_prompt: true
 
   tts:
     kind: tts

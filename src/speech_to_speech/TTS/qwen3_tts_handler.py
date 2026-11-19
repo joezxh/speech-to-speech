@@ -63,6 +63,9 @@ ESTIMATED_QWEN3_CJK_CHARS_PER_SECOND = 5.5
 QWEN3_TOKEN_SAFETY_MARGIN = 1.35
 QWEN3_BASE_PROMPT_SECONDS = 1.0
 QWEN3_PUNCTUATION_PAUSE_SECONDS = 0.5
+# Spoken when the model produced no text at all. It used to be the English
+# "Hello.", which made a Chinese conversation switch to English for one turn.
+_EMPTY_TEXT_FALLBACK = "您好，我在听。"
 CJK_CHARACTER_PATTERN = re.compile(
     r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff"
     r"\U00020000-\U0002fa1f]"
@@ -845,7 +848,7 @@ class Qwen3TTSHandler(BaseHandler[TTSIn, TTSOut]):
 
         coalesced_text, language_code = self._coalesce_pending_tts_input(tts_input)
 
-        text = coalesced_text or "Hello."
+        text = coalesced_text or _EMPTY_TEXT_FALLBACK
 
         model_type = self._model_type()
         self._apply_session_voice_override(model_type, runtime_config, response)

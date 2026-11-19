@@ -30,6 +30,25 @@ _EMOJI_AND_SYMBOLS = re.compile(
 
 _TAG_PATTERN = re.compile(r"<\|[^|]+\|>")
 
+# Language tags SenseVoice emits in front of the transcript. The tag describes
+# the audio it actually heard, independently of the configured language, so it
+# is the only trustworthy source for the turn's language.
+_SENSEVOICE_LANGUAGE_TAGS = frozenset(
+    {
+        "zh", "zh_en", "yue", "ja", "ko", "en",
+        "th", "vi", "id", "ms", "tl", "km", "lo", "my", "ne", "hi",
+    }
+)
+
+
+def _extract_language_tag(text: str) -> str | None:
+    """Return the language tag SenseVoice prefixed to its transcript."""
+    for tag in _TAG_PATTERN.findall(text or ""):
+        name = tag[2:-2].strip()
+        if name in _SENSEVOICE_LANGUAGE_TAGS:
+            return name
+    return None
+
 
 def _strip_emotion_symbols(text: str) -> str:
     """Remove SenseVoice's emotion/event emoji before the text reaches TTS."""
@@ -124,18 +143,41 @@ class SenseVoiceSTTHandler(BaseSTTHandler):
 
     def _generate_with_emotion(self, audio: np.ndarray) -> tuple[str, str | None]:
         """Return clean transcript and an optional emotion text for the LLM."""
+        clean, emotion, _raw = self._generate_with_emotion_raw(audio)
+        return clean, emotion
+
+    def _generate_with_emotion_raw(self, audio: np.ndarray) -> tuple[str, str | None, str]:
+        """Return clean transcript, emotion text and the raw rich-tag string.
+
+        The raw string carries SenseVoice's language tag (``<|zh|>`` …); it is
+        the only place the detected language is available.
+        """
         text, raw = self._generate_raw(audio)
         clean = _strip_emotion_symbols(_TAG_PATTERN.sub("", text)).strip()
         emotion_name = _extract_raw_emotion(raw)
         if emotion_name in ("EMO_UNKNOWN", "OTHER", ""):
-            return clean, None
+            return clean, None, raw
         from speech_to_speech.STT.sense_voice_emotion import emotion_to_text, map_emotion
 
         try:
             label = map_emotion(emotion_name, laughter=_has_laughter(raw))
         except Exception:
-            return clean, None
-        return clean, emotion_to_text(label, laughter=_has_laughter(raw))
+            return clean, None, raw
+        return clean, emotion_to_text(label, laughter=_has_laughter(raw)), raw
+
+    def _resolved_language_code(self, raw: str) -> str | None:
+        """The language of the audio, as SenseVoice tagged it.
+
+        SenseVoice reports the detected language in a leading ``<|zh|>`` /
+        ``<|en|>`` tag whatever ``language`` was configured to, so the tag is the
+        truth. The configured language is only a fallback for transcripts that
+        carry no tag; with ``language="auto"`` there is no fallback and the
+        turn stays unlabelled.
+        """
+        detected = _extract_language_tag(raw)
+        if detected:
+            return detected
+        return None if self.language == "auto" else self.language
 
     def recognize(self, audio: np.ndarray) -> dict:
         """Return raw emotion label + laughter + confidence/margin for SER endpoint."""
@@ -174,7 +216,7 @@ class SenseVoiceSTTHandler(BaseSTTHandler):
 
     def process(self, vad_audio: STTIn) -> Iterator[STTOut]:
         started_at_s = perf_counter()
-        pred_text, emotion_text = self._generate_with_emotion(vad_audio.audio)
+        pred_text, emotion_text, raw = self._generate_with_emotion_raw(vad_audio.audio)
         self._empty_cache()
         console.print(f"[yellow]USER: {pred_text}")
 
@@ -191,6 +233,7 @@ class SenseVoiceSTTHandler(BaseSTTHandler):
         yield Transcription(
             text=pred_text,
             emotion=emotion_text,
+            language_code=self._resolved_language_code(raw),
             turn_id=vad_audio.turn_id,
             turn_revision=vad_audio.turn_revision,
             speech_stopped_at_s=vad_audio.speech_end_at_s,

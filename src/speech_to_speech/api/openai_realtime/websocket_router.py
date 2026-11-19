@@ -45,6 +45,7 @@ from speech_to_speech.api.openai_realtime.transports import (
     WebSocketTransport,
     send_ws_event,
 )
+from speech_to_speech.api.openai_realtime.usage import aggregate_pool_usage
 from speech_to_speech.api.openai_realtime.visemes import SpeechToSpeechVisemesEvent
 from speech_to_speech.pipeline.control import SESSION_END, PipelineControlMessage, is_control_message
 from speech_to_speech.pipeline.events import (
@@ -631,7 +632,10 @@ def create_app(
     stop_event: ThreadingEvent,
     llm_proxy_config: LLMProxyConfig | None = None,
     *,
-    console_attachment: ConsoleAttachment | None = None,
+    # Quoted: ConsoleAttachment is imported under TYPE_CHECKING only, so an
+    # unquoted annotation would be evaluated at import time and raise NameError.
+    console_attachment: "ConsoleAttachment | None" = None,
+    agent: Any | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def pipeline_lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -686,11 +690,12 @@ def create_app(
     # Standalone services used to be injected only by build-time patches into
     # the container image. Mount them here so a source-tree start exposes the
     # same endpoint set. All three read their switches from the process env.
+    from speech_to_speech.api.openai_realtime.agent_routes import mount_agent
     from speech_to_speech.api.openai_realtime.audio_services import mount_audio_services
     from speech_to_speech.api.openai_realtime.emotion_local_service import mount_emotion_local
     from speech_to_speech.api.openai_realtime.emotion_routes import mount_emotion
-    from speech_to_speech.api.openai_realtime.voiceprint_routes import mount_voiceprint
     from speech_to_speech.api.openai_realtime.visemes_routes import mount_visemes
+    from speech_to_speech.api.openai_realtime.voiceprint_routes import mount_voiceprint
 
     mount_audio_services(app, pool)
     mount_voiceprint(app, pool)
@@ -699,6 +704,9 @@ def create_app(
     mount_emotion_local(app, pool)
     mount_emotion(app)
     mount_visemes(app, pool)
+    # The agent endpoints are always registered: without --with-agent they
+    # answer 503 agent_disabled, so the contract never depends on a switch.
+    mount_agent(app, agent, pool)
 
     def _claim_unit(transport: SessionTransport | None) -> PipelineUnit | None:
         """Atomically (between asyncio yield points) reserve the first idle unit.
@@ -873,23 +881,9 @@ def create_app(
         },
     )
     async def usage_endpoint() -> dict[str, Any]:
-        # Aggregate usage across the pool. Numeric fields sum; dict fields (e.g.
-        # errors_by_type) merge with numeric leaves summed too, so per-unit error
-        # counts don't get dropped by the first-unit's value.
-        def _merge(into: dict[str, Any], src: dict[str, Any]) -> None:
-            for k, v in src.items():
-                if isinstance(v, (int, float)):
-                    into[k] = into.get(k, 0) + v
-                elif isinstance(v, dict):
-                    sub = into.setdefault(k, {})
-                    if isinstance(sub, dict):
-                        _merge(sub, v)
-                else:
-                    into.setdefault(k, v)
-
-        total: dict[str, Any] = {}
-        for unit in pool:
-            _merge(total, unit.service.get_usage())
+        # Aggregate usage across the pool (shared with /v1/agent/usage, so the
+        # observability endpoint and the agent's own counters cannot drift).
+        total = aggregate_pool_usage(pool)
         # Additive section: proxy traffic is app-level, not per-unit, so it
         # lands after the per-unit merge and never collides with unit keys.
         total["llm_proxy"] = llm_proxy_usage.model_dump()

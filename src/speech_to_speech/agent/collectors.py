@@ -133,6 +133,12 @@ def _pipeline_port(settings: "object | None" = None) -> int:
     return 8765
 
 
+def pipeline_port(settings: "object | None" = None) -> int:
+    """本机 pipeline 端口（声明文件优先，缺省 8765）的公开入口。"""
+
+    return _pipeline_port(settings)
+
+
 def read_usage(settings=None) -> Usage:
     """读本机 pipeline `GET /v1/usage` 的累计值（差分输入；不可达 → 零增量）。"""
     import httpx  # noqa: PLC0415 - 只在采集时需要
@@ -148,7 +154,8 @@ def read_usage(settings=None) -> Usage:
     return Usage(
         input_tokens=int(payload.get("input_tokens") or 0),
         output_tokens=int(payload.get("output_tokens") or 0),
-        responses=int(payload.get("responses") or 0),
+        # 服务端字段是 responses_completed；旧版可能叫 responses，两个都认。
+        responses=int(payload.get("responses") or payload.get("responses_completed") or 0),
         audio_duration_s=float(payload.get("audio_duration_s") or 0.0),
         window_s=int(payload.get("window_s") or 0),
     )

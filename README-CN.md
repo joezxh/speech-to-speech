@@ -553,6 +553,166 @@ speech-to-speech serve \
 
 两个命令也适用于 `--mac-optimal-settings`；显式的 `--stt` 标志覆盖它设置的默认值。
 
+## 服务能力总览与中文优先部署
+
+在基础的 VAD → STT → LLM → TTS 流水线之外，speech-to-speech 还暴露了一套分层的能力面，部署时可以按需裁剪。本章节先枚举全部已交付能力，再重点介绍项目原生的 **中文优先栈**（这是项目早期在上千台 Reachy Mini 机器人上跑通的生产路线）和面向二次开发的 **扩展点**。
+
+### 能力地图
+
+| 能力 | 启用方式 | 代码位置 |
+|---|---|---|
+| **语音活动检测 VAD** | 内置 · 通过 [fie-red-vad](https://github.com/fie-red/fie-red-vad) 调用 [silero-vad](https://github.com/snakers4/silero-vad) | `speech_to_speech/VAD/` |
+| **智能话轮接管** | `--vad_mode smart` · 合并重叠语音、短句、投机性补全 | `speech_to_speech/VAD/smart_turn.py` |
+| **流式 STT（partial + final）** | 流水线默认行为 · 所有 STT 后端都会输出增量片段 | `speech_to_speech/STT/streaming_handler.py` |
+| **实时转写（WS / RTC 事件）** | `--enable_live_transcription` · 在 Realtime 事件总线上暴露 partial/final 转写 | `api/openai_realtime/handlers/` |
+| **流式说话人分离** | `--diarization` · 通过 pyannote 输出带说话人标签的转写 turn | `speech_to_speech/diarization/` |
+| **回声消除 AEC** | `--echo_cancellation` · WebRTC AEC3 抑制 TTS 播放声回流进 STT | `api/openai_realtime/echo_canceller.py` · [指南](docs/echo-cancellation.md) |
+| **逐 turn 语言检测** | `--language auto` · Lingua 对每次用户口语提示做 STT 侧语言检测 | `pipeline/language_detection.py` |
+| **LLM 输出语言检测** | `--detect_llm_output_language` · 对助手每个输出 chunk 做语言检测并喂给 TTS | 同上 |
+| **按检测语言给 LLM 附加指令** | `--enable_lang_prompt` · 每轮追加 *"Please reply to my message in …"* | arguments_classes |
+| **工具调用（Python/HTTP/Web 搜索）** | 打包客户端：`--tool-module` · Realtime 服务端：完整 Chat Completions 工具路径 | `LLM/tool_call/` · [设计文档](src/speech_to_speech/api/openai_realtime/README-CN.md#tool-calling) |
+| **推理 / 扩展思考** | `--reasoning_effort low\|medium\|high`（OpenAI 兼容 LLM）· 推理过程默认从语音输出中剥离 | `api/openai_realtime/reasoning.py` |
+| **流式口型 Viseme** | `--enable_visemes` · wav2vec2 → 音素 → viseme JSON，供虚拟人/机器人客户端消费 | `speech_to_speech/STV/` |
+| **声纹嵌入** | `--enable_voiceprint` · ECAPA-TDNN 嵌入，注册 + 验证 + 会话内说话人绑定 | `speech_to_speech/voiceprint/` · `api/openai_realtime/voiceprint_routes.py` |
+| **情感识别（从 STT transcript）** | SenseVoice 的输出自带 `<\|HAPPY\|>` `<\|SAD\|>` 等标签，默认剥离；`sense_voice_emotion.py` 保留并路由 | `STT/sense_voice_emotion.py` · `api/openai_realtime/emotion_routes.py` |
+| **直接语音输入（Voice Prompt 模式）** | `--llm_prompt_mode voice` · LLM 直接吃原始音频返回音频（如 Qwen3-Audio），无中间文本 | `LLM/voice_prompt.py` |
+| **对话压缩（LLM 上下文摘要）** | `--enable_compaction` · 会话中途触发摘要，防止 KV-cache 在长通话中爆掉 | `LLM/compaction_prompt.py` |
+| **WebRTC 会话** | Realtime 服务端默认行为 · 通过 `/v1/realtime` 暴露 SFU 无关的 WebRTC | `api/openai_realtime/webrtc_session.py` · 见下方 [LiveKit 集成](#webrtc--livekit) |
+| **CLI 打包客户端** | `speech-to-speech talk` / `local` · 麦克风 → VAD → 服务端 → 扬声器，支持 Ctrl+C 打断 | `examples/clients/` |
+
+### 中文优先部署栈
+
+项目最初就是为 **普通话 + 方言** 在数千台 Reachy Mini 机器人上的生产场景调优的。中文优先栈把原生阿里云 DAMO / Qwen 系列模型、方言感知 STT 和情感可控制 TTS 配对：
+
+| 层 | 推荐后端 | 理由 |
+|---|---|---|
+| **STT · 语音识别** | `sense-voice-small`（[FunASR](https://github.com/modelscope/FunASR)） | 中文、粤语、川话、吴语等 17 种汉藏 + 东南亚语言；自带中文 ITN 数字归一化（`"一九九八"` → `"1998"`）和情感标签（`<|HAPPY|>` `<|SAD|>` `<|ANGRY|>`），可直接路由到情感分支 |
+| **STT · 轻量边缘** | `paraformer` / `paraformer-zh` | FunASR 中文专用 Paraformer，比 SenseVoice 更小更快 |
+| **STT · 高保真** | `qwen3-asr-1.7b` | Qwen3-Audio 系原生 STT，可与 Qwen LLM 共享音频 tokenizer |
+| **LLM · 大模型** | `qwen3.8-flash-next` / `qwen3.8-27b` / `qwen3.5-9b` | 中文字符覆盖完整，支持 tool calling、reasoning、音频输入；3.8-Flash-Next 是阿里云中文场景主力推荐 |
+| **TTS · 语音合成** | `qwen3-tts-12hz-1.7b-customvoice` | 内置中文音素（19 kHz 输出，pipeline 自动下采样到 16 kHz）；CustomVoice 零样本声纹克隆，5–30 秒参考音频即可 |
+| **TTS · 情感 + 方言控制** | `cosyvoice2`（[CosyVoice](https://github.com/FunAudioLLM/CosyVoice)） | 通过 instruct prompt 控制，例 `"用四川话说这句话，语气悲伤"` · 同样支持零样本声纹克隆；24 kHz 输出由 pipeline 自动重采样 |
+| **Embedding / Rerank** | `qwen3-vl-embedding-2b` / `qwen3-vl-reranker-2b` | 中文字符、多模态对齐；典型 RAG 场景 |
+| **声纹** | ECAPA-TDNN（[`speechbrain`](https://github.com/speechbrain/speechbrain)）· 内置在 `speech_to_speech/voiceprint/` | 192 维嵌入，注册 + 验证 + 会话绑定；可与 [`CompreFace`](https://github.com/exadel-inc/CompreFace) 做人脸 + 声纹多模态身份核验 |
+| **回声消除** | `echo_canceller.py` · WebRTC AEC3 | 防止机器人/现场音箱的 TTS 播放声再次被 STT 听见；中文部署标配 |
+| **视频会议** | 独立 CPU 服务 LiveKit | 见下方 [LiveKit 集成](#webrtc--livekit) |
+
+#### 快速起步 —— 中文全栈一体化
+
+```bash
+# 1. 安装中文相关的 extras
+pip install "speech-to-speech[sensevoice,qwen3-asr]"
+
+# 2. 中文专用服务端（普通话 + 方言，带情感标签）
+speech-to-speech serve \
+    --stt sense-voice \
+    --sensevoice_language auto \
+    --sensevoice_use_itn true \
+    --language zh \
+    --tts qwen3 \
+    --llm_backend transformers \
+    --model_name Qwen/Qwen3.5-9B-Instruct \
+    --detect_llm_output_language \
+    --enable_lang_prompt \
+    --enable_voiceprint \
+    --echo_cancellation
+
+# 3. 一体化 shell（服务端 + 麦克风 + 扬声器）
+speech-to-speech local --stt sense-voice --tts qwen3 --language zh
+```
+
+#### 中文场景特有参数速查
+
+| 参数 | 取值 | 作用 |
+|---|---|---|
+| `--sensevoice_language` | `auto` / `zh` / `zh_en` / `yue` | 强制 SenseVoice 锁定中文 / 粤语，或让它自动检测 |
+| `--sensevoice_use_itn` | `true` *(默认)* | 中文数字归一化：`"二零二六年"` → `"2026"`、`"三千五百"` → `"3500"` |
+| `--language` | `zh` | Whisper / Faster-Whisper 系后端锁定中文 |
+| `--llm_prompt_mode` | `voice` | 直接把用户音频喂给 Qwen3-Audio 系列 LLM（中文语音 → 中文语音回复，无中间文本） |
+| `--tts cosyvoice` + `--cosyvoice_tts_instruct` | `"用四川话，语气开心"` | 方言 + 情感双重控制 |
+| `--cosyvoice_tts_prompt_wav` | `/path/to/ref.wav` | 零样本声纹克隆参考音频，5–30 秒 |
+
+### 二次开发扩展点
+
+speech-to-speech 刻意做成了模块化：每个阶段都是 **基类 + 注册表 + 参数类** 三件套，新增一个后端只需要一个新文件 + 一行注册，不需要改流水线代码。`backend_registry.py` 和 `model_registry.py` 负责自动发现。
+
+#### 写一个新的 STT / TTS / LLM 后端
+
+```python
+# src/speech_to_speech/STT/my_awesome_stt.py
+from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
+from speech_to_speech.pipeline.handler_types import STTIn, STTOut
+
+class MyAwesomeSTTHandler(BaseSTTHandler):
+    def setup(self, model_name: str = "...", device: str = "cuda") -> None:
+        self.model = load_model(model_name, device=device)
+
+    def run(self, audio: STTIn) -> Iterator[STTOut]:
+        for partial in self.model.transcribe_streaming(audio):
+            yield PartialTranscription(text=partial, final=False)
+        yield Transcription(text=self.model.transcribe_full(audio), final=True)
+```
+
+然后注册：
+
+```python
+# src/speech_to_speech/backend_registry.py — 加到 STT 注册表里
+"my-awesome": {
+    "handler_class": MyAwesomeSTTHandler,
+    "arguments_class": MyAwesomeSTTHandlerArguments,
+    "capabilities": BackendCapabilities(streaming_partials=True, diarization=False),
+},
+```
+
+在 `arguments_classes/` 里补一个匹配的参数类（继承 `ModuleArguments` + `@dataclass`），`speech-to-speech serve -h` 里就会自动出现 `--stt my-awesome`。
+
+#### 给 LLM 工具调用路径挂自定义工具
+
+打包客户端方式：
+```python
+# my_tools.py — 任何 callable 都能自动成为工具，docstring + type hints 即 schema
+def search_weather(city: str) -> str:
+    """查询中文城市的今日天气
+    Args:
+        city: 中文或拼音城市名，例如 "北京" 或 "beijing"
+    """
+    return requests.get(f"https://api.weather/{city}").json()["summary"]
+```
+
+```bash
+speech-to-speech talk --tool-module my_tools
+```
+
+Realtime 服务端方式：通过 WebSocket 的 `conversation.item.create` 事件把工具 schema POST 到 session，服务端的 Chat Completions 路径会接管。详见 [工具调用设计文档](src/speech_to_speech/api/openai_realtime/README-CN.md#tool-calling)。
+
+#### 在流水线中间插自定义 stage
+
+所有事件都通过 `speech_to_speech/pipeline/messages.py` 里的小类型信封流动：`PartialTranscription`、`Transcription`、`PartialResponse`、`Response`、`EndOfResponse`、`Viseme`、`DiarizationTurn`、`EmotionTag`、`Usage`。在 `s2s_pipeline.py` 里订阅这些类型化队列就能加 stage，现有 `diarization/`、`voiceprint/` 和 `pipeline/visemes.py` 都是这种写法的例子——不需要动 VAD/STT/LLM/TTS 任何一行代码。
+
+#### ZeroGPU —— 全 CPU 跑通做原型 / 边缘部署
+
+每个主要后端（LLM / STT / TTS）都有 ZeroGPU 变体（各子模块里的 `zerogpu_handler.py`，加顶层 `--zerogpu` flag），在 Apple Silicon 走 MLX，在 Linux/Windows 走 llama.cpp + GGML + ONNX，全程不需要 CUDA。ZeroGPU 路径共享同一条流水线和同一个 Realtime 服务端——你只需要换 `--llm_backend`、`--stt`、`--tts`。
+
+### WebRTC + LiveKit
+
+speech-to-speech 同时暴露原生 WebSocket（`/v1/realtime`）和 WebRTC 两种 Realtime 协议，默认就是 SFU 无关的。生产推荐 LiveKit，因为它原生处理 NAT 穿透、媒体中继和录制：
+
+```bash
+# 1. 启动 LiveKit 服务端（纯 CPU，硬件规格见上一章节部署容量评估）
+docker run --rm -p 7880:7880 -p 7881:7881 livekit/livekit-server \
+    --node-ip 0.0.0.0 --dev
+
+# 2. 启动 speech-to-speech Realtime 服务端对接 LiveKit
+speech-to-speech serve \
+    --transport webrtc \
+    --webrtc_url ws://localhost:7880 \
+    --webrtc_api_key devkey \
+    --webrtc_api_secret secret \
+    --stt sense-voice --tts qwen3 --language zh
+```
+
+前端客户端（浏览器、移动端、桌面端）用 LiveKit 的标准 SDK 接入即可；speech-to-speech 永远不碰原始媒体包——它只接协商好的 track，再把 TTS 音频通过同一个 SFU 发回去。多 party 会议、录制、屏幕共享这些就都变成了 LiveKit 的原生功能，不是流水线的负担。
+
 ## OmniVoice
 
 OmniVoice 提供 voice 克隆、voice 设计和跨 600+ 语言的自动 voice 选择。安装它的可选依赖，并提供一段参考音频及其转写以进行 voice 克隆。本示例使用 Linux 或 Windows 上的 CUDA；在 Apple Silicon 上使用 `--omnivoice_device mps`，或在启用了 Intel XPU 的 PyTorch 安装上使用 `--omnivoice_device xpu`：
@@ -647,21 +807,7 @@ speech-to-speech serve
 
 其他生成参数可以使用处理器前缀加 `_gen_` 设置，例如 `--stt_gen_max_new_tokens 128` 或 `--llm_gen_temperature 0.7`。尚未暴露的参数可以添加到相关的参数类。
 
-## 贡献
 
-问题和 PR 都欢迎。好的起点是 [开放问题](https://github.com/huggingface/speech-to-speech/issues)。对于较大的更改，先开一个问题来讨论方案。
-
-对于本地开发：
-
-```bash
-uv sync
-pytest
-ruff check
-```
-
-## Star 历史
-
-[![Star History Chart](assets/star-history.svg)](https://github.com/huggingface/speech-to-speech/stargazers)
 
 ## 引用
 
@@ -704,3 +850,101 @@ ruff check
 ```
 
 可选后端（如 Kokoro、Pocket TTS、ChatTTS、Whisper 变体、Paraformer 和 MMS）的引用位于各自的 [组件 README](./src/speech_to_speech) 中。
+
+## 部署容量评估：按模型组合与并发数估算 GPU / CPU / 内存
+
+本节给出 **三种模型组合** 与 **三档并发级别** 下的硬件需求估算，以及与语音流水线同机运行的 CPU 侧服务资源。估算遵循 **"大内存 + 成熟推理引擎"** 路线：优先保证显存足够容纳模型权重，并留有充足空间给 KV Cache 批处理；推理引擎选择经过生产验证、吞吐稳定的方案 —— LLM 用 vLLM，STT 用 faster-whisper / GGML，TTS 用 GGML，Embedding / Rerank 用 ONNX Runtime。所有数字为保守基线；实际吞吐取决于提示长度、回复长度、批处理策略，以及是否对权重做量化。
+
+### 模型组合
+
+| 档位 | LLM | STT | TTS | Embedding / Rerank |
+|---|---|---|---|---|
+| **标配** | Qwen3.8-Flash-Next | Qwen3-ASR-1.7B | Qwen3-TTS-12Hz-1.7B-CustomVoice | qwen3-vl-embedding-2b / qwen3-vl-reranker-2b |
+| **低配** | Qwen3.8-27B | sense-voice-small | Qwen3-TTS-12Hz-0.6B-CustomVoice | qwen3-vl-embedding-2b / qwen3-vl-reranker-2b |
+| **底配** | Qwen3.5-9B | sense-voice-small | Qwen3-TTS-12Hz-0.6B-CustomVoice | （可选，同低配） |
+
+**边缘 / 受限环境可选降配**：LLM → Qwen3.6（≈7B），STT → Qwen3-ASR-0.6B，TTS → Qwen3-TTS-12Hz-0.6B-Base 微调。各自可再省 30–40% 显存。
+
+### 基线：模型原始体积（默认 FP16，另有注明除外）
+
+| 模型 | 参数量 | 权重体积 | 推理引擎 |
+|---|---|---|---|
+| Qwen3.8-Flash-Next | ~30B | ~60 GB (FP16) · ~16 GB (INT4-AWQ) | vLLM / TensorRT-LLM |
+| Qwen3.8-27B | 27B | ~54 GB (FP16) · ~14 GB (INT4-AWQ) | vLLM / TensorRT-LLM |
+| Qwen3.5-9B | 9B | ~18 GB (FP16) · ~5 GB (INT4-AWQ) | vLLM / Transformers |
+| Qwen3.6 | ~7B | ~14 GB (FP16) · ~4 GB (INT4-AWQ) | vLLM / llama.cpp |
+| Qwen3-ASR-1.7B | 1.7B | ~3.4 GB | Transformers / GGML |
+| Qwen3-ASR-0.6B | 0.6B | ~1.2 GB | Transformers |
+| sense-voice-small | ~0.4B | ~0.8 GB | FunASR / ONNX |
+| Qwen3-TTS-12Hz-1.7B | 1.7B | ~3.4 GB | GGML (faster-qwen3-tts) |
+| Qwen3-TTS-12Hz-0.6B | 0.6B | ~1.2 GB | GGML |
+| qwen3-vl-embedding-2b | 2B | ~4 GB | Transformers / ONNX Runtime |
+| qwen3-vl-reranker-2b | 2B | ~4 GB | Transformers / ONNX Runtime |
+
+---
+
+### 档位 1：并发 5 – 20（小型团队 / 办公室）
+
+单机中等 GPU。STT + TTS + VAD + Embedding 全部与 LLM 同卡。CPU 侧同机运行 LiveKit 与 CompreFace。
+
+| 组合 | GPU 推荐 | GPU 占用拆解 | CPU | 内存 | 备注 |
+|---|---|---|---|---|---|
+| **标配** | 1 × RTX 4090D / L40S (48 GB) 或 2 × RTX 4080S (16 GB，张量并行) | LLM Flash-Next INT4 ~16 GB + KV Cache ~8 GB + STT ~4 GB + TTS ~4 GB + embed/rerank ~8 GB ≈ 40 GB | 16–24 核 | 64 GB DDR5 | vLLM + PagedAttention + Continuous Batching。TTS/STT 同卡避免 PCIe 往返。 |
+| **低配** | 1 × RTX 4090D / L40S (48 GB) 或 1 × RTX 4070Ti Super (16 GB) | LLM 27B INT4 ~14 GB + KV Cache ~6 GB + STT ~1 GB + TTS ~1 GB + embed/rerank ~8 GB ≈ 30 GB | 12–16 核 | 32–64 GB DDR5 | 单张 4090D 完全装下；留足余量给 KV Cache，`--gpu_memory_utilization 0.85`。 |
+| **底配** | 1 × RTX 4060 Ti 16 GB 或 1 × A10 (24 GB) | LLM 9B INT4 ~5 GB + KV Cache ~4 GB + STT ~1 GB + TTS ~1 GB + （可选 embed ~4 GB）≈ 11 GB | 8–12 核 | 32 GB DDR5 | 头空间充足；可同时跑 2–3 个隔离流水线，或将 embed 移到 CPU。 |
+
+**档位 1 所有组合的 CPU 侧服务**：
+- **LiveKit**：单 Docker 容器，4 核，2–4 GB RAM（每 20 并发用户一台媒体服务器）。
+- **CompreFace**：单 Docker 容器，4–6 核，2–4 GB RAM。
+
+---
+
+### 档位 2：并发 20 – 50（中型部署）
+
+单机双 GPU。LLM 独占一张（张量并行或独立引擎）；STT / TTS / Embedding 共用第二张。
+
+| 组合 | GPU 推荐 | GPU 拆解 | CPU | 内存 | 备注 |
+|---|---|---|---|---|---|
+| **标配** | 2 × RTX 4090D (48 GB) 或 1 × H100 PCIe (80 GB) | GPU 1：Flash-Next INT4 ~16 GB + KV Cache ~24 GB ≈ 40 GB · GPU 2：STT + TTS + embed/rerank ≈ 16 GB | 24–32 核 | 128 GB DDR5 | Flash-Next 跨卡张量并行。第二张卡做音频侧车，保证延迟稳定。 |
+| **低配** | 2 × RTX 4090D (48 GB) 或 2 × L40S | GPU 1：27B INT4 ~14 GB + KV Cache ~20 GB ≈ 34 GB · GPU 2：STT + TTS + embed/rerank ≈ 16 GB | 16–24 核 | 64–128 GB DDR5 | 预算紧张也可以把 LLM + 音频塞单张 80 GB 卡；分卡更利于隔离。 |
+| **底配** | 2 × RTX 4080 Super (16 GB) 或 1 × L40 (48 GB) | GPU 1：9B FP16 ~18 GB + KV Cache ~12 GB ≈ 30 GB · GPU 2：STT + TTS + 可选 embed ≈ 2–6 GB | 12–16 核 | 64 GB DDR5 | 单张 L40 也可；分卡避免 LLM 负载尖峰拖慢音频延迟。 |
+
+**档位 2 的 CPU 侧服务**：
+- **LiveKit**：2–3 个媒体服务器容器，4 核 + 2 GB/个。
+- **CompreFace**：1 容器，6 核，4 GB RAM。
+- 为 OS、网络、容器预留 4–8 核 + 8 GB RAM。
+
+---
+
+### 档位 3：并发 50 – 500（大型 / 生产环境）
+
+多机或 4+ GPU 高端工作站。LLM 跨多卡分片；STT、TTS、Embedding 各自独立 GPU，或把音频侧车放到另一节点。
+
+| 组合 | GPU 推荐 | GPU 拆解 | CPU | 内存 | 备注 |
+|---|---|---|---|---|---|
+| **标配** | 4 × H100 80 GB / A100 80 GB 或 8 × RTX 4090D 48 GB | GPU 1–2：Flash-Next INT4 张量并行 + KV Cache（≈ 2 × 60 GB）· GPU 3：STT + TTS 侧车（≈ 8 GB）· GPU 4：embed + rerank + 额外 KV Cache（≈ 24 GB） | 48+ 核 | 512+ GB DDR5 | vLLM 2-way TP + Continuous Batching。H100 上考虑 TensorRT-LLM，再提 15–25% 吞吐。 |
+| **低配** | 2 × H100 80 GB 或 4 × RTX 4090D 48 GB | GPU 1–2：27B INT4 TP + KV Cache（≈ 2 × 40 GB）· GPU 3：音频侧车 · GPU 4：embed + rerank | 32–48 核 | 256 GB DDR5 | 单 H100 也能装下 27B FP8 + ~40 GB KV Cache；第二卡保音频延迟可预测。 |
+| **底配** | 2 × L40 48 GB 或 2 × RTX 4090D | GPU 1：9B FP16 + KV Cache（≈ 30 GB）· GPU 2：STT + TTS + embed（≈ 12 GB） | 16–24 核 | 128 GB DDR5 | 单 A100 80 GB 也可；分卡为 SLA 隔离推荐方案。 |
+
+**档位 3 的 CPU 侧服务**：
+- **LiveKit**：在专用 CPU 节点上跑 4–10 个媒体服务器实例，4 核 + 2 GB/个，按房间数自动扩缩。
+- **CompreFace**：同 CPU 节点 1–2 容器，8–12 核，8 GB RAM，按人脸识别 QPS 扩容。
+- 为 OS、kubelet / containerd、可观测性预留 8–16 核 + 16 GB RAM。
+
+---
+
+### 各组合推理引擎推荐
+
+| 组合 | LLM 引擎 | STT 引擎 | TTS 引擎 | Embed/Rerank 引擎 |
+|---|---|---|---|---|
+| **标配** | vLLM (PagedAttention + 张量并行)；H100 上 TensorRT-LLM | Transformers + Flash Attention 2 | faster-qwen3-tts (GGML CUDA) | ONNX Runtime FP16 / vLLM embeddings |
+| **低配** | vLLM (AWQ/GPTQ INT4 量化权重) | FunASR ONNX (sense-voice-small) | faster-qwen3-tts (GGML) | ONNX Runtime INT8 |
+| **底配** | vLLM / Transformers INT4；单卡才考虑 llama.cpp GGUF | FunASR ONNX | faster-qwen3-tts (GGML，CPU 回退可用) | ONNX Runtime（与 LLM 同卡共存） |
+
+### 硬件采购速查清单
+
+- **显存预算公式**：LLM 量化后权重 + 2 × 模型大小（KV Cache）+ 6 GB（STT/TTS/embed 开销）+ 10% 安全余量。例如 27B INT4 装 48 GB 卡：14 + 27 + 6 + 4 ≈ 51 → 需要 80 GB 卡，或在 vLLM 里用 `--max_model_len` 压缩 KV Cache。
+- **CPU**：单机选 Ryzen 9 7950X / Xeon Gold；多机生产选 Xeon Platinum / AMD EPYC。
+- **内存**：每节点最低模型总体积 + 8 GB OS；建议 2 × 模型总体积，应对突发请求缓冲。
+- **存储**：每节点 1 TB NVMe 缓存模型权重和音频工件。
+- **网络**：GPU 节点之间 10 Gbps；张量并行 NVLink 400 GB/s 最佳。

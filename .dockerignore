@@ -24,3 +24,7 @@ cache/smart-turn-v3.2-cpu.onnx
 # The frontend stage installs its own deps and builds in-image.
 console/frontend/node_modules
 console/frontend/dist
+
+# Development-only console config: contains Windows paths and a dev PostgreSQL URL.
+# Must never be baked into the all-in-one / console images.
+console/backend/.env

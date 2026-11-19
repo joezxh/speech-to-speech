@@ -2,144 +2,35 @@
 
 纪律：任一环节失败不抛出、不阻塞语音链路——语音在 pipeline，agent 只是它的
 秘书。心跳失败指数退避 1s→60s 封顶；无 token 且有注册码先注册。
+
+实现说明：真正的循环体在 :mod:`speech_to_speech.agent.embedded` 的
+``EmbeddedAgent`` 里——独立进程形态与内嵌形态（``serve --with-agent``）
+共用同一份实现，因此这里只是一层薄包装。
 """
 
 from __future__ import annotations
 
-import time
-from pathlib import Path
+from typing import Any
 
 from loguru import logger
 
-from speech_to_speech.agent import commands as command_executor
-from speech_to_speech.agent import config_sync, pipeline_inspect
-from speech_to_speech.agent.client import AgentClient
-from speech_to_speech.agent.collectors import Usage, tail_turn_latency, usage_diff
+from speech_to_speech.agent.embedded import EmbeddedAgent
 from speech_to_speech.agent.settings import AgentSettings
 
 BACKOFF_START_S = 1.0
 BACKOFF_MAX_S = 60.0
 
-# turn-latency 断点游标（内存态；进程重启从 0 重读，重复 upsert 无害）。
-_TURN_OFFSET = 0
-_LOG_TICK = 0
-
-
-def _load_token(settings: AgentSettings) -> str:
-    path = Path(settings.token_file)
-    return path.read_text(encoding="utf-8").strip() if path.is_file() else ""
-
-
-def _save_token(settings: AgentSettings, token: str) -> None:
-    """0600 落盘（§5.2 两段式第 2 步）。"""
-    path = Path(settings.token_file)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(token, encoding="utf-8")
-    try:
-        path.chmod(0o600)
-    except OSError:
-        pass
-
-
-def _register(client: AgentClient, settings: AgentSettings) -> str | None:
-    """一次性注册码换 token；失败返回 None（下一轮再试）。"""
-    if not settings.register_code:
-        return None
-    try:
-        data = client.register(
-            {
-                "register_code": settings.register_code,
-                "machine": {"machine_id": settings.machine_id},
-                "workloads": [],
-            }
-        )
-    except Exception as exc:  # noqa: BLE001 - 网络失败下一轮再试
-        logger.warning("agent register failed: {}", exc)
-        return None
-    token = data["machine_token"]
-    _save_token(settings, token)
-    return token
-
-
-def _heartbeat_body(settings: AgentSettings, usage: Usage, uptime_s: int) -> dict:
-    from speech_to_speech.agent.collectors import collect_workloads  # noqa: PLC0415
-
-    metrics = pipeline_inspect.collect_node_metrics()
-    deployment = pipeline_inspect.collect_deployment_params(settings)
-    return {
-        "protocol_version": 1,
-        "agent_version": pipeline_inspect.package_version(),
-        "machine": {
-            "machine_id": settings.machine_id,
-            "uptime_s": uptime_s,
-            "version": pipeline_inspect.package_version(),
-            "gpu": metrics["gpu_name"] or "",
-            **{key: value for key, value in metrics.items() if key != "gpu_name"},
-        },
-        "capabilities": [
-            "heartbeat", "workloads", "token", "config_pull", "config_report", "commands"
-        ],
-        "workloads": collect_workloads(settings, pipeline_vram_gb=metrics["pipeline_vram_gb"]),
-        "runtime": {"deployment": deployment},
-        "tokens": usage.__dict__,
-    }
-
 
 def run_forever(settings: AgentSettings | None = None) -> None:  # pragma: no cover - 常驻进程
+    """独立进程形态的常驻循环。
+
+    ``embedded=False``：此时 pipeline 在别的进程里，重启类命令（reboot /
+    config_restart）仍然可用。
+    """
+
     settings = settings or AgentSettings.from_env()
-    client = AgentClient(settings.console_url)
-    backoff = BACKOFF_START_S
-    prev_usage: Usage | None = None
-
-    while True:
-        token = _load_token(settings) or _register(client, settings)
-        if not token:
-            time.sleep(backoff)
-            backoff = min(backoff * 2, BACKOFF_MAX_S)
-            continue
-
-        try:
-            # 1) 心跳 + token 差分（console 侧 Task 14 接表前只展示）。
-            from speech_to_speech.agent.collectors import read_usage  # noqa: PLC0415
-
-            cur_usage = read_usage(settings)
-            delta = usage_diff(prev_usage, cur_usage)
-            prev_usage = cur_usage
-            client.heartbeat(
-                token, _heartbeat_body(settings, delta, int(time.monotonic()))
-            )
-            backoff = BACKOFF_START_S
-
-            # 2) 配置同步（拉取/落地/回报/确认）。
-            config_sync.sync_config(client, token, settings)
-
-            # 3) 机器命令（排空/重启/拉起/健康检查）：独立 try，失败不影响后续采集。
-            try:
-                command_executor.poll_and_run(client, token, settings)
-            except Exception as exc:  # noqa: BLE001 - agent 失败只告警，不阻塞语音链路
-                logger.warning("agent command poll failed: {}", exc)
-
-            # 4) 容器日志：每 4 tick 上报一次（默认 60s），失败不影响语音链路。
-            global _LOG_TICK  # noqa: PLW0603
-            _LOG_TICK += 1
-            if _LOG_TICK % 4 == 0:
-                try:
-                    logs = pipeline_inspect.collect_container_logs(settings)
-                    if logs:
-                        client.upload_logs(token, logs)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("agent log upload failed: {}", exc)
-
-            # 5) turn-latency 断点续读（Task 8 接 A5 端点后上报；先只推进游标）。
-            global _TURN_OFFSET  # noqa: PLW0603
-            _, _ = tail_turn_latency(settings.pipeline_log, _TURN_OFFSET)
-        except Exception as exc:  # noqa: BLE001 - 语音链路优先，agent 失败只退避
-            logger.warning("agent tick failed: {}", exc)
-            time.sleep(backoff)
-            backoff = min(backoff * 2, BACKOFF_MAX_S)
-            continue
-
-        time.sleep(settings.heartbeat_s)
+    agent = EmbeddedAgent(settings, embedded=False)
+    agent.run()
 
 
 def main() -> None:  # pragma: no cover - 常驻进程
@@ -150,3 +41,14 @@ def main() -> None:  # pragma: no cover - 常驻进程
         )
         raise SystemExit(2)
     run_forever(settings)
+
+
+def __getattr__(name: str) -> Any:
+    """兼容旧入口：``runner._load_token`` 等私有函数已迁到 EmbeddedAgent。"""
+
+    if name in {"load_token", "save_token", "_register", "_heartbeat_body"}:
+        return getattr(EmbeddedAgent, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = ["BACKOFF_MAX_S", "BACKOFF_START_S", "main", "run_forever"]

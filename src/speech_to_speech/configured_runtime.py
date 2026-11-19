@@ -12,6 +12,7 @@ from threading import Event, RLock, Thread, current_thread
 from time import monotonic
 from typing import TYPE_CHECKING, Any, Literal
 
+from speech_to_speech.agent_integration import AgentOptions
 from speech_to_speech.config import ConfigurationError, ResolvedConfig
 from speech_to_speech.console_integration import (
     ConsoleAttachment,
@@ -323,6 +324,7 @@ def build_configured_server(
     *,
     local: bool = False,
     console_attachment: ConsoleAttachment | None = None,
+    agent_options: AgentOptions | None = None,
 ) -> ConfiguredRuntime:
     """Publish one definition through a server, with an optional loopback client."""
     _validate_counts(config)
@@ -338,18 +340,36 @@ def build_configured_server(
 
         args = next(iter(arguments.values()))
         event = result._events[0]
+        pool = next(iter(result.pools.values()))
+        # The embedded agent shares the pipeline event: ConfiguredRuntime.stop()
+        # sets it, so the agent never keeps the shutdown waiting.
+        agent = None
+        if agent_options is not None and agent_options.autostart:
+            from speech_to_speech.agent_integration import (
+                build_embedded_agent,
+                pool_usage_provider,
+            )
+
+            agent = build_embedded_agent(
+                agent_options,
+                stop_event=event,
+                usage_provider=pool_usage_provider(pool),
+            )
         result.server = RealtimeServer(
             stop_event=event,
-            pool=next(iter(result.pools.values())),
+            pool=pool,
             host="127.0.0.1" if local else args.realtime_server_kwargs.host,
             port=args.realtime_server_kwargs.port,
             llm_proxy_config=build_llm_proxy_config(args.module_kwargs, args.llm_backend)
             if args.module_kwargs.enable_llm_proxy
             else None,
             console_attachment=console_attachment,
+            agent=agent,
         )
         result._resources.append(result.server)
         result._handlers.append(result.server)
+        if agent is not None:
+            result._handlers.append(agent)
         if client_config is not None:
             result.client = RealtimeAudioClient(event, client_config)
             result._resources.append(result.client)
@@ -366,6 +386,7 @@ def run_configured_command(
     config: ResolvedConfig,
     *,
     console_options: ConsoleOptions | None = None,
+    agent_options: AgentOptions | None = None,
 ) -> None:
     """Own CLI signal handlers and always stop constructed resources."""
     from speech_to_speech.pipeline.console import conversation_output
@@ -375,7 +396,9 @@ def run_configured_command(
         settings.get("verbose", False) or settings.get("print_json", False)
     )
     with conversation_output(conversation_only):
-        _run_configured_command(command, config, console_options=console_options)
+        _run_configured_command(
+            command, config, console_options=console_options, agent_options=agent_options
+        )
 
 
 def _run_configured_command(
@@ -383,6 +406,7 @@ def _run_configured_command(
     config: ResolvedConfig,
     *,
     console_options: ConsoleOptions | None = None,
+    agent_options: AgentOptions | None = None,
 ) -> None:
     from speech_to_speech.pipeline.transcript_logging import set_log_transcripts, warn_if_log_transcripts_enabled
 
@@ -408,7 +432,11 @@ def _run_configured_command(
             console_attachment = attachment_for_runtime(console_options, config.runtime)
             with model_startup_output(command == "local" and console.quiet):
                 result = build_configured_server(
-                    config, stop_event, local=command == "local", console_attachment=console_attachment
+                    config,
+                    stop_event,
+                    local=command == "local",
+                    console_attachment=console_attachment,
+                    agent_options=agent_options,
                 )
             set_log_transcripts(
                 result.client.config.log_transcripts
