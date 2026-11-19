@@ -1,0 +1,72 @@
+# Split deployment: s2s+agent container + independent console container.
+#   s2s-pipeline :8765  (API/WS/agent)
+#   s2s-console  :8000  (console UI + API)
+# agent reaches console via compose service name http://s2s-console:8000.
+#
+# Up:  docker compose -f docker-compose.split.yml --env-file .env.agentconsole up -d
+
+name: s2s-split
+
+volumes:
+  s2s-model-cache:
+    name: s2s-model-cache
+
+services:
+  s2s-console:
+    image: s2s-console:local
+    build:
+      context: .
+      dockerfile: Dockerfile.console
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env.agentconsole
+    environment:
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      PIPELINE_BASE_URL: http://s2s-pipeline:8765
+    volumes:
+      - ./config.container:/app/config
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    restart: unless-stopped
+
+  s2s-pipeline:
+    image: s2s-agent:local
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    command: ["serve", "-f", "/app/config/prod.yaml", "--name", "prod", "--with-agent"]
+    env_file:
+      - .env.agentconsole
+    environment:
+      S2S_AGENT_CONSOLE_URL: http://s2s-console:8000
+      S2S_AGENT_MACHINE_ID: pipeline-local
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    ports:
+      - "8765:8765"
+    volumes:
+      - s2s-model-cache:/root/.cache/
+      - ./silero-vad:/opt/silero-vad:ro
+      - ./config.container:/app/config
+      - ./data:/app/data
+    depends_on:
+      s2s-console:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]

@@ -91,6 +91,10 @@ RUN --mount=type=cache,target=/root/.cache/uv echo "[build] upgrading packaging/
     UV_TIMEOUT=120 uv pip install --index-strategy unsafe-best-match --python /usr/src/app/.venv/bin/python --upgrade "packaging>=24.2" "setuptools>=77.0.3" "wheel"
 RUN --mount=type=cache,target=/root/.cache/uv echo "[build] installing project (editable, no-deps, no-build-isolation)" && \
     uv pip install -e . --python /usr/src/app/.venv/bin/python --no-deps --no-build-isolation
+# prod.yaml selects the sense-voice STT backend, which needs funasr.
+RUN --mount=type=cache,target=/root/.cache/uv echo "[build] installing sensevoice extra" && \
+    UV_TIMEOUT=180 UV_CONNECT_TIMEOUT=60 UV_RETRIES=8 \
+    uv pip install --index-strategy unsafe-best-match --python /usr/src/app/.venv/bin/python "funasr>=1.1.6"
 
 # nltk 数据下载在容器内可能命中 SSRF 代理而连接挂起（不会快速失败），故用 timeout 硬上限兜底；
 # 下载失败非致命，s2s 代码对 sent_tokenize 已有正则回退（_regex_sent_tokenize）。

@@ -10,7 +10,10 @@ from app.config import database
 from app.db.base import Base
 
 config = context.config
-config.set_main_option("sqlalchemy.url", database.database_url)
+# ConfigParser treats '%' as interpolation; escape it so passwords containing
+# URL-encoded characters (e.g. %40 for '@') survive set_main_option(). The app
+# itself keeps using the unescaped database.database_url.
+config.set_main_option("sqlalchemy.url", database.database_url.replace("%", "%%"))
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

@@ -80,6 +80,10 @@ RUN --mount=type=cache,target=/root/.cache/uv echo "[build] upgrading packaging/
     UV_TIMEOUT=120 uv pip install --index-strategy unsafe-best-match --python /usr/src/app/.venv/bin/python --upgrade "packaging>=24.2" "setuptools>=77.0.3" "wheel"
 RUN --mount=type=cache,target=/root/.cache/uv echo "[build] installing project (editable, no-deps, no-build-isolation)" && \
     uv pip install -e . --python /usr/src/app/.venv/bin/python --no-deps --no-build-isolation
+# prod.yaml selects the sense-voice STT backend, which needs funasr.
+RUN --mount=type=cache,target=/root/.cache/uv echo "[build] installing sensevoice extra" && \
+    UV_TIMEOUT=180 UV_CONNECT_TIMEOUT=60 UV_RETRIES=8 \
+    uv pip install --index-strategy unsafe-best-match --python /usr/src/app/.venv/bin/python "funasr>=1.1.6"
 
 # Console app + built SPA. The dev .env is excluded by .dockerignore; remove defensively.
 COPY console/backend /app/console

@@ -201,8 +201,11 @@ class ConfiguredRuntime:
                 asyncio.run(listen_and_play_realtime(handler.config, stop_event=handler.stop_event))
             else:
                 handler.run()
-        except BaseException:
-            self._failure = "A configured worker, listener, or client failed."
+        except BaseException as exc:
+            # Log the real cause: without it, a failed worker/listener stops the
+            # whole runtime with only a generic "A configured worker failed".
+            logger.exception("Configured handler {} failed: {}", type(handler).__name__, exc)
+            self._failure = f"A configured worker, listener, or client failed: {type(exc).__name__}: {exc}"
             self._signal_stop()
         finally:
             if handler is self.server or handler is self.client:

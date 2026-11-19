@@ -275,3 +275,7 @@ console/backend/data/
 /.qoder/
 /.superpowers/
 /agent/
+/.github/
+
+# agentconsole container env (tokens / JWT secret / register code)
+.env.agentconsole

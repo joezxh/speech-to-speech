@@ -1,0 +1,50 @@
+# All-in-one deployment: one container, one process
+# `serve --with-agent --with-console`. Console UI/API/WS/agent all on :8765.
+# Host maps 8765:8765 (API/WS/agent) and 8000:8765 (console UI legacy bookmark).
+#
+# Up:  docker compose -f docker-compose.allinone.yml --env-file .env.agentconsole up -d
+
+name: s2s-allinone
+
+volumes:
+  s2s-model-cache:
+    name: s2s-model-cache
+
+services:
+  pipeline:
+    image: s2s-allinone:local
+    build:
+      context: .
+      dockerfile: Dockerfile.allinone
+    entrypoint: ["sh", "-c"]
+    command: ["cd /app/console && /usr/src/app/.venv/bin/alembic upgrade head && exec speech-to-speech serve -f /app/config/prod.yaml --name prod --with-agent --with-console"]
+    env_file:
+      - .env.agentconsole
+    environment:
+      CONSOLE_HOME: /app/console
+      CONSOLE_STATIC_DIR: /app/console/static
+      PYTHONPATH: /usr/src/app/src:/app/console
+      S2S_AGENT_CONSOLE_URL: http://127.0.0.1:8765
+      S2S_AGENT_MACHINE_ID: pipeline-local
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      PYTHONUNBUFFERED: "1"
+    ports:
+      - "8765:8765"
+      - "8000:8765"
+    volumes:
+      - s2s-model-cache:/root/.cache/
+      - ./silero-vad:/opt/silero-vad:ro
+      - ./config.container:/app/config
+      - ./data:/app/data
+      - ./docs/parameter-catalog.yaml:/app/catalog/parameter-catalog.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
