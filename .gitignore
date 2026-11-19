@@ -279,3 +279,8 @@ console/backend/data/
 
 # agentconsole container env (tokens / JWT secret / register code)
 .env.agentconsole
+
+# agentconsole runtime artifacts
+config.container/prod.env
+config.container/*.etag
+data/
