@@ -38,6 +38,11 @@ class FakeArgs:
     device: str = "cuda"
 
 
+@dataclass
+class FakeVoxCPMArgs:
+    voxcpm_tts_model_name: str = "openbmb/VoxCPM2"
+
+
 class FakeSpec:
     def __init__(self, kind, config_type=FakeArgs):
         self.kind = kind
@@ -155,12 +160,16 @@ def test_builtin_catalog_status_counts_and_license_gate():
     from speech_to_speech.models.builtin import builtin_model_cards
 
     cards = builtin_model_cards()
-    assert len(cards) == 9
-    assert len({c.id for c in cards}) == 9
+    assert len(cards) == 13
+    assert len({c.id for c in cards}) == 13
     assert sorted(c.id for c in cards if c.status == "available") == [
+        "cosyvoice2",
         "qwen3-asr-1.7b-hf",
         "qwen3-tts-1.7b-customvoice",
         "qwen3.5-4b-transformers",
+        "voxcpm-0.5b",
+        "voxcpm1.5-0.8b",
+        "voxcpm2-2b",
     ]
     assert not [c.id for c in cards if c.status == "deprecated"]
     assert sum(c.status == "planned" for c in cards) == 6
@@ -186,10 +195,14 @@ def test_builtin_cards_bind_without_error():
         {
             "stt": {"qwen3-asr": FakeSpec("stt"), "whisper": FakeSpec("stt")},
             "llm": {"transformers": FakeSpec("llm")},
-            "tts": {"qwen3": FakeSpec("tts")},
+            "tts": {
+                "qwen3": FakeSpec("tts"),
+                "cosyvoice2": FakeSpec("tts"),
+                "voxcpm": FakeSpec("tts", FakeVoxCPMArgs),
+            },
         }
     )
-    assert len(reg.list()) == 9
+    assert len(reg.list()) == 13
 
 
 def test_backend_spec_has_default_models_field():
@@ -198,14 +211,14 @@ def test_backend_spec_has_default_models_field():
     for registry in (STT_BACKENDS, LLM_BACKENDS, TTS_BACKENDS):
         for spec in registry.values():
             assert spec.models == (), spec.name
-    assert len(STT_BACKENDS) + len(LLM_BACKENDS) + len(TTS_BACKENDS) == 31
+    assert len(STT_BACKENDS) + len(LLM_BACKENDS) + len(TTS_BACKENDS) == 36
 
 
 def test_importing_backend_registry_populates_global_catalog():
     from speech_to_speech import model_registry as mr
     from speech_to_speech.backend_registry import STT_BACKENDS  # noqa: F401
 
-    assert len(mr.list_models()) == 9
+    assert len(mr.list_models()) == 13
     assert mr.get_model("breeze-tts-2").status == "planned"
 
 
@@ -217,7 +230,11 @@ def _inline_registries(spec):
     return {
         "stt": {"qwen3-asr": FakeSpec("stt"), "whisper": FakeSpec("stt")},
         "llm": {"transformers": FakeSpec("llm")},
-        "tts": {"qwen3": spec},
+        "tts": {
+            "qwen3": spec,
+            "cosyvoice2": FakeSpec("tts"),
+            "voxcpm": FakeSpec("tts", FakeVoxCPMArgs),
+        },
     }
 
 
@@ -230,7 +247,7 @@ def test_bind_model_cards_registers_inline_cards(monkeypatch):
     mr.bind_model_cards(_inline_registries(tts_spec))
     assert "inline-tts" in {c.id for c in reg.list()}
     assert reg.get("inline-tts") is inline
-    assert len(reg.list()) == 10
+    assert len(reg.list()) == 14
 
 
 def test_bind_model_cards_rejects_inline_duplicate_of_builtin(monkeypatch):

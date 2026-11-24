@@ -211,6 +211,7 @@ pip install "speech-to-speech[pocket]"          # Pocket TTS
 pip install "speech-to-speech[phonon]"          # Phonon TTS (checkpoint supplied separately)
 pip install "speech-to-speech[chattts]"         # ChatTTS
 pip install "speech-to-speech[omnivoice]"       # OmniVoice TTS (CUDA, Intel XPU, or Apple Silicon)
+pip install "speech-to-speech[voxcpm]"          # VoxCPM TTS (Python 3.10–3.12 only)
 pip install "speech-to-speech[faster-whisper]"  # Faster Whisper STT
 pip install "speech-to-speech[whisper-mlx]"     # Lightning Whisper MLX STT on macOS
 pip install "speech-to-speech[paraformer]"      # Paraformer STT through FunASR
@@ -653,6 +654,7 @@ Language coverage depends on the STT and TTS backends you pick, not on the pipel
 | TTS | MMS TTS | Broad multilingual coverage through MMS checkpoints |
 | TTS | OmniVoice | 600+ languages; voice cloning, design, and automatic voice selection |
 | TTS | Supertonic | 32 languages |
+| TTS | VoxCPM (VoxCPM2 2B / VoxCPM1.5 / 0.5B) | 30 languages, inferred from text; native 48/44.1/16 kHz is resampled to 16 kHz |
 | TTS | Pocket TTS | English, French, German, Portuguese, Italian, Spanish |
 | TTS | OpenAI-compatible `/v1/audio/speech` endpoint | Depends on the connected TTS server/model |
 

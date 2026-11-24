@@ -54,6 +54,7 @@ from speech_to_speech.arguments_classes.responses_api_language_model_arguments i
 from speech_to_speech.arguments_classes.sense_voice_stt_arguments import SenseVoiceSTTHandlerArguments
 from speech_to_speech.arguments_classes.supertonic_tts_arguments import SupertonicTTSHandlerArguments
 from speech_to_speech.arguments_classes.vllm_realtime_stt_arguments import VLLMRealtimeSTTHandlerArguments
+from speech_to_speech.arguments_classes.voxcpm_tts_arguments import VoxCPMTTSHandlerArguments
 from speech_to_speech.arguments_classes.whisper_stt_arguments import WhisperSTTHandlerArguments
 from speech_to_speech.arguments_classes.zerogpu_arguments import (
     ZeroGPULLMArguments,
@@ -762,6 +763,19 @@ TTS_BACKENDS = build_backend_registry(
             ),
             config_prefix="supertonic_tts",
             required_extra="supertonic",
+        ),
+        BackendSpec(
+            "voxcpm",
+            "tts",
+            VoxCPMTTSHandlerArguments,
+            _simple_handler_factory(
+                "speech_to_speech.TTS.voxcpm_tts_handler",
+                "VoxCPMTTSHandler",
+                setup_should_listen=True,
+                context_kwargs=True,
+            ),
+            config_prefix="voxcpm_tts",
+            required_extra="voxcpm",
         ),
     ],
 )

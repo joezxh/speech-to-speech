@@ -149,7 +149,7 @@
 | 权重目录 | `Stream-VAD/` 下的 `cmvn.ark` + `model.pth.tar` | `from_pretrained` 失败，启动即崩 |
 | 配置项 | `backend: firered` + `vad_firered_model_dir` | `ValueError: --vad firered requires --vad_firered_model_dir` |
 
-### 1.3 STT 可选项（`STT_BACKENDS`，15 个）
+### 1.3 STT 可选项（`STT_BACKENDS`，16 个）
 
 | 后端名 | 实现 | 前缀 / 关键字段 | 额外依赖 | 选型要点 |
 |---|---|---|---|---|
@@ -168,8 +168,9 @@
 | `openai-realtime` | Realtime 协议 | `openai_realtime_stt_*` | 内置 | 流式音频块（`streams_audio_chunks`） |
 | `vllm-realtime` | vLLM Realtime | `vllm_realtime_stt_*` | 内置 | 同上，面向自建 vLLM |
 | `none` | 直通 | — | — | 跳过转写，音频直送支持音频输入的 LLM |
+| `zerogpu` | ZeroGPU 托管 | `zerogpu_*` | `zerogpu` | Hugging Face Space 运行时的远端占位后端 |
 
-### 1.4 LLM 可选项（`LLM_BACKENDS`，4 个）
+### 1.4 LLM 可选项（`LLM_BACKENDS`，5 个）
 
 | 后端名 | 接口 | 能力标记 | 额外依赖 | 选型要点 |
 |---|---|---|---|---|
@@ -177,10 +178,11 @@
 | `responses-api` | OpenAI Responses | `supports_llm_proxy` | 内置 | 官方 Responses 语义，无音频输入标记 |
 | `transformers` | 本地 HF 权重 | — | 内置 | 可 8bit / 4bit 量化，显存可控 |
 | `mlx-lm` | 本地 MLX | — | `mlx-lm` | macOS 默认；Linux 上会加载失败 |
+| `zerogpu` | ZeroGPU 托管 | `supports_llm_proxy` | `zerogpu` | Hugging Face Space 运行时的远端占位后端 |
 
 可挂接的外部模型（通过 `model_name` 透传，名称须与网关注册名完全一致）：`Qwen3-8B`（当前）、`Qwen/Qwen3.5-4B`（本地默认）、`gpt-5.6-terra`（兼容后端默认，**不支持音频输入**）。
 
-### 1.5 TTS 可选项（`TTS_BACKENDS`，12 个）
+### 1.5 TTS 可选项（`TTS_BACKENDS`，15 个）
 
 | 后端名 | 类型 | 前缀 / 关键字段 | 额外依赖 | 选型要点 |
 |---|---|---|---|---|
@@ -196,6 +198,9 @@
 | `omnivoice` | 零样本克隆 | `omnivoice_*` | `omnivoice` | 参考音频路径属 `_PATH_FIELDS` |
 | `drama3` | 云端 API | `drama3_*` | 内置 | 需密钥，含采样参数 |
 | `minimax` | 云端 API | `minimax_tts_*` | 内置 | 需密钥，含 vol / pitch |
+| `cosyvoice2` | 零样本克隆 | `cosyvoice2_*` | `cosyvoice` | 需参考音频；路径 L 的可选替代 |
+| `voxcpm` | VoxCPM2 2B / VoxCPM1.5 / 0.5B | `voxcpm_tts_*` | `voxcpm` | 原生 48/44.1/16 kHz，统一重采样到 16 kHz；30 语言自动识别；`voxcpm` 仅支持 Python < 3.13 |
+| `zerogpu` | ZeroGPU 托管 | `zerogpu_*` | `zerogpu` | Hugging Face Space 运行时的远端占位后端 |
 
 ### 1.6 注册表偏差（有代码但**不可选**）
 
@@ -560,6 +565,7 @@ Silero 官方（`VADIterator` / `get_speech_timestamps`）与本项目的对应�
 | `omnivoice` | `omnivoice_model_name`、`omnivoice_ref_audio`、`omnivoice_ref_text`、`omnivoice_voice_clone_prompt`、`omnivoice_ref_voices_dir`、`omnivoice_num_steps` | 参考音频 | 路径字段参与 `_PATH_FIELDS` 解析 |
 | `drama3` | `drama3_base_url`、`drama3_api_key`、`drama3_model`、`drama3_ref_audio`、`drama3_timeout`、`drama3_gen_temperature`、`drama3_gen_top_p` | API 密钥 | 云端 API，`ops` 级密钥 |
 | `minimax` | `minimax_tts_api_key`、`minimax_tts_base_url`、`minimax_tts_model`、`minimax_tts_voice`、`minimax_tts_speed`、`minimax_tts_vol`、`minimax_tts_pitch` | API 密钥 | 云端 API，含音量/音高 |
+| `voxcpm` | `voxcpm_tts_model_name`、`voxcpm_tts_device`、`voxcpm_tts_dtype`、`voxcpm_tts_cfg_value`、`voxcpm_tts_inference_timesteps`、`voxcpm_tts_normalize`、`voxcpm_tts_denoise`、`voxcpm_tts_load_denoiser`、`voxcpm_tts_seed`、`voxcpm_tts_ref_audio`、`voxcpm_tts_prompt_text`、`voxcpm_tts_streaming` | 模型名 | 输出块固定 512（模块常量，不作参数）；`voxcpm_tts_ref_audio` 参与 `_PATH_FIELDS` 解析；语言由文本自动推断，`voice` 字段只回显 |
 
 ### 5.4 音色与会话热更新
 
@@ -899,7 +905,7 @@ Content-Type: application/json
 | **§6 小计** | **91** | **49** |
 | **合计** | **170** | **55** |
 
-> §1 的组件清单（15 STT / 4 LLM / 12 TTS / 7 VAD 候选）是选型索引，不重复计入参数量；其专属字段见 §3.3 与 §5.3。
+> §1 的组件清单（16 STT / 5 LLM / 15 TTS / 7 VAD 候选）是选型索引，不重复计入参数量；其专属字段见 §3.3 与 §5.3。
 
 ### C.2 人读版 ↔ 机器版映射
 

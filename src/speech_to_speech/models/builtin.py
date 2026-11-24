@@ -138,4 +138,72 @@ def builtin_model_cards() -> tuple[ModelCard, ...]:
             status="planned",
             notes="可选；repo_id 与显存待 Spec B 核实后补。",
         ),
+        ModelCard(
+            id="voxcpm2-2b",
+            name="VoxCPM2 2B",
+            kind="tts",
+            version="2b",
+            provider="OpenBMB",
+            weight_format="safetensors",
+            backend_name="voxcpm",
+            repo_id="openbmb/VoxCPM2",
+            default_load_params={"voxcpm_tts_model_name": "openbmb/VoxCPM2"},
+            min_vram_gb=8.0,
+            license="Apache-2.0",
+            status="available",
+            notes=(
+                "原生 48 kHz 输出，由 handler 重采样到管线 16 kHz；支持 30 种语言与 9 种中文方言；"
+                "voxcpm 库要求 Python < 3.13。官方推荐显存 8 GB，叠加约 4.6 GB 管线建议 ≥ 16 GB。"
+            ),
+        ),
+        ModelCard(
+            id="voxcpm1.5-0.8b",
+            name="VoxCPM1.5 0.8B",
+            kind="tts",
+            version="0.8b",
+            provider="OpenBMB",
+            weight_format="safetensors",
+            backend_name="voxcpm",
+            repo_id="openbmb/VoxCPM1.5",
+            default_load_params={"voxcpm_tts_model_name": "openbmb/VoxCPM1.5"},
+            license="Apache-2.0",
+            status="available",
+            notes=(
+                "需求中的 VoxCPM2 0.8B 实际为 VoxCPM1.5，约 0.8B；原生 44.1 kHz 输出经 handler 重采样到 16 kHz；"
+                "显存官方未给出；voxcpm 库要求 Python < 3.13。"
+            ),
+        ),
+        ModelCard(
+            id="voxcpm-0.5b",
+            name="VoxCPM 0.5B",
+            kind="tts",
+            version="0.5b",
+            provider="OpenBMB",
+            weight_format="safetensors",
+            backend_name="voxcpm",
+            repo_id="openbmb/VoxCPM-0.5B",
+            default_load_params={"voxcpm_tts_model_name": "openbmb/VoxCPM-0.5B"},
+            license="Apache-2.0",
+            status="available",
+            notes=(
+                "需求中的 VoxCPM2 0.5B 实际为 VoxCPM-0.5B，约 0.5B；原生 16 kHz 输出与管线一致；"
+                "显存官方未给出；voxcpm 库要求 Python < 3.13。"
+            ),
+        ),
+        ModelCard(
+            id="minicpm-o-2-6",
+            name="MiniCPM-o 2.6",
+            kind="llm",
+            version="2.6",
+            provider="OpenBMB",
+            weight_format="safetensors",
+            backend_name="minicpm-o",
+            repo_id="openbmb/MiniCPM-o-2_6",
+            license="MiniCPM Model License",
+            status="planned",
+            notes=(
+                "8B 全模态模型（SigLIP-400M + Whisper-medium-300M + ChatTTS-200M + Qwen2.5-7B），"
+                "不是独立 TTS/STT/LLM 后端，需要 trust_remote_code；本仓仅登记元信息，不提供运行适配。"
+            ),
+        ),
     )

@@ -62,6 +62,7 @@ _PATH_FIELDS = {
     "qwen3_tts_ref_audio",
     "qwen3_tts_ref_spk",
     "qwen3_tts_ref_rvq",
+    "voxcpm_tts_ref_audio",
 }
 
 

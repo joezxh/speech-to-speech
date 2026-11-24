@@ -147,6 +147,8 @@ def backend_language_capabilities(
             auto = False
         elif name == "drama3":
             auto = True
+        elif name == "voxcpm":
+            languages, auto = getattr(module, "VOXCPM_LANGUAGE_CODES", None), True
     else:
         raise ValueError(f"Speech language capabilities require an STT or TTS backend, got {kind!r}.")
 

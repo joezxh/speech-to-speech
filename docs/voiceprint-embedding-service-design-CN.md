@@ -13,6 +13,12 @@
 > 从 `cache/qwen3-tts-base` 切出），容器仍用 `/root/.cache/qwen3-speaker-encoder`；
 > 其余 `VOICEPRINT_*` 取值与 `.env.thirdparty` 一致。完整启用步骤见
 > `docs/service-enablement-CN.md`。本文其余章节的构建期注入描述仍适用于旧镜像。
+>
+> **部署约束（与 TTS 后端无关）**：`VoiceprintService.attach_pool()` 只在池内查找
+> `Qwen3TTSHandler` 来复用其 speaker encoder。切换到任何非 qwen3 的 TTS 后端
+> （`voxcpm`、`supertonic`、`cosyvoice2` 等）时，**必须保留 `VOICEPRINT_ENCODER_DIR`**
+> （方案 C，独立编码器），否则 `capability.ready=false`、`/v1/audio/embeddings`
+> 返回 503 `MODEL_UNAVAILABLE`。启动日志会输出同一告警，便于部署期发现。
 
 ---
 

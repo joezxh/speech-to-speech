@@ -143,6 +143,7 @@ pip install "speech-to-speech[kokoro]"          # 非 macOS 上的 Kokoro-82M TT
 pip install "speech-to-speech[pocket]"          # Pocket TTS
 pip install "speech-to-speech[chattts]"         # ChatTTS
 pip install "speech-to-speech[omnivoice]"       # OmniVoice TTS（CUDA、Intel XPU 或 Apple Silicon）
+pip install "speech-to-speech[voxcpm]"          # VoxCPM TTS（仅 Python 3.10–3.12）
 pip install "speech-to-speech[faster-whisper]"  # Faster Whisper STT
 pip install "speech-to-speech[whisper-mlx]"     # macOS 上的 Lightning Whisper MLX STT
 pip install "speech-to-speech[paraformer]"      # 通过 FunASR 的 Paraformer STT
@@ -524,6 +525,7 @@ Smart Turn 使用一个单独的 ONNX checkpoint。一个缓存的 checkpoint �
 | TTS | Kokoro | 多种语言 / voice 映射，取决于后端可用性 |
 | TTS | ChatTTS | 英语和中文 |
 | TTS | MMS TTS | 通过 MMS checkpoint 的广泛多语言覆盖 |
+| TTS | VoxCPM（VoxCPM2 2B / VoxCPM1.5 / 0.5B） | 30 种语言，按文本自动推断；原生 48/44.1/16 kHz 由 handler 重采样到 16 kHz |
 
 确保你配对的 STT、LLM 和 TTS 都覆盖你的目标语言。两种使用模式：
 
@@ -861,7 +863,7 @@ speech-to-speech serve
 |---|---|---|---|---|
 | **标配** | Qwen3.8-Flash-Next | Qwen3-ASR-1.7B | Qwen3-TTS-12Hz-1.7B-CustomVoice | qwen3-vl-embedding-2b / qwen3-vl-reranker-2b |
 | **低配** | Qwen3.8-27B | sense-voice-small | Qwen3-TTS-12Hz-0.6B-CustomVoice | qwen3-vl-embedding-2b / qwen3-vl-reranker-2b |
-| **底配** | Qwen3.5-9B | sense-voice-small | Qwen3-TTS-12Hz-0.6B-CustomVoice | （可选，同低配） |
+| **底配** | Qwen3.5-9B | sense-voice-small | Qwen3-TTS-12Hz-0.6B-CustomVoice | text-embedding-embeddinggemma-2 |
 
 **边缘 / 受限环境可选降配**：LLM → Qwen3.6（≈7B），STT → Qwen3-ASR-0.6B，TTS → Qwen3-TTS-12Hz-0.6B-Base 微调。各自可再省 30–40% 显存。
 

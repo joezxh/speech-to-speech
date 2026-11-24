@@ -126,14 +126,18 @@ def test_models_list_json_contains_status_counts():
     result = _models_list("--json")
     rows = json.loads(result.stdout)
     cards = [row for row in rows if row["status"] != "unregistered"]
-    assert sum(row["status"] == "available" for row in cards) == 3
+    assert sum(row["status"] == "available" for row in cards) == 7
     assert sum(row["status"] == "planned" for row in cards) == 6
     assert sum(row["status"] == "deprecated" for row in cards) == 0
-    assert sum(row["status"] == "unregistered" for row in rows) == 27
+    assert sum(row["status"] == "unregistered" for row in rows) == 30
     breeze = next(row for row in rows if row["id"] == "breeze-tts-2")
     assert breeze["status"] == "planned"
     assert "Research and Non-Commercial" in breeze["license"]
     assert "breeze-tts-2 is deprecated" not in result.stderr
+    voxcpm = {row["id"]: row for row in rows if row["id"].startswith("voxcpm")}
+    assert sorted(voxcpm) == ["voxcpm-0.5b", "voxcpm1.5-0.8b", "voxcpm2-2b"]
+    assert all(row["status"] == "available" and row["backend"] == "voxcpm" for row in voxcpm.values())
+    assert next(row for row in rows if row["id"] == "minicpm-o-2-6")["status"] == "planned"
 
 
 def test_models_list_kind_filter():

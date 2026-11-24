@@ -286,3 +286,17 @@ class TestWarmup:
         service = VoiceprintService(api_key=API_KEY)
         service._embedder = FakeEmbedder(ready=False)  # noqa: SLF001
         assert service.warmup() is False
+
+
+class TestAttachPoolWithoutQwen3TTS:
+    def test_missing_encoder_points_to_voiceprint_encoder_dir(self, caplog) -> None:
+        """切换到非 qwen3 TTS 后端时，告警必须指向方案 C 的部署开关。"""
+        import logging
+
+        service, _ = _service()
+        with caplog.at_level(logging.WARNING, logger="speech_to_speech.voiceprint.service"):
+            service.attach_pool([])
+
+        assert "VOICEPRINT_ENCODER_DIR" in caplog.text
+        assert "MODEL_UNAVAILABLE" in caplog.text
+

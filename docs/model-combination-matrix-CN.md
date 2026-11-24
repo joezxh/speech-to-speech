@@ -72,10 +72,11 @@
 
 > 路数计算式：`可用 = 标称显存 − LLM 权重 − KV(8K) − 0.8 GB 余量`；`路数 = floor(可用 × 0.85 ÷ 4.6)`。数值全部来自 `docs/hardware/plan-2..6` 与 `performance-assumptions.md` §3.2。
 > **结论**：换更小 LLM 换延迟已到尽头（0.8B 比 2B 的 TTFA 仅快 10–20 ms）；换小模型只在 **8–24 GB 显存区间**换得到路数。
+> **MiniCPM-o 2.6**：8B 全模态（SigLIP-400M + Whisper-medium-300M + ChatTTS-200M + Qwen2.5-7B），在 `models list` 中登记为 `planned`，`backend_name="minicpm-o"` 未注册。它不是本流水线的 LLM/TTS 后端，需要 `trust_remote_code`，本仓不提供运行适配。
 
 ---
 
-## 3. TTS 后端横向对比（12 个，代码为准）
+## 3. TTS 后端横向对比（15 个，代码为准）
 
 | 后端（`--tts`） | 模型标识 | 权重规模 | 设备 | 显存 | 流式 | 许可 | 适用场景 |
 |---|---|---|---|---|---|---|---|
@@ -91,6 +92,10 @@
 | `supertonic` | Supertonic ONNX（自动下载到 `~/.cache/supertonic3/`） | 小 | CPU 为主 | <1 GB | ✅（44.1 kHz→16 kHz） | — | CPU 侧多音色（M1–M5 / F1–F5） |
 | `drama3` | `fishaudio/drama-3`（SGLang Omni） | 服务端 | **远端 GPU** | 本地 0 | ✅ | 服务端 | 接自建 SGLang Omni 集群（默认 `http://localhost:8000/v1`，需 `DRAMA3_API_KEY`） |
 | `minimax` | `speech-2.8-hd`（默认）/ `speech-2.8-turbo` | 服务端 | 托管服务 | 本地 0 | ✅ | 服务端 | 商用级音质；**必须** `MINIMAX_API_KEY`；`https://api.minimax.io`（大陆 `api.minimaxi.com`） |
+| `cosyvoice2` | `FunAudioLLM/CosyVoice2-0.5B` | 0.5B | auto | ~1–2 GB | ✅ | Apache-2.0 | 零样本克隆，需参考音频；国产中文音色自然，路径 L 的可选替代 |
+| `voxcpm` | `openbmb/VoxCPM2`（2B，48 kHz）/ `openbmb/VoxCPM1.5`（~0.8B，44.1 kHz）/ `openbmb/VoxCPM-0.5B`（16 kHz） | 0.5–2B | auto（CUDA/MPS/CPU） | 2B 官方建议 8 GB；叠加管线建议 ≥16 GB；0.8B/0.5B 官方未给出 | ✅ 原生流式，经 soxr 重采样到 16 kHz | Apache-2.0 | 30 语言按文本自动识别；`voxcpm` 库要求 Python < 3.13，当前 3.14 开发环境不可运行 |
+
+> 另有 `zerogpu`：Hugging Face Space 运行时的远端占位后端，不是本机部署选项。
 
 **Qwen3-TTS 三态说明**（`TTS/qwen3_tts_handler.py:204-296`）：
 - `--qwen3_tts_backend ggml`（默认）：qwentts.cpp GGML，量化 `BF16|Q8_0|Q4_K_M|F32`；**GGML 后端自选设备**，历史实测 CPU 兜底时 RTF 可达 3.7（不可用于生产）。

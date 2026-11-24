@@ -91,6 +91,8 @@ def test_session_language_validation_uses_loaded_faster_whisper_capabilities(mod
     assert TTS_BACKENDS["qwen3"].kind == "tts"
     assert TTS_BACKENDS["openai"].kind == "tts"
     assert TTS_BACKENDS["supertonic"].required_extra == "supertonic"
+    assert TTS_BACKENDS["voxcpm"].kind == "tts"
+    assert TTS_BACKENDS["voxcpm"].required_extra == "voxcpm"
     assert LLM_BACKENDS["responses-api"].capabilities.supports_llm_proxy
     assert LLM_BACKENDS["chat-completions"].capabilities.supports_llm_proxy
     assert LLM_BACKENDS["chat-completions"].capabilities.supports_audio_input
@@ -161,6 +163,13 @@ def test_language_coverage_uses_loaded_metadata_and_native_language_tables():
     capability = backend_language_capabilities("tts", "supertonic", {}, supertonic)
     assert "na" not in capability.languages
     assert capability.supports_auto is True
+    from speech_to_speech.TTS.voxcpm_tts_handler import VOXCPM_LANGUAGE_CODES, VoxCPMTTSHandler
+
+    voxcpm = VoxCPMTTSHandler.__new__(VoxCPMTTSHandler)
+    capability = backend_language_capabilities("tts", "voxcpm", {}, voxcpm)
+    assert capability.languages == VOXCPM_LANGUAGE_CODES
+    assert capability.supports_auto is True
+    assert capability.supports_language_selection
     assert not backend_language_capabilities("tts", "minimax", {}, SimpleNamespace()).supports_language_selection
 
 

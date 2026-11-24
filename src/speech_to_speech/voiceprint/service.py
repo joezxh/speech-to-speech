@@ -14,7 +14,8 @@ import logging
 import queue
 import secrets
 import threading
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from pathlib import Path
 from typing import Any
 
@@ -137,7 +138,12 @@ class VoiceprintService:
             logger.info("voiceprint: bound to the loaded Qwen3-TTS model object")
             self.warmup()
         else:
-            logger.warning("voiceprint: no Qwen3TTSHandler found in the pipeline pool")
+            logger.warning(
+                "voiceprint: no Qwen3TTSHandler found in the pipeline pool. "
+                "The active TTS backend does not provide a speaker encoder; set VOICEPRINT_ENCODER_DIR "
+                "to load the standalone encoder (scheme C), otherwise /v1/audio/embeddings returns "
+                "503 MODEL_UNAVAILABLE."
+            )
 
     def warmup(self, *, seconds: float = 1.0, sample_rate: int = 16000) -> bool:
         """预热一次完整链路（解码 → 重采样 → 推理），返回是否成功。
