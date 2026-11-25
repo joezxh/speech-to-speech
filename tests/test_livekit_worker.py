@@ -132,3 +132,113 @@ def test_audio_level_silence_and_full_scale() -> None:
 
 def test_audio_level_odd_length_bytes_tolerated() -> None:
     assert compute_audio_level_dbfs(b"\x01") == SILENCE_DBFS
+
+
+# ---------------------------------------------------------------------------
+# ser_provider：SP-4 声学情感 Provider（fail-closed 门）
+# ---------------------------------------------------------------------------
+from speech_to_speech.livekit_worker import ser_provider
+from speech_to_speech.livekit_worker.ser_provider import (
+    DEFAULT_SER_POLICY,
+    SerCircuitBreaker,
+    SerConcurrencyGate,
+    SerRejectedException,
+    SerResult,
+    get_ser_provider,
+    in_segment_window,
+    parse_switch_snapshot,
+)
+
+
+class _FakeResponse:
+    """requests.Response 最小替身（Task 6/7 共用）。"""
+
+    def __init__(self, status_code: int, payload) -> None:
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        if isinstance(self._payload, str):
+            import json as _json
+            return _json.loads(self._payload)
+        return self._payload
+
+
+def test_ser_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SER_PROVIDER", raising=False)
+    with pytest.raises(ValueError, match="SER_PROVIDER"):
+        get_ser_provider()
+
+
+def test_ser_result_validates_labels() -> None:
+    assert SerResult.from_response({"emotion": "calm", "confidence": 0.9, "model": "m"}).emotion == "calm"
+    assert SerResult.from_response({"emotion": "happy", "confidence": 0.9, "model": "m"}).emotion == "calm"
+    with pytest.raises(ValueError, match="emotion"):
+        SerResult.from_response({"emotion": "unknown", "confidence": 0.9, "model": "m"})
+    with pytest.raises(ValueError, match="confidence"):
+        SerResult.from_response({"emotion": "calm", "confidence": 1.5, "model": "m"})
+    with pytest.raises(ValueError, match="缺少字段"):
+        SerResult.from_response({"emotion": "calm"})
+
+
+def test_parse_switch_snapshot_fail_closed() -> None:
+    closed = parse_switch_snapshot({})
+    assert closed["ser"] is False and closed["policyComplete"] is False
+    complete = parse_switch_snapshot({
+        "voice": True, "ser": True, "video": False,
+        "serPolicy": {"minSegSec": 1.0, "maxSegSec": 30.0, "maxConcurrency": 2,
+                      "failThreshold": 3, "cooldownSec": 60},
+    })
+    assert complete["ser"] is True and complete["policyComplete"] is True
+
+
+def test_segment_window() -> None:
+    policy = dict(DEFAULT_SER_POLICY)
+    assert in_segment_window(2 * 16000 * 5, 16000, policy)  # 5s
+    assert not in_segment_window(2 * 16000 * 0.5, 16000, policy)  # 0.5s < min
+    assert not in_segment_window(2 * 16000 * 40, 16000, policy)  # 40s > max
+
+
+def test_concurrency_gate() -> None:
+    gate = SerConcurrencyGate(1)
+    assert gate.try_enter() is True
+    assert gate.try_enter() is False
+    gate.exit()
+    assert gate.inflight == 0
+
+
+def test_circuit_breaker_opens_and_recovers() -> None:
+    clock = {"now": 0.0}
+    breaker = SerCircuitBreaker(fail_threshold=2, cooldown_sec=10, clock=lambda: clock["now"])
+    breaker.record_failure()
+    assert breaker.is_open is False
+    breaker.record_failure()
+    assert breaker.is_open is True
+    assert breaker.allow() is False
+    clock["now"] += 11
+    assert breaker.allow() is True  # 半开放行
+    breaker.record_success()
+    assert breaker.is_open is False
+
+
+def test_ser_rejected_is_distinct_exception() -> None:
+    assert issubclass(SerRejectedException, RuntimeError)
+
+
+def test_ser_http_409_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """409 → SerRejectedException（fail-closed，不降级为无 SER 结果）。
+
+    源工程 ser_provider 中发起 /v1/audio/emotion 请求、409 抛
+    SerRejectedException 的路径是 ``HttpSerProvider.predict``（无模块级
+    ``post_segment``），按移植对齐规则以源码真实名称调用。
+    """
+    from speech_to_speech.livekit_worker import ser_provider as sp
+
+    provider = sp.HttpSerProvider(base_url="http://ser")
+
+    def fake_post(url, **kwargs):  # noqa: ANN001
+        return _FakeResponse(409, '{"error":"concurrency"}')
+
+    monkeypatch.setattr(sp.requests, "post", fake_post)
+    with pytest.raises(SerRejectedException):
+        provider.predict(b"\x01\x00" * 16000, 16000)
