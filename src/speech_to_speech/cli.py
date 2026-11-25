@@ -31,6 +31,14 @@ from speech_to_speech.pipeline.transcript_logging import (
     set_log_transcripts,
     warn_if_log_transcripts_enabled,
 )
+from speech_to_speech.worker_integration import (
+    DIARIZATION_WITH_FLAG,
+    LIVEKIT_WITH_FLAG,
+    SwitchOptions,
+    WorkerIntegrationError,
+    parse_worker_arguments,
+    validate_worker_options,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +80,28 @@ Only "serve" hosts the agent. With the switch on, the agent reports to the
 console from inside the pipeline process and "/v1/agent/*" serves its status,
 workloads, metrics and triggerable actions; without the switch those endpoints
 answer 503 agent_disabled.
+"""
+
+WORKER_HELP = """
+Transcription worker switches:
+  --with-diarization      Same as --diarization on the pipeline: enable the existing
+                          streaming speaker separation. Off by default.
+  --no-with-diarization   Override DIARIZATION_AUTOSTART for this run.
+  --with-livekitworker    Start the embedded LiveKit room transcript worker thread
+                          in this process. Off by default.
+  --no-with-livekitworker Override LIVEKIT_WORKER_AUTOSTART for this run.
+
+Environment:
+  DIARIZATION_AUTOSTART       true/false, same as --with-diarization. Default: false.
+  LIVEKIT_WORKER_AUTOSTART    true/false, same as --with-livekitworker. Default: false.
+  LIVEKIT_URL / LIVEKIT_API_KEY / LIVEKIT_API_SECRET   Required with --with-livekitworker.
+  LIVEKIT_WORKER_ASR_MODE     gateway (default, OpenAI-compatible voice gateway) or local
+                              (reuse the --stt backend selected for the pipeline).
+  VOICE_GATEWAY_BASE_URL      Required in gateway mode.
+
+Only "serve" and "local" host the worker. With the switch on, the worker joins
+LiveKit rooms as a participant, transcribes remote audio with VAD segmentation,
+and delivers results through the callback subsystem and local transcript sinks.
 """
 
 
@@ -279,6 +309,8 @@ def _run_file_command(
     command_args: list[str],
     console_options: ConsoleOptions,
     agent_options: AgentOptions,
+    diarization_options: SwitchOptions,
+    livekit_options: SwitchOptions,
 ) -> None:
     from speech_to_speech.config import ConfigurationError, load_config, resolve_config
 
@@ -298,6 +330,19 @@ def _run_file_command(
         parser.error("Specify exactly one configuration file with -f or --file.")
     if command == "talk" and namespace.name is not None:
         parser.error("talk does not accept --name.")
+    # Neither switch is wired into the configured runtime yet; the options only ride
+    # along. Staying silent would make `serve -f x --with-livekitworker` look enabled
+    # after validate_worker_options passed, so warn once the switch resolved on.
+    if diarization_options.autostart:
+        print(
+            "Warning: --with-diarization is not wired for -f file mode yet; streaming diarization will not start.",
+            file=sys.stderr,
+        )
+    if livekit_options.autostart:
+        print(
+            "Warning: --with-livekitworker is not wired for -f file mode yet; the worker will not start.",
+            file=sys.stderr,
+        )
     try:
         document = load_config(namespace.file[0])
         config = resolve_config(
@@ -319,6 +364,8 @@ def _run_file_command(
             config,
             console_options=console_options,
             agent_options=agent_options,
+            diarization_options=diarization_options,
+            livekit_options=livekit_options,
         )
     except ConsoleIntegrationError as exc:
         parser.exit(2, f"Configuration error: {exc}\n")
@@ -411,6 +458,8 @@ def _dispatch(
     command_args: list[str],
     console_options: ConsoleOptions,
     agent_options: AgentOptions,
+    diarization_options: SwitchOptions,
+    livekit_options: SwitchOptions,
 ) -> None:
     if command == "models":
         _run_models_command(command_args)
@@ -418,7 +467,7 @@ def _dispatch(
     if any(
         argument.startswith("-f") or argument == "--file" or argument.startswith("--file=") for argument in command_args
     ):
-        _run_file_command(command, command_args, console_options, agent_options)
+        _run_file_command(command, command_args, console_options, agent_options, diarization_options, livekit_options)
         return
     if any(argument == "--name" or argument.startswith("--name=") for argument in command_args):
         _command_parser().error("--name requires a configuration file.")
@@ -436,6 +485,8 @@ def _dispatch(
         command_args,
         console_options=console_options,
         agent_options=agent_options,
+        diarization_options=diarization_options,
+        livekit_options=livekit_options,
     )
 
 
@@ -455,6 +506,12 @@ def main() -> None:
     except AgentIntegrationError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         raise SystemExit(2) from None
+    try:
+        # Same discipline: both worker switches leave argv before parse_command.
+        diarization_options, livekit_options, argv = parse_worker_arguments(argv)
+    except WorkerIntegrationError as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        raise SystemExit(2) from None
 
     wants_help = any(argument in {"-h", "--help"} for argument in argv)
     try:
@@ -463,6 +520,7 @@ def main() -> None:
         if exc.code == 0 and wants_help:
             print(CONSOLE_HELP)
             print(AGENT_HELP)
+            print(WORKER_HELP)
         raise
 
     if command == "talk":
@@ -479,6 +537,17 @@ def main() -> None:
                 home=console_options.home,
                 static_dir=console_options.static_dir,
             )
+        for options, flag in ((diarization_options, DIARIZATION_WITH_FLAG), (livekit_options, LIVEKIT_WITH_FLAG)):
+            if options.explicit:
+                # Report the spelling the caller actually used (--no-with-* must not
+                # be misreported as --with-*); the constant is only a fallback.
+                reported = options.explicit_flag or flag
+                _command_parser().error(
+                    f"talk does not accept {reported}; it only connects to a listener that already runs."
+                )
+            if options.autostart:
+                # An environment switch must not break a command that has nothing to host.
+                print(f"Warning: env autostart is ignored for 'talk' ({flag}).", file=sys.stderr)
     elif console_options.autostart:
         try:
             console_options.validate()
@@ -504,12 +573,22 @@ def main() -> None:
             print(f"Configuration error: {exc}", file=sys.stderr)
             raise SystemExit(2) from None
 
+    if command != "talk":
+        try:
+            # Fail before any model loads: serve and local are the only commands
+            # that host the worker, so the LiveKit settings must already be valid.
+            validate_worker_options(livekit_options)
+        except WorkerIntegrationError as exc:
+            print(f"Configuration error: {exc}", file=sys.stderr)
+            raise SystemExit(2) from None
+
     try:
-        _dispatch(command, command_args, console_options, agent_options)
+        _dispatch(command, command_args, console_options, agent_options, diarization_options, livekit_options)
     except SystemExit as exc:
         if exc.code == 0 and wants_help and command in {"serve", "local"}:
             print(CONSOLE_HELP)
             print(AGENT_HELP)
+            print(WORKER_HELP)
         raise
     except ConsoleIntegrationError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)

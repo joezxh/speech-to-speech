@@ -20,6 +20,7 @@ from speech_to_speech.console_integration import (
     StartupError,
     attachment_for_runtime,
 )
+from speech_to_speech.worker_integration import SwitchOptions
 
 if TYPE_CHECKING:
     from speech_to_speech.api.openai_realtime.audio_client import RealtimeAudioClientConfig
@@ -390,6 +391,8 @@ def run_configured_command(
     *,
     console_options: ConsoleOptions | None = None,
     agent_options: AgentOptions | None = None,
+    diarization_options: SwitchOptions = SwitchOptions(),
+    livekit_options: SwitchOptions = SwitchOptions(),
 ) -> None:
     """Own CLI signal handlers and always stop constructed resources."""
     from speech_to_speech.pipeline.console import conversation_output
@@ -400,7 +403,12 @@ def run_configured_command(
     )
     with conversation_output(conversation_only):
         _run_configured_command(
-            command, config, console_options=console_options, agent_options=agent_options
+            command,
+            config,
+            console_options=console_options,
+            agent_options=agent_options,
+            diarization_options=diarization_options,
+            livekit_options=livekit_options,
         )
 
 
@@ -410,8 +418,15 @@ def _run_configured_command(
     *,
     console_options: ConsoleOptions | None = None,
     agent_options: AgentOptions | None = None,
+    diarization_options: SwitchOptions = SwitchOptions(),
+    livekit_options: SwitchOptions = SwitchOptions(),
 ) -> None:
     from speech_to_speech.pipeline.transcript_logging import set_log_transcripts, warn_if_log_transcripts_enabled
+
+    # The worker switches ride along from the CLI; the configured runtime hosts
+    # the embedded worker once that wiring lands, so holding them here keeps
+    # file mode behavior unchanged for switch-off runs.
+    _ = diarization_options, livekit_options
 
     stop_event = Event()
     result: ConfiguredRuntime | None = None

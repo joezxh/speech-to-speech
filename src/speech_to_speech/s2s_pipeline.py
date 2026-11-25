@@ -65,6 +65,7 @@ from speech_to_speech.STT.transcription_notifier import TranscriptionNotifier
 from speech_to_speech.utils.thread_manager import ThreadManager
 from speech_to_speech.utils.utils import resolve_device
 from speech_to_speech.VAD.vad_handler import VADHandler
+from speech_to_speech.worker_integration import SwitchOptions
 
 # Prefer locally-bundled NLTK data so it never has to fetch punkt/tagger over a
 # proxied/air-gapped egress that trips the SSRF guard (CWE-918). On Windows the
@@ -897,8 +898,16 @@ def run_pipeline_command(
     *,
     console_options: ConsoleOptions | None = None,
     agent_options: AgentOptions | None = None,
+    diarization_options: SwitchOptions = SwitchOptions(),
+    livekit_options: SwitchOptions = SwitchOptions(),
 ) -> None:
     """Run the server alone or compose it with the loopback audio client."""
+
+    # The CLI hands the resolved worker switches over before any model loads.
+    # The runtime wiring (embedded diarization and the LiveKit transcript worker
+    # inside the pool) lands in its own task; holding them here keeps the
+    # passthrough stable without changing behavior for switch-off runs.
+    _ = diarization_options, livekit_options
 
     args = parse_arguments(argv, command=command)
 
