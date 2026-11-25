@@ -242,3 +242,78 @@ def test_ser_http_409_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sp.requests, "post", fake_post)
     with pytest.raises(SerRejectedException):
         provider.predict(b"\x01\x00" * 16000, 16000)
+
+
+# ---------------------------------------------------------------------------
+# diarization_provider：说话人分离 HTTP 客户端（失败回退整段路径）
+# ---------------------------------------------------------------------------
+from speech_to_speech.livekit_worker import diarization_provider as dia
+from speech_to_speech.livekit_worker.diarization_provider import (
+    DiarizationClient,
+    DiarizationUnavailableException,
+    SpeakerSegment,
+    is_enabled,
+    merge_adjacent,
+    parse_diarization,
+    pick_representative,
+    slice_by_speaker,
+    to_epoch_ms,
+)
+
+
+def test_disabled_without_base_url() -> None:
+    assert is_enabled("") is False
+    assert is_enabled(None) is False
+    assert is_enabled("http://x") is True
+
+
+def test_parse_diarization_valid_and_invalid() -> None:
+    segs = parse_diarization({"segments": [
+        {"speaker": 1, "startSec": 0.2, "endSec": 1.5},
+        {"speaker": 0, "startSec": 1.6, "endSec": 2.8},
+    ]})
+    assert segs == [SpeakerSegment(1, 0.2, 1.5), SpeakerSegment(0, 1.6, 2.8)]
+    with pytest.raises(DiarizationUnavailableException):
+        parse_diarization({"nope": []})
+    # 移植对齐：源码对 end <= start 的段是静默跳过（不抛异常），返回空列表
+    assert parse_diarization({"segments": [{"speaker": 0, "startSec": 2.0, "endSec": 1.0}]}) == []
+
+
+def test_merge_adjacent_same_speaker() -> None:
+    merged = merge_adjacent([
+        SpeakerSegment(0, 0.0, 1.0), SpeakerSegment(0, 1.1, 2.0), SpeakerSegment(1, 2.0, 3.0),
+    ], gap_sec=0.2)
+    assert merged == [SpeakerSegment(0, 0.0, 2.0), SpeakerSegment(1, 2.0, 3.0)]
+
+
+def test_slice_by_speaker() -> None:
+    pcm = b"\x01\x00" * 16000 * 3  # 3 秒 16k mono
+    subs = slice_by_speaker(pcm, 16000, [SpeakerSegment(0, 0.0, 1.0), SpeakerSegment(1, 1.0, 2.5)])
+    assert set(subs) == {0, 1}
+    # 移植对齐：源码返回 {speaker: [(pcm_bytes, startSec, endSec), ...]}，pcm 在 subs[0][0][0]
+    assert len(subs[0][0][0]) == 16000 * 2
+    with pytest.raises(DiarizationUnavailableException):
+        slice_by_speaker(pcm, 16000, [SpeakerSegment(i, 0.0, 1.0) for i in range(20)])
+
+
+def test_pick_representative() -> None:
+    subs = [(b"a", 0.0, 1.0), (b"bb", 1.0, 2.5)]
+    assert pick_representative(subs) == (b"bb", 1.0, 2.5)
+
+
+def test_to_epoch_ms() -> None:
+    assert to_epoch_ms(1000, 0.5, 1.5) == (1500, 2500)
+
+
+def test_client_http_error_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = DiarizationClient("http://dia")
+    calls: list[dict] = []
+
+    def fake_post(url, files, data, timeout):  # noqa: ANN001
+        calls.append({"url": url})
+        return _FakeResponse(500, {})
+
+    monkeypatch.setattr(dia.requests, "post", fake_post)
+    with pytest.raises(DiarizationUnavailableException, match="500"):
+        client.diarize(b"\x01\x00" * 16000, 16000)
+    assert calls and calls[0]["url"] == "http://dia/v1/audio/diarization"
