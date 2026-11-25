@@ -317,3 +317,70 @@ def test_client_http_error_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(DiarizationUnavailableException, match="500"):
         client.diarize(b"\x01\x00" * 16000, 16000)
     assert calls and calls[0]["url"] == "http://dia/v1/audio/diarization"
+
+
+# ---------------------------------------------------------------------------
+# asr_provider：双模式（gateway / local）
+# ---------------------------------------------------------------------------
+from speech_to_speech.livekit_worker import asr_provider as provider_module
+from speech_to_speech.livekit_worker.asr_provider import (
+    GatewayAsrProvider,
+    LocalSttAsrProvider,
+    create_asr_provider,
+)
+
+
+class _FakeSttHandler:
+    def transcribe_chunk(self, pcm16_bytes: bytes, sample_rate: int) -> str:
+        return "本地结果"
+
+
+def test_gateway_provider_reads_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOICE_GATEWAY_BASE_URL", "http://gw")
+    monkeypatch.delenv("ASR_BASE_URL", raising=False)
+    monkeypatch.setenv("VOICE_ASR_MODEL", "qwen3-asr")
+    provider = GatewayAsrProvider()
+    assert provider.base == "http://gw"
+    assert provider.model == "qwen3-asr"
+
+
+def test_gateway_provider_missing_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("VOICE_GATEWAY_BASE_URL", raising=False)
+    with pytest.raises(ValueError, match="VOICE_GATEWAY_BASE_URL"):
+        GatewayAsrProvider()
+
+
+def test_create_provider_modes(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOICE_GATEWAY_BASE_URL", "http://gw")
+    assert isinstance(create_asr_provider("gateway"), GatewayAsrProvider)
+    local = create_asr_provider("local", stt_handler=_FakeSttHandler())
+    assert isinstance(local, LocalSttAsrProvider)
+    assert local.transcribe(b"\x01\x00", 16000) == "本地结果"
+    with pytest.raises(ValueError, match="ASR mode"):
+        create_asr_provider("bogus")
+    with pytest.raises(ValueError, match="stt_handler"):
+        create_asr_provider("local", stt_handler=None)
+
+
+def test_gateway_transcribe_posts_multipart(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VOICE_GATEWAY_BASE_URL", "http://gw")
+    monkeypatch.setenv("VOICE_ASR_MODEL", "qwen3-asr")
+    provider = GatewayAsrProvider()
+    seen: dict = {}
+
+    class _Resp:
+        status_code = 200
+        def raise_for_status(self) -> None: ...
+        def json(self) -> dict:
+            return {"text": "你好"}
+
+    def fake_post(url, files, data, timeout):  # noqa: ANN001
+        seen.update({"url": url, "files": files, "data": data})
+        return _Resp()
+
+    monkeypatch.setattr(provider_module.requests, "post", fake_post)
+    text = provider.transcribe(b"\x01\x00" * 1600, 16000)
+    assert text == "你好"
+    assert seen["url"] == "http://gw/v1/audio/transcriptions"
+    assert seen["data"]["model"] == "qwen3-asr"
+    assert seen["files"]["file"][2] == "audio/wav"
