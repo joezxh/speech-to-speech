@@ -42,6 +42,9 @@ PERMISSION_ROLES: dict[str, frozenset[str]] = {
     "console:audit:export": frozenset({"admin"}),
     # 仅登记（防打字错误占位）：agent 面不走角色，按 machine token 映射（§7.3）。
     "console:agent:enroll": frozenset({"admin", "operator"}),
+    # 回调子系统（spec 2026-11-25 §8.4）：查询 operator 可看，写仅管理员。
+    "console:callback:query": frozenset({"admin", "operator"}),
+    "console:callback:manage": frozenset({"admin"}),
 }
 
 

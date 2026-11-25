@@ -31,6 +31,9 @@ def test_registry_contains_the_registered_codes():
         # 全局审计（Task 25）
         "console:audit:query",
         "console:audit:export",
+        # 回调子系统（spec 2026-11-25 §8.4）
+        "console:callback:query",
+        "console:callback:manage",
     }
     assert PERMISSION_ROLES["console:cluster:switch"] == frozenset({"admin", "operator"})
     assert PERMISSION_ROLES["console:cluster:create"] == frozenset({"admin"})

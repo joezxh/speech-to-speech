@@ -14,6 +14,7 @@ def register_api_routers(app: FastAPI) -> None:
         audit,
         audio_proxy,
         auth,
+        callbacks,
         catalog,
         clusters,
         config,
@@ -71,6 +72,8 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(releases.router)
     # 全局审计（R5/R6，Task 25）：查询分页 + CSV 导出。
     app.include_router(audit.router)
+    # 回调配置面（spec 2026-11-25 §8.4）：查询 operator 可看，写仅管理员。
+    app.include_router(callbacks.router)
 
     # The demo face is anonymous and unenveloped (A.13), so it goes last among the
     # API groups but still before the SPA catch-all.
