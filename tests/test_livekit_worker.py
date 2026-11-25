@@ -4,13 +4,42 @@ from __future__ import annotations
 
 import pytest
 
+from speech_to_speech.livekit_worker import asr_provider as provider_module
+from speech_to_speech.livekit_worker import diarization_provider as dia
+from speech_to_speech.livekit_worker import ser_provider
+from speech_to_speech.livekit_worker.asr_provider import (
+    GatewayAsrProvider,
+    LocalSttAsrProvider,
+    create_asr_provider,
+)
 from speech_to_speech.livekit_worker.audio_level import SILENCE_DBFS, compute_audio_level_dbfs
+from speech_to_speech.livekit_worker.diarization_provider import (
+    DiarizationClient,
+    DiarizationUnavailableException,
+    SpeakerSegment,
+    is_enabled,
+    merge_adjacent,
+    parse_diarization,
+    pick_representative,
+    slice_by_speaker,
+    to_epoch_ms,
+)
 from speech_to_speech.livekit_worker.events import (
     EVENT_TYPES,
     TranscriptEvent,
     TranscriptEventBus,
 )
 from speech_to_speech.livekit_worker.segment_dedupe import DuplicateGuard, normalize_text
+from speech_to_speech.livekit_worker.ser_provider import (
+    DEFAULT_SER_POLICY,
+    SerCircuitBreaker,
+    SerConcurrencyGate,
+    SerRejectedException,
+    SerResult,
+    get_ser_provider,
+    in_segment_window,
+    parse_switch_snapshot,
+)
 
 
 def test_event_types() -> None:
@@ -137,17 +166,6 @@ def test_audio_level_odd_length_bytes_tolerated() -> None:
 # ---------------------------------------------------------------------------
 # ser_provider：SP-4 声学情感 Provider（fail-closed 门）
 # ---------------------------------------------------------------------------
-from speech_to_speech.livekit_worker import ser_provider
-from speech_to_speech.livekit_worker.ser_provider import (
-    DEFAULT_SER_POLICY,
-    SerCircuitBreaker,
-    SerConcurrencyGate,
-    SerRejectedException,
-    SerResult,
-    get_ser_provider,
-    in_segment_window,
-    parse_switch_snapshot,
-)
 
 
 class _FakeResponse:
@@ -232,35 +250,37 @@ def test_ser_http_409_fail_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     SerRejectedException 的路径是 ``HttpSerProvider.predict``（无模块级
     ``post_segment``），按移植对齐规则以源码真实名称调用。
     """
-    from speech_to_speech.livekit_worker import ser_provider as sp
-
-    provider = sp.HttpSerProvider(base_url="http://ser")
+    provider = ser_provider.HttpSerProvider(base_url="http://ser")
 
     def fake_post(url, **kwargs):  # noqa: ANN001
         return _FakeResponse(409, '{"error":"concurrency"}')
 
-    monkeypatch.setattr(sp.requests, "post", fake_post)
+    monkeypatch.setattr(ser_provider.requests, "post", fake_post)
     with pytest.raises(SerRejectedException):
+        provider.predict(b"\x01\x00" * 16000, 16000)
+
+
+def test_ser_http_5xx_raises_runtime_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """HTTP 5xx → RuntimeError（服务不可用），与 409 业务拒答路径区分。
+
+    源码 ``HttpSerProvider.predict`` 对非 2xx/409 抛
+    ``RuntimeError("MEETING_SER_PROVIDER_UNAVAILABLE: HTTP ...")``；
+    断路器失败计数由调用方（worker 单线程事件循环）负责，
+    predict 本身不触碰断路器，故此处只断言异常类型与消息。
+    """
+    provider = ser_provider.HttpSerProvider(base_url="http://ser")
+
+    def fake_post(url, **kwargs):  # noqa: ANN001
+        return _FakeResponse(500, '{"error":"boom"}')
+
+    monkeypatch.setattr(ser_provider.requests, "post", fake_post)
+    with pytest.raises(RuntimeError, match="MEETING_SER_PROVIDER_UNAVAILABLE: HTTP 500"):
         provider.predict(b"\x01\x00" * 16000, 16000)
 
 
 # ---------------------------------------------------------------------------
 # diarization_provider：说话人分离 HTTP 客户端（失败回退整段路径）
 # ---------------------------------------------------------------------------
-from speech_to_speech.livekit_worker import diarization_provider as dia
-from speech_to_speech.livekit_worker.diarization_provider import (
-    DiarizationClient,
-    DiarizationUnavailableException,
-    SpeakerSegment,
-    is_enabled,
-    merge_adjacent,
-    parse_diarization,
-    pick_representative,
-    slice_by_speaker,
-    to_epoch_ms,
-)
-
-
 def test_disabled_without_base_url() -> None:
     assert is_enabled("") is False
     assert is_enabled(None) is False
@@ -322,14 +342,6 @@ def test_client_http_error_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 # asr_provider：双模式（gateway / local）
 # ---------------------------------------------------------------------------
-from speech_to_speech.livekit_worker import asr_provider as provider_module
-from speech_to_speech.livekit_worker.asr_provider import (
-    GatewayAsrProvider,
-    LocalSttAsrProvider,
-    create_asr_provider,
-)
-
-
 class _FakeSttHandler:
     def transcribe_chunk(self, pcm16_bytes: bytes, sample_rate: int) -> str:
         return "本地结果"

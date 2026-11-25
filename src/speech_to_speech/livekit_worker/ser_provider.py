@@ -22,7 +22,7 @@ from typing import Any, Mapping
 
 import requests
 
-from speech_to_speech.livekit_worker.asr_provider import _to_wav  # noqa: F401  （复用同一份 WAV 封装）
+from speech_to_speech.livekit_worker.asr_provider import _to_wav  # （复用同一份 WAV 封装）
 
 # 与 SP-2 EMOTION_JSON_SCHEMA 同源五值；平台侧不绑定任何模型名
 SER_EMOTIONS = ("calm", "anxious", "agitated", "anger", "threat")
@@ -323,7 +323,11 @@ class SerConcurrencyGate:
 
 
 class SerCircuitBreaker:
-    """§4.3 断路器：连续失败达阈 → OPEN 冷却；冷却到期半开，成功即闭合。"""
+    """§4.3 断路器：连续失败达阈 → OPEN 冷却；冷却到期半开，成功即闭合。
+
+    线程安全约束：本类无锁，failures/_half_open/opened_at 的读改写非原子；
+    调用方须保证在单线程/单事件循环内使用（源工程在 worker asyncio 单线程内使用）。
+    """
 
     def __init__(self, fail_threshold: int = 3, cooldown_sec: float = 60,
                  clock=time.monotonic) -> None:

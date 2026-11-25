@@ -40,7 +40,7 @@ class GatewayAsrProvider(AsrProvider):
     def __init__(self) -> None:
         base = os.environ.get("ASR_BASE_URL") or os.environ.get("VOICE_GATEWAY_BASE_URL", "")
         if not base.strip():
-            raise ValueError("VOICE_GATEWAY_BASE_URL 未配置（gateway 模式必需）")
+            raise ValueError("VOICE_GATEWAY_BASE_URL（或 ASR_BASE_URL 覆盖）未配置（gateway 模式必需）")
         self.base = base.rstrip("/")
         self.model = os.environ.get("VOICE_ASR_MODEL", "qwen3-asr")
 
@@ -68,7 +68,7 @@ class LocalSttAsrProvider(AsrProvider):
         self._handler = stt_handler
 
     def transcribe(self, pcm16_bytes: bytes, sample_rate: int, language: str = "auto") -> str:
-        result = getattr(self._handler, "transcribe_chunk")(pcm16_bytes, sample_rate)
+        result = self._handler.transcribe_chunk(pcm16_bytes, sample_rate)
         return str(result or "")
 
 
