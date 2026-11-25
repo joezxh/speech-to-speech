@@ -45,6 +45,7 @@ from speech_to_speech.livekit_worker.ser_provider import (
     in_segment_window,
     parse_switch_snapshot,
 )
+from speech_to_speech.pipeline.messages import Transcription
 
 
 def test_event_types() -> None:
@@ -503,3 +504,65 @@ def test_split_pcm_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
     assert len(blocks) == 3
     assert len(blocks[0]) == 16000 * 2 * 25
     assert split_pcm_blocks(b"", 16000) == []
+
+
+# ---------------------------------------------------------------------------
+# SttHandlerAdapter：pipeline STT handler（process/VADAudio）→ transcribe_chunk 契约
+# ---------------------------------------------------------------------------
+
+
+class _FakePipelineSttHandler:
+    """真实接口形状的 STT handler 替身：process(VADAudio) -> Iterator[STTOut]。"""
+
+    def __init__(self) -> None:
+        self.received: list[object] = []
+
+    def process(self, vad_audio: object):
+        self.received.append(vad_audio)
+        yield Transcription(text="本地结果")
+
+
+def test_stt_handler_adapter_transcribes_pcm() -> None:
+    import numpy as np
+
+    from speech_to_speech.livekit_worker.asr_provider import SttHandlerAdapter
+
+    handler = _FakePipelineSttHandler()
+    adapter = SttHandlerAdapter(handler, sample_rate=16000)
+    # 满幅 + 半幅 PCM16：验证 int16 → float32 [-1, 1] 归一
+    pcm = (32767).to_bytes(2, "little", signed=True) + (16384).to_bytes(2, "little", signed=True)
+    assert adapter.transcribe_chunk(pcm, 16000) == "本地结果"
+    assert len(handler.received) == 1
+    audio = handler.received[0].audio
+    assert audio.dtype == np.float32
+    assert audio[0] == pytest.approx(32767 / 32768.0)
+    assert audio[1] == pytest.approx(0.5)
+    assert handler.received[0].mode == "final"
+
+
+def test_stt_handler_adapter_resamples_to_handler_rate() -> None:
+    from speech_to_speech.livekit_worker.asr_provider import SttHandlerAdapter
+
+    handler = _FakePipelineSttHandler()
+    adapter = SttHandlerAdapter(handler, sample_rate=16000)
+    pcm = b"\x01\x00" * 8000  # 8k 采样率下的 1 秒 = 8000 帧
+    assert adapter.transcribe_chunk(pcm, 8000) == "本地结果"
+    # 8k → 16k 线性重采样后帧数翻倍
+    assert len(handler.received[0].audio) == 16000
+
+
+def test_stt_handler_adapter_empty_pcm_skips_handler() -> None:
+    from speech_to_speech.livekit_worker.asr_provider import SttHandlerAdapter
+
+    handler = _FakePipelineSttHandler()
+    adapter = SttHandlerAdapter(handler, sample_rate=16000)
+    assert adapter.transcribe_chunk(b"", 16000) == ""
+    assert handler.received == []  # 空输入不打扰模型
+
+
+def test_local_provider_keeps_transcribe_chunk_contract() -> None:
+    """LocalSttAsrProvider 对外契约不变：只消费 transcribe_chunk（适配器亦满足）。"""
+    from speech_to_speech.livekit_worker.asr_provider import LocalSttAsrProvider, SttHandlerAdapter
+
+    provider = LocalSttAsrProvider(SttHandlerAdapter(_FakePipelineSttHandler(), sample_rate=16000))
+    assert provider.transcribe(b"\x01\x00", 16000) == "本地结果"

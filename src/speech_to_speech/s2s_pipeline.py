@@ -842,13 +842,19 @@ def build_pipeline(
     livekit_runtime = None
     if livekit_options is not None and livekit_options.autostart:
         from speech_to_speech.livekit_worker import LiveKitWorkerRuntime
+        from speech_to_speech.livekit_worker.asr_provider import SttHandlerAdapter
+        from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
 
         livekit_runtime = LiveKitWorkerRuntime(stop_event)
-        # local ASR 模式注入 pipeline STT handler（gateway 模式忽略）
+        # local ASR 模式注入 pipeline STT handler（gateway 模式忽略）。所有本地 STT
+        # 后端都是 BaseSTTHandler 子类，真实接口是 process(VADAudio)；用 isinstance
+        # 精准命中（TranscriptionNotifier 等也有 process 但不是 STT），并由
+        # SttHandlerAdapter 把 process 契约包装成 worker 的 transcribe_chunk。
+        handler_sample_rate = args.vad_handler_kwargs.sample_rate
         for unit in pool:
             for handler in unit.handlers:
-                if hasattr(handler, "transcribe_chunk"):
-                    livekit_runtime.attach_stt_handler(handler)
+                if isinstance(handler, BaseSTTHandler):
+                    livekit_runtime.attach_stt_handler(SttHandlerAdapter(handler, handler_sample_rate))
                     break
 
     server = RealtimeServer(
