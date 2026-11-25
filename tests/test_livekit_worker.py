@@ -2,6 +2,10 @@
 """LiveKit worker 移植测试。全部离线：不 import livekit（mock），不发网络请求。"""
 from __future__ import annotations
 
+import sys
+import types
+from unittest.mock import MagicMock
+
 import pytest
 
 from speech_to_speech.livekit_worker import asr_provider as provider_module
@@ -28,6 +32,7 @@ from speech_to_speech.livekit_worker.events import (
     EVENT_TYPES,
     TranscriptEvent,
     TranscriptEventBus,
+    get_event_bus,
 )
 from speech_to_speech.livekit_worker.segment_dedupe import DuplicateGuard, normalize_text
 from speech_to_speech.livekit_worker.ser_provider import (
@@ -396,3 +401,105 @@ def test_gateway_transcribe_posts_multipart(monkeypatch: pytest.MonkeyPatch) -> 
     assert seen["url"] == "http://gw/v1/audio/transcriptions"
     assert seen["data"]["model"] == "qwen3-asr"
     assert seen["files"]["file"][2] == "audio/wav"
+
+
+# ---------------------------------------------------------------------------
+# worker：核心移植（emit_segments 双路输出 / split_pcm_blocks）
+# ---------------------------------------------------------------------------
+
+
+def _install_livekit_stub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """livekit-agents 在 Python 3.14 下不可用时提供可导入的桩模块（voxcpm 先例）。
+
+    import 路径对齐源工程 worker.py：livekit.rtc / livekit.agents(.job/.vad) /
+    livekit.plugins.silero，子模块同时挂到父包属性上保证 ``from livekit import rtc`` 可用。
+    """
+    if "livekit" in sys.modules:
+        return
+    livekit_stub = types.ModuleType("livekit")
+    rtc_stub = types.ModuleType("livekit.rtc")
+    agents_stub = types.ModuleType("livekit.agents")
+    job_stub = types.ModuleType("livekit.agents.job")
+    vad_stub = types.ModuleType("livekit.agents.vad")
+    plugins_stub = types.ModuleType("livekit.plugins")
+    silero_stub = types.ModuleType("livekit.plugins.silero")
+    agents_stub.JobContext = MagicMock
+    agents_stub.WorkerOptions = MagicMock
+    agents_stub.cli = types.SimpleNamespace(run_app=lambda options: None)
+    agents_stub.AutoSubscribe = types.SimpleNamespace(SUBSCRIBE_ALL="all")
+    agents_stub.VADEventType = types.SimpleNamespace(
+        START_OF_SPEECH="start", END_OF_SPEECH="end")
+    agents_stub.VAD = MagicMock
+    agents_stub.WorkerServer = MagicMock
+    job_stub.AutoSubscribe = types.SimpleNamespace(SUBSCRIBE_ALL="all")
+    vad_stub.VADEventType = types.SimpleNamespace(
+        START_OF_SPEECH="start", END_OF_SPEECH="end")
+    vad_stub.VAD = MagicMock
+    silero_stub.VAD = types.SimpleNamespace(load=lambda **_: MagicMock())
+    plugins_stub.silero = silero_stub
+    livekit_stub.rtc = rtc_stub
+    livekit_stub.agents = agents_stub
+    livekit_stub.plugins = plugins_stub
+    agents_stub.job = job_stub
+    agents_stub.vad = vad_stub
+    for name, module in (
+        ("livekit", livekit_stub),
+        ("livekit.rtc", rtc_stub),
+        ("livekit.agents", agents_stub),
+        ("livekit.agents.job", job_stub),
+        ("livekit.agents.vad", vad_stub),
+        ("livekit.plugins", plugins_stub),
+        ("livekit.plugins.silero", silero_stub),
+    ):
+        monkeypatch.setitem(sys.modules, name, module)
+
+
+def test_worker_emits_events_through_bus(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_livekit_stub(monkeypatch)
+    from speech_to_speech.livekit_worker import worker
+
+    bus = get_event_bus()
+    seen: list[TranscriptEvent] = []
+    unsubscribe = bus.subscribe(seen.append)
+    try:
+        worker.emit_segments(
+            room_sid="room-1",
+            segments=[{
+                "speakerIdentity": "user-a", "text": "你好会议",
+                "startTs": 1000, "endTs": 2000, "audioLevel": -12,
+            }],
+        )
+    finally:
+        unsubscribe()
+    assert len(seen) == 1
+    assert seen[0].to_payload()["text"] == "你好会议"
+    assert seen[0].to_payload()["roomSid"] == "room-1"
+    assert seen[0].identity == "user-a"
+
+
+def test_worker_emit_failure_is_isolated(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_livekit_stub(monkeypatch)
+    from speech_to_speech.livekit_worker import worker
+
+    bus = get_event_bus()
+    unsubscribe = bus.subscribe(lambda _: (_ for _ in ()).throw(RuntimeError("sink boom")))
+    try:
+        # 不抛异常：事件消费失败不影响转写主流程
+        worker.emit_segments(
+            room_sid="r",
+            segments=[{"speakerIdentity": "i", "text": "t",
+                       "startTs": 0, "endTs": 1, "audioLevel": None}],
+        )
+    finally:
+        unsubscribe()
+
+
+def test_split_pcm_blocks(monkeypatch: pytest.MonkeyPatch) -> None:
+    _install_livekit_stub(monkeypatch)
+    from speech_to_speech.livekit_worker.worker import split_pcm_blocks
+
+    pcm = b"\x01\x00" * 16000 * 55  # 55 秒
+    blocks = split_pcm_blocks(pcm, 16000, max_block_sec=25)
+    assert len(blocks) == 3
+    assert len(blocks[0]) == 16000 * 2 * 25
+    assert split_pcm_blocks(b"", 16000) == []
