@@ -1,5 +1,6 @@
 from app.db.base import Base
 
+from .callbacks import CallbackDeliveryLog, CallbackTarget
 from .comments import apply_comments
 from .lb import ParamLbAffinity, ParamLbRouteLog, ParamLbRule
 from .machine import ParamMachine, ParamMachineWorkload
@@ -14,14 +15,16 @@ from .param_instance import ParamInstance
 from .param_instance_metric import ParamInstanceMetric
 from .param_instance_runtime import ParamInstanceRuntime
 from .param_proxy_metric import ParamProxyMetric
-from .release import ParamRelease
 from .param_user import ParamUser
 from .param_version import ParamVersion
+from .release import ParamRelease
 from .token_metric import ParamTokenMetric
 from .turn_latency import TurnLatencyRow
 from .voice import Voice
 
 __all__ = [
+    "CallbackDeliveryLog",
+    "CallbackTarget",
     "ParamAgentConfigVersion",
     "ParamAllocatorLease",
     "ParamAudit",

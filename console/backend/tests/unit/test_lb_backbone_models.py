@@ -57,8 +57,8 @@ def test_ten_backbone_tables_are_registered():
     assert NEW_TABLES <= {table.name for table in Base.metadata.sorted_tables}
 
 
-def test_head_is_0013():
-    assert _head().startswith("0013")
+def test_head_is_0015():
+    assert _head().startswith("0015")
 
 
 def test_param_machine_state_defaults_to_pending_register():

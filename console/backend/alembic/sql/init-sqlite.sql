@@ -520,3 +520,56 @@ ALTER TABLE param_machine ADD COLUMN deployment_json JSON DEFAULT '{}' NOT NULL;
 
 UPDATE alembic_version SET version_num='0013_machine_deploy_details' WHERE alembic_version.version_num = '0012_workload_observability';
 
+-- Running upgrade 0013_machine_deploy_details -> 0014_comments_backfill
+
+UPDATE alembic_version SET version_num='0014_comments_backfill' WHERE alembic_version.version_num = '0013_machine_deploy_details';
+
+-- Running upgrade 0014_comments_backfill -> 0015_callback_subsystem
+
+CREATE TABLE callback_target (
+    id INTEGER NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    target_type VARCHAR(16) NOT NULL,
+    base_url VARCHAR(512) NOT NULL,
+    auth_type VARCHAR(16) DEFAULT 'none' NOT NULL,
+    auth_header_name VARCHAR(128),
+    auth_token VARCHAR(512) DEFAULT '' NOT NULL,
+    extra_headers JSON DEFAULT '{}' NOT NULL,
+    timeout_ms INTEGER DEFAULT '3000' NOT NULL,
+    retry_max_attempts INTEGER DEFAULT '3' NOT NULL,
+    retry_backoff_ms INTEGER DEFAULT '500' NOT NULL,
+    events JSON DEFAULT '[]' NOT NULL,
+    filters JSON,
+    enabled BOOLEAN DEFAULT 1 NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_callback_target_name UNIQUE (name)
+);
+
+CREATE TABLE callback_delivery_log (
+    id INTEGER NOT NULL,
+    target_id INTEGER,
+    event_type VARCHAR(32) NOT NULL,
+    triggered_at DATETIME NOT NULL,
+    request_url VARCHAR(1024) NOT NULL,
+    request_payload TEXT DEFAULT '' NOT NULL,
+    attempt INTEGER DEFAULT '1' NOT NULL,
+    http_status INTEGER,
+    response_snippet TEXT DEFAULT '' NOT NULL,
+    duration_ms INTEGER DEFAULT '0' NOT NULL,
+    status VARCHAR(16) NOT NULL,
+    error VARCHAR(1024) DEFAULT '' NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY(target_id) REFERENCES callback_target (id) ON DELETE SET NULL
+);
+
+CREATE INDEX ix_cdl_target_id ON callback_delivery_log (target_id);
+
+CREATE INDEX ix_cdl_triggered_at ON callback_delivery_log (triggered_at);
+
+CREATE INDEX ix_cdl_status ON callback_delivery_log (status);
+
+UPDATE alembic_version SET version_num='0015_callback_subsystem' WHERE alembic_version.version_num = '0014_comments_backfill';
+

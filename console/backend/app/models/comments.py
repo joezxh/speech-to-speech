@@ -40,6 +40,8 @@ TABLE_COMMENTS: dict[str, str] = {
     "param_version": "配置版本快照，创建后不可变；保存配置全文用于启动自检",
     "turn_latency": "单轮语音延迟索引，可由日志重建，只存原始毫秒值",
     "voices": "音色上传记录，音频与特征路径相对音色数据卷保存",
+    "callback_target": "回调目标配置：java 与 python 两类协议的地址、鉴权、超时与重试",
+    "callback_delivery_log": "回调投递日志：每次尝试一行，目标删除后日志按软关联保留",
 }
 
 #: 列级注释。键必须与 Base.metadata 中对应表的列名一一对应。
@@ -376,6 +378,39 @@ COLUMN_COMMENTS: dict[str, dict[str, str]] = {
         "created_by": "上传人",
         "consent_ack_at": "授权确认时间（UTC）",
         "retention_days": "保留天数",
+    },
+    "callback_target": {
+        "id": "主键标识",
+        "name": "目标名称，全局唯一",
+        "target_type": "协议类型：java 或 python",
+        "base_url": "目标地址；java 取服务根地址，python 取完整回调地址",
+        "auth_type": "鉴权方式：none、bearer 或 header_token",
+        "auth_header_name": "header_token 鉴权的请求头名，bearer 与 none 时为空",
+        "auth_token": "鉴权凭据，接口返回时脱敏",
+        "extra_headers": "附加请求头（JSON 对象）",
+        "timeout_ms": "单次请求超时（毫秒）",
+        "retry_max_attempts": "最大尝试次数",
+        "retry_backoff_ms": "首次重试退避（毫秒），按指数递增",
+        "events": "订阅的事件类型清单（JSON 数组）",
+        "filters": "可选过滤器：说话人与最小文本长度（JSON 对象）",
+        "enabled": "是否启用，停用后不投递",
+        "updated_by": "最近修改人",
+        "created_at": "创建时间（UTC）",
+        "updated_at": "最近修改时间（UTC）",
+    },
+    "callback_delivery_log": {
+        "id": "主键标识",
+        "target_id": "目标标识，软关联 callback_target.id，目标删除后为空",
+        "event_type": "投递的事件类型",
+        "triggered_at": "投递触发时间（UTC）",
+        "request_url": "实际请求地址",
+        "request_payload": "请求体快照，截断存储且凭据已脱敏",
+        "attempt": "第几次尝试，从 1 起",
+        "http_status": "响应状态码，网络异常时为空",
+        "response_snippet": "响应体摘要，截断存储",
+        "duration_ms": "本次尝试耗时（毫秒）",
+        "status": "尝试结果：success、retrying 或 failed",
+        "error": "失败原因摘要，成功时为空",
     },
 }
 
