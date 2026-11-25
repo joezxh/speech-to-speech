@@ -100,6 +100,12 @@ kokoro = [
 kitten = [
     "kittenml>=0.9.4,<0.10",
 ]
+livekit = [
+    "livekit-agents[silero]>=0.12,<0.13",
+    "livekit-plugins-silero>=0.7,<0.8",
+    "av>=12.3.0,<13",
+    "requests>=2.31",
+]
 mlx-lm = [
     "mlx-lm==0.31.3; platform_system == 'Darwin'",
     "mlx-vlm==0.4.1; platform_system == 'Darwin'",
