@@ -65,7 +65,7 @@ from speech_to_speech.STT.transcription_notifier import TranscriptionNotifier
 from speech_to_speech.utils.thread_manager import ThreadManager
 from speech_to_speech.utils.utils import resolve_device
 from speech_to_speech.VAD.vad_handler import VADHandler
-from speech_to_speech.worker_integration import SwitchOptions
+from speech_to_speech.worker_integration import SwitchOptions, WorkerIntegrationError
 
 # Prefer locally-bundled NLTK data so it never has to fetch punkt/tagger over a
 # proxied/air-gapped egress that trips the SSRF guard (CWE-918). On Windows the
@@ -405,6 +405,28 @@ def prepare_all_args(args: ParsedArguments) -> None:
             continue
         config = {**selection.config, "device": args.module_kwargs.device}
         setattr(args, field_name, replace(selection, config=config))
+
+
+def apply_diarization_switch(module_kwargs: Any, enabled: bool) -> None:
+    """--with-diarization ⇔ 现有流式分离参数（spec 决策 2：不移植 sherpa-onnx）。
+
+    开启时沿用 parse_arguments 的默认模型补齐规则：流式分离 handler 以
+    ``module_kwargs.diarization_model_name`` 为门，缺省则开关不生效。
+    """
+    module_kwargs.diarization = bool(enabled)
+    if enabled and getattr(module_kwargs, "diarization_model_name", None) is None:
+        module_kwargs.diarization_model_name = "nvidia/Nemotron-3-Diarization"
+
+
+def validate_local_asr_mode(*, stt_backend_name: str | None) -> None:
+    """local ASR 模式要求 serve 已选 STT 定义（spec §9）。"""
+    if os.environ.get("LIVEKIT_WORKER_ASR_MODE", "gateway").strip().lower() != "local":
+        return
+    if not stt_backend_name or stt_backend_name == "none":
+        raise WorkerIntegrationError(
+            "LIVEKIT_WORKER_ASR_MODE=local requires a --stt backend definition; "
+            "select one or switch the worker ASR to gateway."
+        )
 
 
 def _build_handlers(
@@ -783,6 +805,7 @@ def build_pipeline(
     host: str | None = None,
     console_attachment: ConsoleAttachment | None = None,
     agent_options: AgentOptions | None = None,
+    livekit_options: SwitchOptions | None = None,
 ) -> ThreadManager:
     """Build a pool of pipeline units behind one server."""
     from speech_to_speech.api.openai_realtime.server import RealtimeServer
@@ -814,6 +837,20 @@ def build_pipeline(
             usage_provider=pool_usage_provider(pool),
         )
 
+    # The embedded LiveKit transcript worker shares the same stop event and follows
+    # the same ThreadManager handler protocol (run() + stop_event) as the agent.
+    livekit_runtime = None
+    if livekit_options is not None and livekit_options.autostart:
+        from speech_to_speech.livekit_worker import LiveKitWorkerRuntime
+
+        livekit_runtime = LiveKitWorkerRuntime(stop_event)
+        # local ASR 模式注入 pipeline STT handler（gateway 模式忽略）
+        for unit in pool:
+            for handler in unit.handlers:
+                if hasattr(handler, "transcribe_chunk"):
+                    livekit_runtime.attach_stt_handler(handler)
+                    break
+
     server = RealtimeServer(
         stop_event=stop_event,
         pool=pool,
@@ -832,6 +869,8 @@ def build_pipeline(
     handlers.append(server)
     if agent is not None:
         handlers.append(agent)
+    if livekit_runtime is not None:
+        handlers.append(livekit_runtime)
     return ThreadManager(handlers)
 
 
@@ -840,6 +879,7 @@ def build_local_pipeline(
     stop_event: Event,
     *,
     console_attachment: ConsoleAttachment | None = None,
+    livekit_options: SwitchOptions | None = None,
 ) -> ThreadManager:
     """Compose the canonical server and audio client over a forced loopback URL."""
 
@@ -876,7 +916,10 @@ def build_local_pipeline(
         tool_executor=tool_executor,
         tool_response_create=tool_response_create,
     )
-    server_manager = build_pipeline(args, stop_event, host="127.0.0.1", console_attachment=console_attachment)
+    server_manager = build_pipeline(
+        args, stop_event, host="127.0.0.1", console_attachment=console_attachment,
+        livekit_options=livekit_options,
+    )
     if args.tts_backend.name == "phonon":
         from speech_to_speech.TTS.phonon_tts_handler import PhononTTSHandler
 
@@ -903,12 +946,6 @@ def run_pipeline_command(
 ) -> None:
     """Run the server alone or compose it with the loopback audio client."""
 
-    # The CLI hands the resolved worker switches over before any model loads.
-    # The runtime wiring (embedded diarization and the LiveKit transcript worker
-    # inside the pool) lands in its own task; holding them here keeps the
-    # passthrough stable without changing behavior for switch-off runs.
-    _ = diarization_options, livekit_options
-
     args = parse_arguments(argv, command=command)
 
     from speech_to_speech.pipeline.console import conversation_output
@@ -918,7 +955,8 @@ def run_pipeline_command(
     )
     with conversation_output(conversation_only):
         _run_parsed_pipeline_command(
-            command, args, console_options=console_options, agent_options=agent_options
+            command, args, console_options=console_options, agent_options=agent_options,
+            diarization_options=diarization_options, livekit_options=livekit_options,
         )
 
 
@@ -928,6 +966,8 @@ def _run_parsed_pipeline_command(
     *,
     console_options: ConsoleOptions | None = None,
     agent_options: AgentOptions | None = None,
+    diarization_options: SwitchOptions | None = None,
+    livekit_options: SwitchOptions | None = None,
 ) -> None:
     """Run a parsed command with its terminal display policy already applied."""
 
@@ -939,6 +979,13 @@ def _run_parsed_pipeline_command(
         "127.0.0.1" if command == "local" else args.realtime_server_kwargs.host,
         args.realtime_server_kwargs.port,
     )
+    # Worker switch wiring, before any model loads: --with-diarization maps onto the
+    # existing streaming diarization argument, and local worker ASR requires an STT
+    # backend definition. Switch-off runs leave both untouched ("off means no footprint").
+    if diarization_options is not None and (diarization_options.autostart or diarization_options.explicit):
+        apply_diarization_switch(args.module_kwargs, diarization_options.autostart)
+    if livekit_options is not None and livekit_options.autostart:
+        validate_local_asr_mode(stt_backend_name=args.stt_backend.name)
     # Set the transcript gate and warn before any conversation is processed, so an operator
     # sees the notice ahead of the first turn rather than after content is already logged.
     set_log_transcripts(args.module_kwargs.log_transcripts)
@@ -964,13 +1011,17 @@ def _run_parsed_pipeline_command(
     stop_event = Event()
     with model_startup_output(command == "local" and console.quiet):
         pipeline_manager = (
-            build_local_pipeline(args, stop_event, console_attachment=console_attachment)
+            build_local_pipeline(
+                args, stop_event, console_attachment=console_attachment,
+                livekit_options=livekit_options,
+            )
             if command == "local"
             else build_pipeline(
                 args,
                 stop_event,
                 console_attachment=console_attachment,
                 agent_options=agent_options,
+                livekit_options=livekit_options,
             )
         )
 

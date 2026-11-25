@@ -140,3 +140,32 @@ def test_file_mode_switches_stripped_before_f() -> None:
     assert worker.explicit_flag == "--with-livekitworker"
     assert diar.autostart is False
     assert diar.explicit is False
+
+
+# ---------------------------------------------------------------------------
+# s2s_pipeline 接线：开关真正生效（Task 10）
+# ---------------------------------------------------------------------------
+
+
+def test_diarization_switch_maps_to_module_kwargs() -> None:
+    from types import SimpleNamespace
+
+    from speech_to_speech.s2s_pipeline import apply_diarization_switch
+
+    kwargs = SimpleNamespace(diarization=False)
+    apply_diarization_switch(kwargs, True)
+    assert kwargs.diarization is True
+    apply_diarization_switch(kwargs, False)
+    assert kwargs.diarization is False
+
+
+def test_local_asr_mode_requires_stt_definition(monkeypatch: pytest.MonkeyPatch) -> None:
+    from speech_to_speech.s2s_pipeline import validate_local_asr_mode
+    from speech_to_speech.worker_integration import WorkerIntegrationError
+
+    monkeypatch.setenv("LIVEKIT_WORKER_ASR_MODE", "local")
+    with pytest.raises(WorkerIntegrationError, match="local"):
+        validate_local_asr_mode(stt_backend_name=None)
+    validate_local_asr_mode(stt_backend_name="parakeet-tdt")
+    monkeypatch.setenv("LIVEKIT_WORKER_ASR_MODE", "gateway")
+    validate_local_asr_mode(stt_backend_name=None)  # gateway 无 STT 也可
