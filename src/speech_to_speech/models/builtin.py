@@ -24,6 +24,42 @@ def builtin_model_cards() -> tuple[ModelCard, ...]:
             notes="docs/hardware/performance-assumptions.md 实测口径；代码 help 另标约 4 GB。",
         ),
         ModelCard(
+            id="sensevoice-small",
+            name="SenseVoiceSmall",
+            kind="stt",
+            version="small",
+            provider="Alibaba FunAudioLLM",
+            weight_format="safetensors",
+            backend_name="sense-voice",
+            repo_id="FunAudioLLM/SenseVoiceSmall",
+            license="Apache-2.0",
+            min_vram_gb=0.4,
+            status="available",
+            notes=(
+                "FunASR CTC 非自回归模型，约 90 M 参数，FP16 显存 ~0.4 GB；"
+                "支持 zh/en/yue/ja/ko + 情感事件标签输出；项目当前 prod.yaml 默认 STT 后端，RTF≈0.06。"
+            ),
+        ),
+        ModelCard(
+            id="sensevoice-large",
+            name="SenseVoiceLarge",
+            kind="stt",
+            version="large",
+            provider="Alibaba FunAudioLLM",
+            weight_format="safetensors",
+            backend_name="sense-voice",
+            repo_id="FunAudioLLM/SenseVoiceLarge",
+            license="Apache-2.0",
+            min_vram_gb=1.5,
+            status="available",
+            notes=(
+                "FunASR CTC 非自回归模型，比 Small 大一档（论文称比 Whisper-large 快 15x）；"
+                "支持 50+ 语言，多语种覆盖显著优于 Small；"
+                "与 Small 共用 sense-voice 后端与 handler，仅需改 sense_voice_stt_model_name 即可切换；"
+                "handler 中 SER 情感 hook 为 best-effort，若 Large 架构差异导致 hook 失败仅失去 SER 置信度，转写不受影响。"
+            ),
+        ),
+        ModelCard(
             id="qwen3-tts-1.7b-customvoice",
             name="Qwen3-TTS-12Hz-1.7B-CustomVoice",
             kind="tts",

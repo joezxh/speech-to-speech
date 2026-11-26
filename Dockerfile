@@ -6,12 +6,15 @@
 #
 # 本镜像只含代码 + Python 环境，不内置任何模型权重：
 #   - STT : qwen3-asr    （transformers，基础镜像已带）
-#   - TTS : qwen3        （faster-qwen3-tts，default 依赖已带）
+#   - TTS : voxcpm        （VoxCPM2-2B；voxcpm 包在下方 runtime extras 层安装，
+#                          权重由 ./cache 卷挂载，S2S_TTS_MODEL_DIR 指过去）
 #   - VAD : silero-vad   （运行时由 ./silero-vad 卷挂载到 /opt/silero-vad）
-#   - 模型权重 qwen3-asr-model-hf / qwen3-tts-model 由 ./cache 卷挂载到 /root/.cache
+#   - 模型权重 qwen3-asr-model-hf / voxcpm2-2b 由 ./cache 卷挂载到 /root/.cache
 # 因此本镜像体积小，换模型/模型更新无需重 build。
 #
-# qwen3-asr 与 qwen3-tts 都在 pyproject 的 default 依赖内，不依赖任何 extra。
+# qwen3-asr 在 pyproject 的 default 依赖内；voxcpm 与 livekit worker（prod.yaml 的
+# runtime.livekit_worker.enabled）是可选 extra，按本地 PyCharm 部署同款版本在
+# extras 层显式安装（见下方注释）。SoX 系统工具同步入镜像（apt sox）。
 # uv sync 的通用解析会把所有 extra（含 darwin-only 的 kokoro/mlx）纳入而导致
 # tqdm 版本不可解，故构建期删除全部 optional-dependencies，仅解析 default 依赖。
 #
@@ -104,6 +107,24 @@ COPY console/backend/requirements.txt /tmp/console-requirements.txt
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python /usr/src/app/.venv/bin/python -r /tmp/console-requirements.txt
 
+# Runtime optional components，对齐本地 PyCharm 部署（以 config/prod.yaml 为准）：
+#   - voxcpm: prod pipeline 的 TTS backend=voxcpm（VoxCPM2-2B，权重运行时挂载）。
+#   - livekit worker: runtime.livekit_worker.enabled: true 起嵌入式 worker，需
+#     livekit-agents 0.12.x + livekit-plugins-silero（livekit-agents 0.12.21 已无
+#     [silero] extra，插件单独装，与本地实装组合一致）。
+# pyproject 的 livekit extra 另钉 av>=12.3,<13：容器 venv 无 aiortc（那是 dev 依赖，
+# 要求 av>=14），voxcpm 也不碰 av，故无冲突，照 extra 定义钉死。本层不进
+# uv sync 的全图解析（上方已删 extras 保可解），与本地一样事后补装；代价是
+# 这些版本不受 uv.lock 约束，升级基础镜像/依赖时需同步复核。
+RUN --mount=type=cache,target=/root/.cache/uv \
+    UV_TIMEOUT=180 UV_CONNECT_TIMEOUT=60 UV_RETRIES=8 \
+    uv pip install --python /usr/src/app/.venv/bin/python \
+        "voxcpm" \
+        "livekit-agents>=0.12,<0.13" \
+        "livekit-plugins-silero>=0.7,<0.8" \
+        "av>=12.3.0,<13" \
+        "requests>=2.31"
+
 # 仅复制源码（不 COPY . .，避免把宿主 ./cache 模型塞进镜像——权重由运行时卷挂载提供）。
 COPY src ./src
 
@@ -133,7 +154,8 @@ EXPOSE 8000
 # 容器内 nltk 数据 CDN 可能连接挂起（SSRF 代理不快速失败），故用 timeout 硬上限兜底，失败不致命。
 RUN echo "[build] downloading nltk data (best-effort, timeout-guarded)" && \
     timeout 90 python -c "import nltk; [nltk.download(p, quiet=True) for p in ('punkt','punkt_tab','averaged_perceptron_tagger_eng')]" || true
-# Install packages
+# Install packages（sox：pipeline 的 sox 子进程调用；本地曾报 'sox' is not
+# recognized，容器同样需要系统级可执行；libsndfile1 已在列）
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -143,6 +165,7 @@ RUN apt-get update \
         python3 \
         python3-pip \
         python3-venv \
+        sox \
     && rm -rf /var/lib/apt/lists/*
 # Install the latest pip alongside the distribution-managed copy.
 RUN python3 -m pip install --no-cache-dir --break-system-packages --ignore-installed --upgrade pip \

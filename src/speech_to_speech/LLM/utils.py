@@ -19,7 +19,7 @@ SMART_PUNCT_TRANSLATION = str.maketrans(
 )
 
 SPEECHABLE_PATTERN = re.compile(
-    r"[^\w\s.,!?;:'\"\-()\/\\@#%&*+=$€£¥₹₽¢\[\]{}<>~`^|…—–，。！？；：、\n\r\t]",
+    r"[^\w\s.,!?;:'\"\-()\/\\@#%&*+=$€£¥₹₽¢\[\]{}<>~`^|…—–，。！？；：、｡؟।॥\n\r\t]",
     flags=re.UNICODE,
 )
 
@@ -100,14 +100,30 @@ def _has_unclosed_markdown_fence(text: str) -> bool:
     return opening_ticks is not None
 
 
-def _regex_sent_tokenize(text: str) -> list[str]:
-    """Lightweight sentence splitter used when nltk's ``punkt`` resource is
-    unavailable (offline / blocked downloads). Splits on sentence-final
-    punctuation followed by whitespace and keeps the punctuation attached."""
-    if not text.strip():
-        return [text]
-    parts = re.split(r"(?<=[.!?。！？…])\s+", text)
-    return [p for p in parts if p]
+# NLTK's Punkt tokenizer only ends a sentence at ASCII ". ? !", so CJK, Arabic
+# and Devanagari replies would otherwise stay one sentence until the stream
+# ends. Split again after those terminators, keeping closing quotes and brackets
+# with the sentence they close.
+_NON_LATIN_SENTENCE_END_PATTERN = re.compile(r"[。！？｡؟।॥]+[」』）”’\"')]*")
+
+
+def _split_after_non_latin_terminators(sentence: str) -> list[str]:
+    # Complete Markdown code and emphasis are already masked. A delimiter left
+    # here may open a span that is still streaming, so leave the sentence whole,
+    # as Punkt alone would, rather than send half a span to TTS.
+    if "`" in sentence or "*" in sentence:
+        return [sentence]
+    parts: list[str] = []
+    start = 0
+    for match in _NON_LATIN_SENTENCE_END_PATTERN.finditer(sentence):
+        parts.append(sentence[start : match.end()].strip())
+        start = match.end()
+    if not parts:
+        return [sentence]
+    remainder = sentence[start:].strip()
+    if remainder:
+        parts.append(remainder)
+    return parts
 
 
 def sent_tokenize_preserving_markdown_code(
@@ -127,8 +143,9 @@ def sent_tokenize_preserving_markdown_code(
         # pipeline never dies with "I'm having trouble responding right now".
         raw_sentences = _regex_sent_tokenize(protected_text)
     return [
-        _restore_markdown_code(_restore_matched_emphasis(sentence, protected_emphasis), protected_code)
-        for sentence in raw_sentences
+        _restore_markdown_code(_restore_matched_emphasis(part, protected_emphasis), protected_code)
+        for sentence in tokenizer(protected_text)
+        for part in _split_after_non_latin_terminators(sentence)
     ]
 
 

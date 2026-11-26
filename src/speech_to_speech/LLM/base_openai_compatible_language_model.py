@@ -4,6 +4,7 @@ import asyncio
 import ipaddress
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterator
 from queue import Empty, Full, Queue
@@ -18,6 +19,7 @@ import httpx2
 from nltk import sent_tokenize
 from openai import (
     DEFAULT_CONNECTION_LIMITS,
+    APIStatusError,
     APITimeoutError,
     AsyncOpenAI,
     DefaultAsyncHttpx2Client,
@@ -90,6 +92,23 @@ PREFETCH_WORKER_ACQUIRE_TIMEOUT_S = 0.05
 # A streaming prefetch worker notices cancellation within one 0.05 s poll.
 PREFETCH_WORKER_RELEASE_TIMEOUT_S = 0.5
 PROVIDER_FAILURE_FALLBACK = "I'm having trouble responding right now. Please try again."
+# Provider wording for a deployment that cannot take image input, e.g. llama.cpp
+# without an mmproj ("image input is not supported"), vLLM ("is not a multimodal
+# model") or OpenAI ("image_url is only supported by certain models").
+_IMAGE_INPUT_UNSUPPORTED_RE = re.compile(
+    r"image[^.]*\b(?:not supported|unsupported|only supported)\b"
+    r"|does not support (?:image|vision)|not a multimodal model",
+    re.IGNORECASE,
+)
+
+
+def _is_image_input_rejection(exc: Exception) -> bool:
+    """Whether the provider refused the request because it cannot process images."""
+    return isinstance(exc, (APIStatusError, _ProviderResponseError)) and bool(
+        _IMAGE_INPUT_UNSUPPORTED_RE.search(str(exc))
+    )
+
+
 # How long an idle provider connection stays open for the next request. The
 # SDK's 5 s is shorter than the pause between two turns of a conversation, so
 # every turn would open a new connection.
@@ -118,6 +137,10 @@ def _read_timed_out(exc: Exception) -> bool:
     """Whether a provider read timed out; the SDK raises it as ``APITimeoutError``."""
     cause = exc.__cause__ if isinstance(exc, APITimeoutError) else exc
     return isinstance(cause, httpx2.ReadTimeout)
+
+
+class _ProviderResponseError(RuntimeError):
+    """An error reported inside a provider response rather than by HTTP status."""
 
 
 class TextDelta(BaseModel):
@@ -172,6 +195,8 @@ class ProviderResponseEnd(BaseModel):
     status: Literal["completed", "incomplete", "failed"] = "completed"
     reason: ResponseIncompleteReason | None = None
     error: str | None = None
+    # What the provider said ended a normal completion, kept for diagnostics.
+    finish_reason: str | None = None
     # Responses output_index order, independent of item completion timing.
     history_item_order: list[str] | None = None
 
@@ -852,7 +877,9 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             if isinstance(event, ProviderResponseEnd):
                 state.ending = event
                 if event.status == "failed":
-                    raise RuntimeError(event.error or "The language model provider reported a failed response.")
+                    raise _ProviderResponseError(
+                        event.error or "The language model provider reported a failed response."
+                    )
             elif isinstance(event, AssistantMessage):
                 state.history_items.append(event.to_chat_item())
             elif isinstance(event, ResponseReasoningItem):
@@ -943,7 +970,9 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
             if isinstance(event, ProviderResponseEnd):
                 state.ending = event
                 if event.status == "failed":
-                    raise RuntimeError(event.error or "The language model provider reported a failed response.")
+                    raise _ProviderResponseError(
+                        event.error or "The language model provider reported a failed response."
+                    )
             elif isinstance(event, AssistantMessage):
                 state.history_items.append(event.to_chat_item())
             elif isinstance(event, ResponseReasoningItem):
@@ -979,6 +1008,33 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
 
     # ── orchestration ─────────────────────────────────────────────────────────
 
+    def _log_empty_completion(
+        self,
+        active_chat: Chat,
+        turn: _Turn,
+        state: _GenState,
+        optional_kwargs: dict[str, Any],
+    ) -> None:
+        """Record what the provider was asked when it finished with nothing to say.
+
+        Clients only see ``response.done`` with no output, which looks the same
+        as a lost response. Log the shape of the request and the provider's
+        terminal so the two can be told apart, without any conversation text.
+        """
+        last_item = active_chat.buffer[-1] if active_chat.buffer else None
+        logger.warning(
+            "LLM completed without output: response_key=%s finish_reason=%s output_tokens=%d "
+            "items=%d last_item=%s tool_choice=%s tools=%d cancel_generation=%s",
+            turn.response_key,
+            state.ending.finish_reason,
+            state.output_tokens,
+            len(active_chat.buffer),
+            getattr(last_item, "role", None) or getattr(last_item, "type", None),
+            optional_kwargs.get("tool_choice"),
+            len(optional_kwargs.get("tools") or []),
+            turn.gen,
+        )
+
     def _generate(
         self,
         active_chat: Chat,
@@ -992,6 +1048,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         input_history: SupportedItem | None = None,
         audio_history_turns: int | None = None,
         consumed_audio_items: list[RealtimeConversationItemUserMessage] | None = None,
+        generation_started_at_s: float | None = None,
     ) -> Generator[LLMOut, None, bool]:
         api_response: Any = None
         events: Iterator[ProviderEvent] | None = None
@@ -1006,6 +1063,7 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         )
         provider_request_started = False
         consumed_image_ids: set[str] = set()
+        image_input_error: str | None = None
         store = getattr(self, "turn_latency_store", None)
         tracker = store.get_response(turn.response_key) if store else None
         trace_context = HttpRequestContext(
@@ -1017,7 +1075,8 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         )
 
         try:
-            generation_started_at_s = perf_counter()
+            if generation_started_at_s is None:
+                generation_started_at_s = perf_counter()
             if tracker is not None:
                 tracker.record_llm_start(generation_started_at_s)
             try:
@@ -1123,6 +1182,8 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     log_exception(logger, "LLM generation failed; ending the current response", exc)
                     if error_message is None:
                         error_message = f"Language model generation failed: {exc}"
+                if consumed_image_ids and _is_image_input_rejection(exc):
+                    image_input_error = str(exc)
             finally:
                 self._close_response(events)
                 self._close_response(api_response)
@@ -1130,6 +1191,33 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                 # the response on the service thread.
                 if tracker is not None and provider_request_started:
                     tracker.record_llm(perf_counter() - generation_started_at_s)
+
+            if (
+                image_input_error is not None
+                and (turn.prefetch_transaction is None or turn.prefetch_transaction.claimed)
+                and not self._generation_is_stale(turn.gen)
+                and self._turn_output_allowed(turn.turn_id, turn.turn_revision)
+            ):
+                active_chat.strip_images(consumed_image_ids, error=image_input_error)
+                if not is_out_of_band(turn.response):
+                    original_chat.strip_images(consumed_image_ids, error=image_input_error)
+                if not state.output_emitted:
+                    # No images remain in this snapshot, so recovery cannot repeat.
+                    # Disable tools for the explanation; generation failure must not replay actions.
+                    generation_completed = yield from self._generate(
+                        active_chat,
+                        original_chat,
+                        turn,
+                        {**optional_kwargs, "tool_choice": "none"},
+                        serialize_fn=serialize_fn,
+                        request_fn=request_fn,
+                        event_iterator_fn=event_iterator_fn,
+                        input_history=input_history,
+                        audio_history_turns=audio_history_turns,
+                        consumed_audio_items=consumed_audio_items,
+                        generation_started_at_s=generation_started_at_s,
+                    )
+                    return generation_completed
 
             if (
                 provider_request_started
@@ -1153,6 +1241,14 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
                     response_key=turn.response_key,
                     prefetch_transaction=turn.prefetch_transaction,
                 )
+
+            if (
+                generation_completed
+                and error_message is None
+                and state.ending.status == "completed"
+                and not state.output_emitted
+            ):
+                self._log_empty_completion(active_chat, turn, state, optional_kwargs)
 
             proposal_allowed = (
                 error_message is None
@@ -1299,15 +1395,6 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         original_chat = runtime_config.chat
         active_chat = original_chat.copy(deep=True)
         history_anchor_id = active_chat.history_anchor_id()
-        if not is_out_of_band(response) and active_chat.has_pending_tool_calls():
-            yield EndOfResponse(
-                turn_id=turn_id,
-                turn_revision=turn_revision,
-                cancel_generation=gen,
-                response_key=request.response_key,
-                error="Cannot generate a response while function call outputs are pending.",
-            )
-            return
         if is_out_of_band(response):
             try:
                 active_chat = build_active_chat(active_chat, response)
@@ -1419,15 +1506,6 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         original_chat = runtime_config.chat
         active_chat = original_chat.copy(deep=True)
         history_anchor_id = active_chat.history_anchor_id()
-        if not is_out_of_band(response) and active_chat.has_pending_tool_calls():
-            yield EndOfResponse(
-                turn_id=turn_id,
-                turn_revision=turn_revision,
-                cancel_generation=gen,
-                response_key=request.response_key,
-                error="Cannot generate a response while function call outputs are pending.",
-            )
-            return
         if is_out_of_band(response):
             try:
                 active_chat = build_active_chat(active_chat, response)

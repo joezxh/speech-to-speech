@@ -72,6 +72,7 @@ class Qwen3ASRSTTHandler(BaseSTTHandler):
         language: Optional[str] = "auto",
         prompt: Optional[str] = None,
         gen_kwargs: Optional[dict[str, Any]] = None,
+        revision: Optional[str] = None,
     ) -> None:
         logger.info("Loading Qwen3-ASR STT model: %s", model_name)
         self.model_name = model_name
@@ -81,11 +82,13 @@ class Qwen3ASRSTTHandler(BaseSTTHandler):
         self.gen_kwargs = dict(gen_kwargs or {})
         self.configure_language(language)
 
-        self.processor = transformers.AutoProcessor.from_pretrained(model_name)
+        self.processor = transformers.AutoProcessor.from_pretrained(model_name, revision=revision)
         if self.prompt and not _accepts_prompt(self.processor):
             logger.warning("Ignoring the Qwen3-ASR prompt: passing context needs transformers>=5.15.1.")
             self.prompt = None
-        model = transformers.AutoModelForMultimodalLM.from_pretrained(model_name, dtype=self.torch_dtype)
+        model = transformers.AutoModelForMultimodalLM.from_pretrained(
+            model_name, revision=revision, dtype=self.torch_dtype
+        )
         self.model = model.to(self.device).eval()
         self.warmup()
 

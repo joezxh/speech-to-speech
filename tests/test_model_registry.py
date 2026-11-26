@@ -160,13 +160,15 @@ def test_builtin_catalog_status_counts_and_license_gate():
     from speech_to_speech.models.builtin import builtin_model_cards
 
     cards = builtin_model_cards()
-    assert len(cards) == 13
-    assert len({c.id for c in cards}) == 13
+    assert len(cards) == 15
+    assert len({c.id for c in cards}) == 15
     assert sorted(c.id for c in cards if c.status == "available") == [
         "cosyvoice2",
         "qwen3-asr-1.7b-hf",
         "qwen3-tts-1.7b-customvoice",
         "qwen3.5-4b-transformers",
+        "sensevoice-large",
+        "sensevoice-small",
         "voxcpm-0.5b",
         "voxcpm1.5-0.8b",
         "voxcpm2-2b",
@@ -193,7 +195,11 @@ def test_builtin_cards_bind_without_error():
         reg.register(item)
     reg.bind(
         {
-            "stt": {"qwen3-asr": FakeSpec("stt"), "whisper": FakeSpec("stt")},
+            "stt": {
+                "qwen3-asr": FakeSpec("stt"),
+                "whisper": FakeSpec("stt"),
+                "sense-voice": FakeSpec("stt"),
+            },
             "llm": {"transformers": FakeSpec("llm")},
             "tts": {
                 "qwen3": FakeSpec("tts"),
@@ -202,7 +208,7 @@ def test_builtin_cards_bind_without_error():
             },
         }
     )
-    assert len(reg.list()) == 13
+    assert len(reg.list()) == 15
 
 
 def test_backend_spec_has_default_models_field():
@@ -218,7 +224,7 @@ def test_importing_backend_registry_populates_global_catalog():
     from speech_to_speech import model_registry as mr
     from speech_to_speech.backend_registry import STT_BACKENDS  # noqa: F401
 
-    assert len(mr.list_models()) == 13
+    assert len(mr.list_models()) == 15
     assert mr.get_model("breeze-tts-2").status == "planned"
 
 
@@ -228,7 +234,11 @@ def test_backend_registry_import_keeps_handler_lazy_loading():
 
 def _inline_registries(spec):
     return {
-        "stt": {"qwen3-asr": FakeSpec("stt"), "whisper": FakeSpec("stt")},
+        "stt": {
+            "qwen3-asr": FakeSpec("stt"),
+            "whisper": FakeSpec("stt"),
+            "sense-voice": FakeSpec("stt"),
+        },
         "llm": {"transformers": FakeSpec("llm")},
         "tts": {
             "qwen3": spec,
@@ -247,7 +257,7 @@ def test_bind_model_cards_registers_inline_cards(monkeypatch):
     mr.bind_model_cards(_inline_registries(tts_spec))
     assert "inline-tts" in {c.id for c in reg.list()}
     assert reg.get("inline-tts") is inline
-    assert len(reg.list()) == 14
+    assert len(reg.list()) == 16
 
 
 def test_bind_model_cards_rejects_inline_duplicate_of_builtin(monkeypatch):

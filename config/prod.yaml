@@ -40,15 +40,14 @@ blocks:
 
   stt:
     kind: stt
-    # 从 qwen3-asr（自回归，实测 RTF 0.47~0.90）换成 SenseVoiceSmall（非自回归）。
-    # 本机实测 2.64s 中文音频稳态 0.16s、RTF 0.06，快约一个数量级。
-    # handler 已过滤情感 emoji，避免 😊/🎼 进入下游 TTS。
-    backend: sense-voice
+    # Qwen3-ASR-1.7B：自回归多模态 ASR，准确率高于 SenseVoiceSmall/Large，
+    # 代价是 RTF 0.47~0.90（自回归解码），比 CTC 非自回归慢一个数量级。
+    backend: qwen3-asr
     settings:
-      # ModelScope iic/SenseVoiceSmall 下载到本地；funasr AutoModel 从本地目录加载。
-      sense_voice_stt_model_name: {env: S2S_SENSEVOICE_MODEL_DIR}
-      sense_voice_stt_device: cuda
-      sense_voice_stt_language: zh
+      qwen3_asr_model_name: {env: S2S_ASR_MODEL_DIR}
+      qwen3_asr_device: cuda
+      qwen3_asr_language: auto
+      qwen3_asr_gen_max_new_tokens: 256
 
   llm:
     kind: llm
@@ -80,14 +79,14 @@ blocks:
 
   tts:
     kind: tts
-    backend: qwen3
+    # 从 qwen3-tts-1.7b-customvoice 换成 VoxCPM2-2B：更高音质（48 kHz），
+    # 扩散式语音生成，支持流式输出。
+    backend: voxcpm
     settings:
-      qwen3_tts_model_name: {env: S2S_TTS_MODEL_DIR}
-      qwen3_tts_backend: torch
-      qwen3_tts_device: cuda
-      qwen3_tts_language: auto
-      qwen3_tts_non_streaming_mode: false
-      qwen3_tts_streaming_chunk_size: 4
+      voxcpm_tts_model_name: {env: S2S_TTS_MODEL_DIR}
+      voxcpm_tts_device: cuda
+      voxcpm_tts_dtype: auto
+      voxcpm_tts_streaming: true
 
 pipelines:
   # `--name prod` in the compose command selects this definition and nothing
@@ -107,6 +106,17 @@ pipelines:
       enable_visemes: true
       stv_model_name: {env: S2S_STV_MODEL_DIR}
       stv_device: cpu
+      # 说话人分离：file 模式不接受 --with-diarization 命令行开关（cli.py 会
+      # 直接 exit 2），只能经本 YAML 起停。置 true 后随 serve 启动嵌入式
+      # DiarizationWorker。prod.env 的 HF_HUB_OFFLINE=1 下任何 repo id 都会因
+      # 无缓存而启动失败，故权重已预取到本地目录（仅 safetensors+配置，
+      # 经 hf-mirror 拉取）；删掉 model_name 行则回退默认 repo id（需联网）。
+      diarization: true
+      diarization_model_name: cache/nemotron3-diarization
+      # 12GB 卡显存吃紧（服务独占 ~10.4GB 并已溢出到共享显存）：默认 fp32
+      # 改 bf16 可省 ~0.5GB，对说话人分离精度几乎无感。取值限
+      # float32/float16/bfloat16。
+      diarization_dtype: bfloat16
 
 runtime:
   server:
@@ -114,3 +124,11 @@ runtime:
     # outside the container.
     host: 0.0.0.0
     port: 8765
+
+  # 嵌入式 LiveKit worker：随本服务启动/停止（共享 pipeline stop event），无需
+  # 单独容器。密钥不进 YAML：启动前 fail-fast 校验的 LIVEKIT_URL / API_KEY /
+  # API_SECRET 及 LIVEKIT_WORKER_ASR_MODE=local 均在 config/prod.env 声明；
+  # local 模式要求 STT backend，本文件 stt 块已满足。
+  livekit_worker:
+    enabled: true
+

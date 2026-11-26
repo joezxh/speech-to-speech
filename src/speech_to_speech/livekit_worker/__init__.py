@@ -32,6 +32,20 @@ class LiveKitWorkerRuntime:
         self._shared_stt_handler = stt_handler
         self._loop: asyncio.AbstractEventLoop | None = None
         self._server: object | None = None
+        # livekit-agents 要求插件在主线程注册（Plugin.register_plugin 会断言），而
+        # worker.py 的顶层 `from livekit.plugins import silero` 在 handler 线程的
+        # _serve 里才执行，会炸 RuntimeError: Plugins must be registered on the main
+        # thread。故在构造期（build_pipeline / build_configured_server 均在主线程）
+        # 预先导入完成注册，线程内再导入命中 sys.modules 即为 no-op。
+        # 缺 SDK 或不在主线程构造时仅警告，维持“worker 不可用但不拖垮语音流程”
+        # 的既定容错语义（崩溃仍由 _log_serve_crash 隔离记录）。
+        try:
+            from livekit.plugins import silero  # noqa: F401
+        except (ImportError, RuntimeError) as exc:
+            logger.warning(
+                "LiveKit silero plugin pre-import failed (%s); the worker thread may crash on start "
+                "while the speech pipeline keeps running", type(exc).__name__
+            )
 
     @property
     def name(self) -> str:
@@ -65,13 +79,17 @@ class LiveKitWorkerRuntime:
 
     @staticmethod
     def _log_serve_crash(serve_future: Future) -> None:
+        # 停机路径的取消不是崩溃：future 被 cancel 后调 exception() 会反而
+        # 抛 CancelledError 进 asyncio 回调错误日志。
+        if serve_future.cancelled():
+            return
         exc = serve_future.exception()
         if exc is not None:
             logger.error("livekit-worker thread crashed; pipeline keeps running", exc_info=exc)
 
-    @staticmethod
-    def _shutdown_loop(loop: asyncio.AbstractEventLoop) -> None:
-        """停机收尾：取消 loop 内在飞任务后再 stop，避免悬挂任务告警。"""
+    def _shutdown_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """停机收尾：取消 loop 内在飞任务并尽力关闭 worker 会话后再 stop，避免悬挂任务与
+        aiohttp 会话泄漏告警。"""
 
         async def _cancel_pending() -> None:
             tasks = [task for task in asyncio.all_tasks(loop) if not task.done()]
@@ -79,6 +97,13 @@ class LiveKitWorkerRuntime:
                 task.cancel()
             if tasks:
                 await asyncio.gather(*tasks, return_exceptions=True)
+            server = self._server
+            aclose = getattr(server, "aclose", None)
+            if aclose is not None:
+                try:
+                    await aclose()
+                except Exception:  # noqa: BLE001 - 关停路径尽力而为
+                    pass
 
         try:
             asyncio.run_coroutine_threadsafe(_cancel_pending(), loop).result(timeout=5)
@@ -95,17 +120,21 @@ class LiveKitWorkerRuntime:
         worker.set_shared_state(
             stt_handler=self._resolve_stt_handler(), stop_event=self.stop_event,
         )
-        try:
-            from livekit.agents.worker import WorkerServer
-        except ImportError:  # noqa: PLC0415 - 0.12.x 内嵌 API 名称实现期核对
-            from livekit.agents import WorkerServer  # type: ignore[no-redef]
+        # 实现期核对（livekit-agents 0.12.21，pyproject 钉 >=0.12,<0.13）：内嵌入口
+        # 是 Worker 而非 WorkerServer；无独立 start()，run() 一个协程完成注册与驻留。
+        # devmode=False：对接自管 LiveKit server，不启本地开发模式集成；loop 显式
+        # 传入本专用 loop，避免隐式 get_event_loop 在子线程的弃用告警。
+        from livekit.agents import Worker
 
-        server = WorkerServer(WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            port=HEALTH_PORT,
-            agent_name=AGENT_NAME,
-            load_threshold=LOAD_THRESHOLD,
-        ))
+        server = Worker(
+            WorkerOptions(
+                entrypoint_fnc=entrypoint,
+                port=HEALTH_PORT,
+                agent_name=AGENT_NAME,
+                load_threshold=LOAD_THRESHOLD,
+            ),
+            devmode=False,
+            loop=asyncio.get_running_loop(),
+        )
         self._server = server
-        await server.start()
         await server.run()
