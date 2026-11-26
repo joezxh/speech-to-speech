@@ -102,6 +102,11 @@ Environment:
 Only "serve" and "local" host the worker. With the switch on, the worker joins
 LiveKit rooms as a participant, transcribes remote audio with VAD segmentation,
 and delivers results through the callback subsystem and local transcript sinks.
+
+File mode (-f): both capabilities are configured in the YAML instead —
+pipelines.<name>.options.diarization enables speaker separation, and
+runtime.livekit_worker.enabled starts the embedded worker. The --with-* /
+--no-with-* switches are rejected in file mode; environment autostart only warns.
 """
 
 
@@ -304,6 +309,15 @@ def parse_talk_arguments(argv: Sequence[str]) -> RealtimeAudioClientConfig:
     )
 
 
+def _is_file_mode(command_args: Sequence[str]) -> bool:
+    """Shared predicate: one -f/--file occurrence anywhere routes the command to file mode."""
+
+    return any(
+        argument.startswith("-f") or argument == "--file" or argument.startswith("--file=")
+        for argument in command_args
+    )
+
+
 def _run_file_command(
     command: Command,
     command_args: list[str],
@@ -330,17 +344,24 @@ def _run_file_command(
         parser.error("Specify exactly one configuration file with -f or --file.")
     if command == "talk" and namespace.name is not None:
         parser.error("talk does not accept --name.")
-    # Neither switch is wired into the configured runtime yet; the options only ride
-    # along. Staying silent would make `serve -f x --with-livekitworker` look enabled
-    # after validate_worker_options passed, so warn once the switch resolved on.
-    if diarization_options.autostart:
-        print(
-            "Warning: --with-diarization is not wired for -f file mode yet; streaming diarization will not start.",
-            file=sys.stderr,
+    # Both capabilities are configured in the YAML for file mode; a command-line
+    # switch would silently compete with the resolved config, so reject explicit
+    # ones and warn when only the environment asked for them.
+    if diarization_options.explicit:
+        reported = diarization_options.explicit_flag or DIARIZATION_WITH_FLAG
+        parser.error(
+            f"file mode does not accept {reported}; set pipelines.<name>.options.diarization in the YAML."
         )
-    if livekit_options.autostart:
+    if livekit_options.explicit:
+        reported = livekit_options.explicit_flag or LIVEKIT_WITH_FLAG
+        parser.error(
+            f"file mode does not accept {reported}; set runtime.livekit_worker.enabled: true in the YAML."
+        )
+    if not diarization_options.explicit and diarization_options.autostart:
+        print("Warning: DIARIZATION_AUTOSTART is ignored in file mode; use the YAML pipeline option.", file=sys.stderr)
+    if not livekit_options.explicit and livekit_options.autostart:
         print(
-            "Warning: --with-livekitworker is not wired for -f file mode yet; the worker will not start.",
+            "Warning: LIVEKIT_WORKER_AUTOSTART is ignored in file mode; use runtime.livekit_worker.enabled.",
             file=sys.stderr,
         )
     try:
@@ -364,9 +385,11 @@ def _run_file_command(
             config,
             console_options=console_options,
             agent_options=agent_options,
-            diarization_options=diarization_options,
-            livekit_options=livekit_options,
         )
+    except WorkerIntegrationError as exc:
+        # The runtime validates worker settings before models load; the message names
+        # the missing environment entries, so it can reach the user verbatim.
+        parser.exit(2, f"Configuration error: {exc}\n")
     except ConsoleIntegrationError as exc:
         parser.exit(2, f"Configuration error: {exc}\n")
     except ConfigurationError:
@@ -464,9 +487,7 @@ def _dispatch(
     if command == "models":
         _run_models_command(command_args)
         return
-    if any(
-        argument.startswith("-f") or argument == "--file" or argument.startswith("--file=") for argument in command_args
-    ):
+    if _is_file_mode(command_args):
         _run_file_command(command, command_args, console_options, agent_options, diarization_options, livekit_options)
         return
     if any(argument == "--name" or argument.startswith("--name=") for argument in command_args):
@@ -573,10 +594,12 @@ def main() -> None:
             print(f"Configuration error: {exc}", file=sys.stderr)
             raise SystemExit(2) from None
 
-    if command != "talk":
+    if command != "talk" and not _is_file_mode(command_args):
         try:
             # Fail before any model loads: serve and local are the only commands
             # that host the worker, so the LiveKit settings must already be valid.
+            # File mode defers this to the configured runtime, which validates only
+            # when the YAML enables the worker.
             validate_worker_options(livekit_options)
         except WorkerIntegrationError as exc:
             print(f"Configuration error: {exc}", file=sys.stderr)

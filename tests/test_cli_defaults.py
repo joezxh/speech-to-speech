@@ -902,3 +902,83 @@ def test_parse_arguments_preserves_kitten_backend_options():
 def test_parse_arguments_rejects_unsupported_kitten_device():
     with pytest.raises(SystemExit):
         parse_arguments(["--tts", "kitten", "--kitten_device", "cuda"])
+
+
+def test_file_mode_rejects_with_diarization(configured_cli, monkeypatch, capsys):
+    path, calls = configured_cli
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "-f", str(path), "--with-diarization"])
+    with pytest.raises(SystemExit, match="2"):
+        main()
+    error = capsys.readouterr().err
+    assert "file mode does not accept --with-diarization" in error
+    assert "pipelines" in error and "diarization" in error
+    assert calls == []
+
+
+def test_file_mode_rejects_with_livekitworker(configured_cli, monkeypatch, capsys):
+    path, calls = configured_cli
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "-f", str(path), "--with-livekitworker"])
+    with pytest.raises(SystemExit, match="2"):
+        main()
+    error = capsys.readouterr().err
+    assert "file mode does not accept --with-livekitworker" in error
+    assert "runtime.livekit_worker.enabled" in error
+    assert calls == []
+
+
+@pytest.mark.parametrize("flag", ["--no-with-diarization", "--no-with-livekitworker"])
+def test_file_mode_rejects_no_with_variants(configured_cli, monkeypatch, capsys, flag):
+    path, calls = configured_cli
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "-f", str(path), flag])
+    with pytest.raises(SystemExit, match="2"):
+        main()
+    # The message echoes the spelling the caller actually used.
+    error = capsys.readouterr().err
+    assert f"file mode does not accept {flag}" in error
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    "env,needle",
+    [("DIARIZATION_AUTOSTART", "DIARIZATION_AUTOSTART"), ("LIVEKIT_WORKER_AUTOSTART", "LIVEKIT_WORKER_AUTOSTART")],
+)
+def test_file_mode_env_autostart_only_warns(configured_cli, monkeypatch, capsys, env, needle):
+    path, calls = configured_cli
+    monkeypatch.setenv(env, "true")
+    monkeypatch.delenv("LIVEKIT_URL", raising=False)
+    monkeypatch.delenv("LIVEKIT_API_KEY", raising=False)
+    monkeypatch.delenv("LIVEKIT_API_SECRET", raising=False)
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "-f", str(path), "--name", "primary"])
+    main()
+    error = capsys.readouterr().err
+    assert needle in error and "ignored in file mode" in error
+    assert calls and calls[0][0] == "serve"
+
+
+def test_flag_mode_worker_switch_still_works(monkeypatch, capsys):
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "--with-livekitworker"])
+    with pytest.raises(SystemExit, match="2"):
+        main()
+    # Flag mode keeps the pre-model env validation from main(); file mode must not steal it.
+    assert "--with-livekitworker needs LIVEKIT_URL" in capsys.readouterr().err
+
+
+def test_file_mode_worker_error_maps_to_exit_two(configured_cli, monkeypatch, capsys):
+    from speech_to_speech.worker_integration import WorkerIntegrationError
+
+    path, _ = configured_cli
+
+    def fail(*_args, **_kwargs):
+        raise WorkerIntegrationError("LIVEKIT_WORKER_ASR_MODE must be one of gateway|local; got 'broken'.")
+
+    monkeypatch.setitem(
+        sys.modules, "speech_to_speech.configured_runtime", SimpleNamespace(run_configured_command=fail)
+    )
+    monkeypatch.setattr(sys, "argv", ["speech-to-speech", "serve", "-f", str(path), "--name", "primary"])
+    with pytest.raises(SystemExit, match="2"):
+        main()
+    assert "LIVEKIT_WORKER_ASR_MODE" in capsys.readouterr().err

@@ -168,8 +168,9 @@ def test_configured_runtime_forwards_the_attachment(monkeypatch):
         ),
     )
     attachment = SimpleNamespace()
-    # build_configured_server itself checks len(config.pipelines) != 1.
-    config = SimpleNamespace(pipelines={"primary": object()})
+    # build_configured_server itself checks len(config.pipelines) != 1 and reads the
+    # runtime block for the livekit worker flag; a resolved config always carries both.
+    config = SimpleNamespace(pipelines={"primary": object()}, runtime={})
 
     runtime_module.build_configured_server(config, None, console_attachment=attachment)
 
