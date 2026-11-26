@@ -11,8 +11,8 @@ def register_api_routers(app: FastAPI) -> None:
     """
     from app.routers import (  # noqa: PLC0415 - import cycle avoidance
         agent,
-        audit,
         audio_proxy,
+        audit,
         auth,
         callbacks,
         catalog,
@@ -21,6 +21,7 @@ def register_api_routers(app: FastAPI) -> None:
         health,
         instances,
         lb,
+        live_transcripts,
         logs,
         machines,
         profiles,
@@ -74,6 +75,8 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(audit.router)
     # 回调配置面（spec 2026-11-25 §8.4）：查询 operator 可看，写仅管理员。
     app.include_router(callbacks.router)
+    # 实时转写 SSE 流（Task 14A）：与 callbacks 同权限码 console:callback:query。
+    app.include_router(live_transcripts.router)
 
     # The demo face is anonymous and unenveloped (A.13), so it goes last among the
     # API groups but still before the SPA catch-all.
