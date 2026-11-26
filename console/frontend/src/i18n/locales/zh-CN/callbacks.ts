@@ -17,6 +17,7 @@ export default {
   logDetail: '投递详情',
   logStatusFilter: '状态筛选',
   loadFailed: '回调列表加载失败',
+  actionFailed: '操作失败',
   edit: '编辑',
   delete: '删除',
   save: '保存',
@@ -31,6 +32,7 @@ export default {
     authType: '鉴权方式',
     authHeaderName: '鉴权头名',
     authToken: '凭据 Token',
+    authTokenHint: '保持掩码不变则沿用原凭据',
     timeoutMs: '超时 (ms)',
     retry: '重试',
     events: '订阅事件',
@@ -51,6 +53,11 @@ export default {
     target: '目标',
     event: '事件',
     duration: '耗时 (ms)'
+  },
+  status: {
+    success: '成功',
+    failed: '失败',
+    retrying: '重试中'
   },
   live: {
     connected: '已连接实时转写流',

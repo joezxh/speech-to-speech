@@ -17,6 +17,7 @@ export default {
   logDetail: 'Delivery Detail',
   logStatusFilter: 'Filter by status',
   loadFailed: 'Failed to load callback list',
+  actionFailed: 'Operation failed',
   edit: 'Edit',
   delete: 'Delete',
   save: 'Save',
@@ -31,6 +32,7 @@ export default {
     authType: 'Auth Type',
     authHeaderName: 'Auth Header',
     authToken: 'Credential Token',
+    authTokenHint: 'Leave as mask to keep the existing credential',
     timeoutMs: 'Timeout (ms)',
     retry: 'Retry',
     events: 'Subscribed Events',
@@ -52,6 +54,11 @@ export default {
     target: 'Target',
     event: 'Event',
     duration: 'Duration (ms)'
+  },
+  status: {
+    success: 'Success',
+    failed: 'Failed',
+    retrying: 'Retrying'
   },
   live: {
     connected: 'Connected to live transcript stream',

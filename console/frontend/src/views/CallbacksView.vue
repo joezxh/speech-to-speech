@@ -39,7 +39,13 @@
               <a-button type="link" size="small" @click="openEdit(record)">
                 {{ t('callbacks.edit') }}
               </a-button>
-              <a-button type="link" size="small" @click="runTest(record)">
+              <a-button
+                type="link"
+                size="small"
+                :loading="testingId === record.id"
+                :disabled="testingId !== null"
+                @click="runTest(record)"
+              >
                 {{ t('callbacks.test') }}
               </a-button>
               <a-popconfirm :title="t('callbacks.deleteConfirm')" @confirm="removeOne(record)">
@@ -123,6 +129,7 @@
         </a-form-item>
         <a-form-item v-if="form.authType !== 'none'" :label="t('callbacks.field.authToken')">
           <a-input-password v-model:value="form.authToken" />
+          <div class="callbacks__hint">{{ t('callbacks.field.authTokenHint') }}</div>
         </a-form-item>
         <a-form-item :label="t('callbacks.field.timeoutMs')">
           <a-input-number v-model:value="form.timeoutMs" :min="100" :max="60000" style="width: 100%" />
@@ -262,7 +269,9 @@ const logsPage = ref(1)
 const logPageSize = ref(20)
 const logsTotal = ref(0)
 const logStatus = ref<string | undefined>(undefined)
-const statusOptions = ['success', 'failed', 'retrying'].map((s) => ({ value: s, label: s }))
+const statusOptions = computed(() =>
+  (['success', 'failed', 'retrying'] as const).map((s) => ({ value: s, label: t(`callbacks.status.${s}`) }))
+)
 const logDetail = ref<DeliveryLog | null>(null)
 const logDetailOpen = ref(false)
 
@@ -435,7 +444,7 @@ async function toggleEnabled(record: CallbackTarget): Promise<void> {
     await updateTarget(record.id, { ...record, enabled: !record.enabled })
     await load()
   } catch (caught) {
-    message.error(errText(caught, t('callbacks.loadFailed')))
+    message.error(errText(caught, t('callbacks.actionFailed')))
   }
 }
 
@@ -445,7 +454,7 @@ async function removeOne(record: CallbackTarget): Promise<void> {
     message.success(t('callbacks.deleted'))
     await load()
   } catch (caught) {
-    message.error(errText(caught, t('callbacks.loadFailed')))
+    message.error(errText(caught, t('callbacks.actionFailed')))
   }
 }
 
@@ -456,11 +465,16 @@ async function batch(action: 'enable' | 'disable' | 'delete'): Promise<void> {
     message.success(t('callbacks.saved'))
     await load()
   } catch (caught) {
-    message.error(errText(caught, t('callbacks.loadFailed')))
+    message.error(errText(caught, t('callbacks.actionFailed')))
   }
 }
 
+// 测试投递是真实请求：同一目标进行中置 loading，全局同时只允许一条。
+const testingId = ref<number | null>(null)
+
 async function runTest(record: CallbackTarget): Promise<void> {
+  if (testingId.value !== null) return
+  testingId.value = record.id
   try {
     const result = await testTarget(record.id)
     if (result.ok) {
@@ -470,6 +484,8 @@ async function runTest(record: CallbackTarget): Promise<void> {
     }
   } catch (caught) {
     message.error(errText(caught, t('callbacks.testFail')))
+  } finally {
+    testingId.value = null
   }
 }
 
