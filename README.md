@@ -372,6 +372,29 @@ dependencies and a `JWT_SECRET_KEY` in `<CONSOLE_HOME>/.env`; when either is mis
 the command exits with code 2 *before* loading any model. Without the switch nothing
 changes: no console import, no `.env` read, no static mount.
 
+### LiveKit room transcript worker (optional)
+
+Install the optional `livekit` extra and start the embedded worker alongside `serve`:
+
+```bash
+pip install "speech-to-speech[livekit]"
+export LIVEKIT_URL=... LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=... VOICE_GATEWAY_BASE_URL=...
+speech-to-speech serve --with-livekitworker --with-diarization --with-console
+```
+
+- `--with-diarization` enables the existing streaming speaker separation for the
+  main pipeline; `--no-with-diarization` or `DIARIZATION_AUTOSTART` overrides it.
+- `--with-livekitworker` runs the LiveKit room transcript worker thread inside the
+  server process — a crash in the worker thread never takes down the pipeline.
+  Switches, environment variables and Python version constraints:
+  [docs/livekit-worker-integration-CN.md](docs/livekit-worker-integration-CN.md).
+- Transcripts are delivered through the configurable callback subsystem and shown
+  on the console "Callbacks" page (live subtitles included):
+  [docs/callback-subsystem-CN.md](docs/callback-subsystem-CN.md). The worker only
+  joins rooms dispatched by the LiveKit server (agent name defaults to `会议秘书`).
+
+Without the switches nothing changes: no extra import, no worker thread, no footprint.
+
 ## Realtime API
 
 The server logs per-response STT, LLM, first TTS audio, and speech-to-audio

@@ -292,6 +292,22 @@ docker compose up
 
 该 compose 文件启动一个带有 Gemma 4 的 llama.cpp 服务器和 Realtime 服务器，暴露端口 `8080` 和 `8765`。
 
+### LiveKit 房间转写 worker（可选）
+
+安装可选的 `livekit` extra，并让内嵌 worker 与 `serve` 同进程运行：
+
+```bash
+pip install "speech-to-speech[livekit]"
+export LIVEKIT_URL=... LIVEKIT_API_KEY=... LIVEKIT_API_SECRET=... VOICE_GATEWAY_BASE_URL=...
+speech-to-speech serve --with-livekitworker --with-diarization --with-console
+```
+
+- `--with-diarization` 为主 pipeline 启用既有的流式说话人分离；`--no-with-diarization` 或 `DIARIZATION_AUTOSTART` 可覆盖。
+- `--with-livekitworker` 在服务器进程内启动 LiveKit 房间转写 worker 线程——worker 线程崩溃不影响语音主流程。开关、环境变量与 Python 版本约束见 [docs/livekit-worker-integration-CN.md](docs/livekit-worker-integration-CN.md)。
+- 转写经可配置回调子系统投递，并在 console「回调管理」页展示（含实时字幕）：见 [docs/callback-subsystem-CN.md](docs/callback-subsystem-CN.md)。worker 只有被 LiveKit 服务端派发 job 才会进房（agent 名默认「会议秘书」）。
+
+不加开关时行为不变：不导入 extra、不启动 worker 线程、零足迹。
+
 ## Realtime API
 
 Realtime 模式通过 WebSocket 和 WebRTC 支持 OpenAI Realtime 协议，带有实时转写和低延迟轮次切换。WebSocket 客户端在 `/v1/realtime` 连接：

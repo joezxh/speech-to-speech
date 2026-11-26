@@ -566,3 +566,44 @@ def test_local_provider_keeps_transcribe_chunk_contract() -> None:
 
     provider = LocalSttAsrProvider(SttHandlerAdapter(_FakePipelineSttHandler(), sample_rate=16000))
     assert provider.transcribe(b"\x01\x00", 16000) == "本地结果"
+
+
+# ---------------------------------------------------------------------------
+# LiveKitWorkerRuntime：线程崩溃隔离 + 停机协议（spec §9）
+# ---------------------------------------------------------------------------
+
+
+def test_runtime_thread_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """worker 线程崩溃不拖垮主进程：_serve 协程异常由 _log_serve_crash 吞掉，run() 正常返回。
+
+    以源码为准（计划草稿的 _run/_thread 引用已对齐）：线程目标是 ``run()``，
+    崩溃隔离点在 serve_future 的 done callback，而非 try/except 包裹体。
+    """
+    _install_livekit_stub(monkeypatch)
+    from threading import Event
+
+    from speech_to_speech.livekit_worker import LiveKitWorkerRuntime
+
+    runtime = LiveKitWorkerRuntime(Event())
+
+    async def _boom() -> None:
+        runtime.stop_event.set()  # 先放行 run() 的 stop_event.wait()，再模拟崩溃
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(runtime, "_serve", _boom)
+    runtime.run()  # 不向上抛：serve_future 的异常仅记录日志
+    assert runtime._loop is not None
+
+
+def test_runtime_stop_joins_thread(monkeypatch: pytest.MonkeyPatch) -> None:
+    """未启动时停机不抛：ThreadManager.stop() 只置位 stop_event（run/线程尚未存在）。"""
+    _install_livekit_stub(monkeypatch)
+    from threading import Event
+
+    from speech_to_speech.livekit_worker import LiveKitWorkerRuntime
+    from speech_to_speech.utils.thread_manager import ThreadManager
+
+    runtime = LiveKitWorkerRuntime(Event())
+    manager = ThreadManager([runtime])
+    manager.stop()  # 未 start()：无 handler.run 线程可 join，仅置位 stop_event，不抛
+    assert runtime.stop_event.is_set()
