@@ -21,7 +21,9 @@ export const PERMISSION_ROLES: Record<string, readonly string[]> = {
   'console:release:write': ['admin'],
   'console:audit:query': ['admin', 'operator'],
   'console:audit:export': ['admin'],
-  'console:agent:enroll': ['admin', 'operator']
+  'console:agent:enroll': ['admin', 'operator'],
+  'console:callback:query': ['admin', 'operator'],
+  'console:callback:manage': ['admin']
 }
 
 export function roleHasPermission(role: string, code: string): boolean {

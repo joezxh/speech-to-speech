@@ -3,7 +3,7 @@
   <div class="callbacks">
     <a-tabs v-model:activeKey="activeTab">
       <a-tab-pane key="targets" :tab="t('callbacks.targetsTab')">
-        <a-space class="callbacks__bar">
+        <a-space v-if="auth.hasPermission('console:callback:manage')" class="callbacks__bar">
           <a-button type="primary" @click="openCreate">{{ t('callbacks.create') }}</a-button>
           <a-button :disabled="!selectedRowKeys.length" @click="batch('enable')">
             {{ t('callbacks.batchEnable') }}
@@ -33,13 +33,23 @@
               </a-tag>
             </template>
             <template v-else-if="column.key === 'enabled'">
-              <a-switch :checked="record.enabled" @change="() => toggleEnabled(record)" />
+              <a-switch
+                v-if="auth.hasPermission('console:callback:manage')"
+                :checked="record.enabled"
+                @change="() => toggleEnabled(record)"
+              />
             </template>
             <template v-else-if="column.key === 'actions'">
-              <a-button type="link" size="small" @click="openEdit(record)">
+              <a-button
+                v-if="auth.hasPermission('console:callback:manage')"
+                type="link"
+                size="small"
+                @click="openEdit(record)"
+              >
                 {{ t('callbacks.edit') }}
               </a-button>
               <a-button
+                v-if="auth.hasPermission('console:callback:manage')"
                 type="link"
                 size="small"
                 :loading="testingId === record.id"
@@ -48,7 +58,11 @@
               >
                 {{ t('callbacks.test') }}
               </a-button>
-              <a-popconfirm :title="t('callbacks.deleteConfirm')" @confirm="removeOne(record)">
+              <a-popconfirm
+                v-if="auth.hasPermission('console:callback:manage')"
+                :title="t('callbacks.deleteConfirm')"
+                @confirm="removeOne(record)"
+              >
                 <a-button type="link" size="small" danger>{{ t('callbacks.delete') }}</a-button>
               </a-popconfirm>
             </template>
@@ -216,7 +230,9 @@ import {
   type EventType,
   type TargetType
 } from '@/api/callbacks'
+import { useAuthStore } from '@/stores/auth'
 
+const auth = useAuthStore()
 const { t } = useI18n()
 
 function errText(caught: unknown, fallback: string): string {
