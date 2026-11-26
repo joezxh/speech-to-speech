@@ -34,6 +34,7 @@ from speech_to_speech.livekit_worker.events import (
     TranscriptEventBus,
     get_event_bus,
 )
+from speech_to_speech.pipeline.messages import Transcription
 from speech_to_speech.livekit_worker.segment_dedupe import DuplicateGuard, normalize_text
 from speech_to_speech.livekit_worker.ser_provider import (
     DEFAULT_SER_POLICY,
@@ -45,7 +46,6 @@ from speech_to_speech.livekit_worker.ser_provider import (
     in_segment_window,
     parse_switch_snapshot,
 )
-from speech_to_speech.pipeline.messages import Transcription
 
 
 def test_event_types() -> None:

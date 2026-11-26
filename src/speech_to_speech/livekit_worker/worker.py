@@ -24,7 +24,7 @@ import time
 from livekit import rtc
 from livekit.agents import JobContext, WorkerOptions, cli
 from livekit.agents.job import AutoSubscribe
-from livekit.agents.vad import VAD, VADEventType
+from livekit.agents.vad import VADEventType, VAD
 from livekit.plugins import silero
 
 import speech_to_speech.livekit_worker.diarization_provider as dia
@@ -37,18 +37,15 @@ from speech_to_speech.livekit_worker.ser_provider import (
     SerCircuitBreaker,
     SerConcurrencyGate,
     SerRejectedException,
+    fetch_switch_snapshot as fetch_switch_snapshot_raw,
     get_ser_provider,
     in_segment_window,
     parse_switch_snapshot,
 )
-from speech_to_speech.livekit_worker.ser_provider import (
-    fetch_switch_snapshot as fetch_switch_snapshot_raw,
-)
 
 # identify_provider 尚未移植进本仓：模块级探测，缺失时声纹标注 fail-closed 停用。
 try:
-    from speech_to_speech.livekit_worker.identify_provider import get_client as get_identify_client
-    from speech_to_speech.livekit_worker.identify_provider import is_fresh
+    from speech_to_speech.livekit_worker.identify_provider import get_client as get_identify_client, is_fresh
 except ImportError:  # pragma: no cover - 移植 identify_provider 前恒走此分支
     get_identify_client = None  # type: ignore[assignment]
     is_fresh = lambda checked_at, ttl_seconds=30.0: False  # noqa: E731 - 兜底：能力快照永不可用

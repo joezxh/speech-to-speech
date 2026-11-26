@@ -1,7 +1,16 @@
-# Lightweight console-only image: FastAPI backend + built SPA, no GPU / no s2s.
-# Used by the split deployment (docker-compose.split.yml).
+# Split-deployment console image: console backend + built SPA ONLY.
+#
+# Slim (python:3.12-slim) on purpose: the console is a pure CPU service
+# (FastAPI + SPA). It needs neither CUDA nor PyTorch — the previous cu130
+# python-torch base dragged in ~10GB of nvidia wheels/torch runtime for a
+# container that never touches a GPU.
+#
+# The s2s pipeline, agent, funasr, nltk data and the qwen_tts patch all live in
+# the separate s2s-pipeline container (s2s-agent / Dockerfile.agent).
 #
 # Build:  docker build -f Dockerfile.console -t s2s-console:local .
+
+ARG BASE_IMAGE=python:3.12-slim
 
 FROM node:20-alpine AS frontend-build
 WORKDIR /build
@@ -10,25 +19,43 @@ RUN npm ci
 COPY console/frontend/ ./
 RUN npm run build
 
-FROM python:3.12-slim
+FROM ${BASE_IMAGE}
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+
+ENV PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
+    PIP_TRUSTED_HOST=mirrors.aliyun.com
+
 WORKDIR /app
+
 COPY console/backend/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
-COPY console/backend /app
-RUN rm -f /app/.env && mkdir -p /app/data /app/catalog
-COPY --from=frontend-build /build/dist /app/static
+
+COPY console/backend /app/console
+RUN rm -f /app/console/.env && mkdir -p /app/console/data /app/catalog
+COPY --from=frontend-build /build/dist /app/console/static
 COPY docs/parameter-catalog.yaml /app/catalog/parameter-catalog.yaml
-ENV PYTHONPATH=/app \
-    STATIC_DIR=/app/static \
-    DATABASE_URL=sqlite:////app/data/console.sqlite3 \
+
+# Layout note: the console package lives at /app/console and the SPA at
+# /app/console/static — the SAME paths the all-in-one image uses. The
+# param_config table stores these paths (console.static_dir etc.) and the
+# store resolves DB-first, so keeping the layout identical means an existing
+# deployment database stays valid for this slim image.
+ENV PYTHONPATH=/app/console \
+    STATIC_DIR=/app/console/static \
+    DATABASE_URL=sqlite:////app/console/data/console.sqlite3 \
     PARAM_CONFIG_DIR=/app/config \
     PARAM_CATALOG_PATH=/app/catalog/parameter-catalog.yaml \
-    LOG_DIR=/app/data/logs \
-    DATA_DIR=/app/data \
-    VOICE_DATA_DIR=/app/data/voices \
-    SESSION_DATA_DIR=/app/data/sessions \
+    LOG_DIR=/app/console/data/logs \
+    DATA_DIR=/app/console/data \
+    VOICE_DATA_DIR=/app/console/data/voices \
+    SESSION_DATA_DIR=/app/console/data/sessions \
     PIPELINE_BASE_URL=http://s2s-pipeline:8765 \
     CONSOLE_AUTOSTART=false \
     RESTART_MODE=noop
+
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"]
+WORKDIR /app/console
+# alembic.ini lives in /app/console (script_location=alembic, prepend_sys_path=.).
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"]

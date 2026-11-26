@@ -284,3 +284,5 @@ console/backend/data/
 config.container/prod.env
 config.container/*.etag
 data/
+/.transfer/
+/.screenshots/

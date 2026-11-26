@@ -13,7 +13,6 @@ from __future__ import annotations
 import sqlalchemy as sa
 
 from alembic import op
-
 from app.models.comments import comment_statements, drop_comment_statements
 
 revision = "0007_comments"

@@ -1902,7 +1902,7 @@ CREATE TABLE callback_target (
     retry_backoff_ms INTEGER DEFAULT '500' NOT NULL,
     events JSON DEFAULT '[]' NOT NULL,
     filters JSON,
-    enabled BOOLEAN DEFAULT 1 NOT NULL,
+    enabled BOOLEAN DEFAULT '1' NOT NULL,
     updated_by VARCHAR(64) DEFAULT '' NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL,

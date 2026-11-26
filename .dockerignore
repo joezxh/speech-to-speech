@@ -21,9 +21,13 @@ cache/huggingface
 cache/qwen35-4b
 cache/smart-turn-v3.2-cpu.onnx
 
-# The frontend stage installs its own deps and builds in-image.
+# The frontend stage installs its own deps and builds in-image (Dockerfile.*).
+# Exception: the fromallinone console image reuses the prebuilt dist produced by
+# a local `npm run build`; keep it in context for that thin overlay build.
 console/frontend/node_modules
 console/frontend/dist
+!console/frontend/dist
+!console/frontend/dist/**
 
 # Development-only console config: contains Windows paths and a dev PostgreSQL URL.
 # Must never be baked into the all-in-one / console images.

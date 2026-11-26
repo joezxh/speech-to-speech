@@ -34,7 +34,7 @@ scope:
     - docker-compose.gpustack.yml
     - docker-compose.llm-bundled.yml
     - docker-compose.local.yml
-    - docker-compose.vn.ms.llm-bundled.yml
+    - docker-compose.llm-bundled.yml
     - docker-compose.yml
     - llama-server-2048.err
     - llama-server-2048.out

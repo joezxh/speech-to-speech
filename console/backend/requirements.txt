@@ -9,6 +9,9 @@ pydantic>=2.7.4
 pydantic-settings>=2.1.0
 # 13 起才有 `websockets.asyncio.*`（反代用的非弃用 API）。
 websockets>=13.0
+# FastAPI Form()/UploadFile 必需（voices.py 等路由）；此前靠 s2s venv 的传递依赖，
+# 独立 console 镜像后必须显式声明。
+python-multipart>=0.0.9
 # [oauth] extra 带进 authlib；没有它 attach_huggingface_oauth 只是一段被跳过的 import。
 huggingface-hub[oauth]>=0.34.0
 # Console-only: exact pins.

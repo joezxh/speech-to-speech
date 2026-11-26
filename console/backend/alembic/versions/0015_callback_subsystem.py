@@ -39,7 +39,7 @@ def upgrade() -> None:
         sa.Column("retry_backoff_ms", sa.Integer(), server_default="500", nullable=False),
         sa.Column("events", sa.JSON(), server_default="[]", nullable=False),
         sa.Column("filters", sa.JSON(), nullable=True),
-        sa.Column("enabled", sa.Boolean(), server_default=sa.text("1"), nullable=False),
+        sa.Column("enabled", sa.Boolean(), server_default="1", nullable=False),
         sa.Column("updated_by", sa.String(64), server_default="", nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
