@@ -46,8 +46,16 @@ async def stream_live_transcripts(
         loop = asyncio.get_running_loop()
 
         def on_event(event) -> None:  # noqa: ANN001 - worker 线程回调 → 转投 asyncio 队列
+            def _put() -> None:
+                try:
+                    queue.put_nowait(event)
+                except asyncio.QueueFull:
+                    # 队列满（消费端卡死/积压）时静默丢新事件，只在 debug 级留痕，
+                    # 避免回调在事件循环内抛 QueueFull 刷出 ERROR traceback。
+                    logger.debug("live-transcript queue full; dropping newest event")
+
             try:
-                loop.call_soon_threadsafe(queue.put_nowait, event)
+                loop.call_soon_threadsafe(_put)
             except RuntimeError:
                 pass  # loop 已关闭（客户端断开）
 

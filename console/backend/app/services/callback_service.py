@@ -86,7 +86,15 @@ def update_target(db: Session, target_id: int, payload: CallbackTargetUpdate, ac
     ).scalar_one_or_none()
     if existing is not None:
         raise CallbackServiceError(f"目标名 {payload.name!r} 已存在")
-    row = CallbackRepository(db).update(target_id, **_fields(payload), updated_by=actor)
+    fields = _fields(payload)
+    # 前端从详情接口整行回传时 authToken 是脱敏串（如 tokt***ktok，含 "***"），
+    # 若直接落库会用掩码覆盖真实凭据。这里检测到掩码就保留 DB 已存旧 token；
+    # 真实 token 恰好含 "***" 的概率可忽略（详情接口也保证只回传脱敏串）。
+    if "***" in (payload.authToken or ""):
+        current = CallbackRepository(db).get(target_id)
+        if current is not None:
+            fields["auth_token"] = current.auth_token
+    row = CallbackRepository(db).update(target_id, **fields, updated_by=actor)
     return _to_out(row) if row else None
 
 

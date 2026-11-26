@@ -101,3 +101,43 @@ def test_logs_endpoint_filters(client, auth_headers: dict) -> None:
 def test_requires_permission(client) -> None:
     # 未带 JWT → 401；带普通 user JWT → 403（callback 写仅 admin）
     assert client.get("/api/v1/callbacks/targets").status_code == 401
+
+
+def test_put_with_masked_token_preserves_old_secret(
+    client, auth_headers: dict, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """前端编辑整行回传脱敏 authToken（含 ***）时，保留 DB 旧 token 不被掩码覆盖。"""
+    captured: dict = {}
+
+    def fake_post(url, **kwargs):  # noqa: ANN001, ANN003
+        captured.update(kwargs.get("headers") or {})
+        return type("R", (), {"status_code": 200, "text": "ok"})()
+
+    monkeypatch.setattr("speech_to_speech.callback.dispatcher.requests.post", fake_post)
+    real_token = "toktoktoktok"
+    resp = client.post("/api/v1/callbacks/targets", json={
+        "name": "mask-guard", "targetType": "python", "baseUrl": "http://probe",
+        "authType": "header_token", "authHeaderName": "X-Callback-Token",
+        "authToken": real_token, "extraHeaders": {}, "timeoutMs": 1000,
+        "retryMaxAttempts": 1, "retryBackoffMs": 0, "events": ["transcript"], "enabled": True,
+    }, headers=auth_headers)
+    target_id = resp.json()["data"]["id"]
+    masked = resp.json()["data"]["authToken"]
+    assert masked == "tokt***ktok"  # 详情返回脱敏串
+
+    # PUT 更新但 authToken 回传掩码值（模拟前端编辑/启停整行回传）
+    resp = client.put(f"/api/v1/callbacks/targets/{target_id}", json={
+        "name": "mask-guard", "targetType": "python", "baseUrl": "http://probe",
+        "authType": "header_token", "authHeaderName": "X-Callback-Token",
+        "authToken": masked, "extraHeaders": {}, "timeoutMs": 2000,
+        "retryMaxAttempts": 1, "retryBackoffMs": 0, "events": ["transcript"], "enabled": True,
+    }, headers=auth_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["timeoutMs"] == 2000  # 其余字段正常更新
+    assert resp.json()["data"]["authToken"] == "tokt***ktok"  # 仍是旧 token 的掩码
+
+    # test 投递：实际发出的鉴权头必须是旧 token，而非掩码串
+    resp = client.post(f"/api/v1/callbacks/targets/{target_id}/test", headers=auth_headers)
+    data = resp.json()["data"]
+    assert data["ok"] is True and data["httpStatus"] == 200
+    assert captured["X-Callback-Token"] == real_token

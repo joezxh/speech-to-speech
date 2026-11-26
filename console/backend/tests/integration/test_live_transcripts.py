@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 
 import pytest
 import speech_to_speech.livekit_worker.events as worker_events
@@ -33,9 +35,6 @@ def test_sse_stream_emits_events(client, auth_headers: dict) -> None:
     """打开流 → 向进程内总线发布事件 → 读到 data 行；随后关闭。"""
     # 客户端读取期间由后台线程发布事件：TestClient 流式读取为同步迭代，
     # 先打开流（路由内已订阅总线），0.5s 后再 publish。
-    import threading
-    import time
-
     def publish_later() -> None:
         time.sleep(0.5)
         _publish_transcript("实时字幕A")
