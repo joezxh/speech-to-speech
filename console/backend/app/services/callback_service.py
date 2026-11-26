@@ -112,8 +112,7 @@ def send_test_event(db: Session, target_id: int) -> dict:
     请求构造与单次投递复用 dispatcher 的 build_request/deliver_once，
     保证与真实投递同形状。
     """
-    from speech_to_speech.callback.dispatcher import (
-        CallbackTargetConfig, build_request, deliver_once)
+    from speech_to_speech.callback.dispatcher import CallbackTargetConfig, build_request, deliver_once
 
     row = CallbackRepository(db).get(target_id)
     if row is None:
