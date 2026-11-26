@@ -11,5 +11,6 @@ export default {
   voices: '音色库',
   release: '发布与版本管理',
   audit: '操作审计日志',
+  callbacks: '回调管理',
   group: { lb: '负载均衡管理 · 总架构', front: '语音对话前台', ops: '运维台 · 集群维度' }
 }

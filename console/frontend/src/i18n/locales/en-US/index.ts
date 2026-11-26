@@ -1,6 +1,7 @@
 import alerts from './alerts'
 import audit from './audit'
 import auth from './auth'
+import callbacks from './callbacks'
 import common from './common'
 import deploy from './deploy'
 import errors from './errors'
@@ -16,4 +17,4 @@ import traffic from './traffic'
 import voice from './voice'
 import voices from './voices'
 
-export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices, voice, logs, latency, overview, traffic }
+export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices, voice, logs, latency, overview, traffic, callbacks }

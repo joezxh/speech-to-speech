@@ -52,6 +52,8 @@ export const routes: RouteRecordRaw[] = [
             meta: { navGroup: 'ops', navKey: 'nav.release', navIcon: 'check', navOrder: 50 } },
           { path: 'audit', name: 'audit', component: () => import('@/views/AuditView.vue'),
             meta: { navGroup: 'ops', navKey: 'nav.audit', navIcon: 'history', navOrder: 60 } },
+          { path: 'callbacks', name: 'callbacks', component: () => import('@/views/CallbacksView.vue'),
+            meta: { navGroup: 'ops', navKey: 'nav.callbacks', navIcon: 'wrench', navOrder: 70 } },
           // 旧路径 redirect（永久保留；name 只有新名）
           { path: 'params', redirect: { name: 'deploy' } },
           { path: 'instances', redirect: { name: 'machines' } },

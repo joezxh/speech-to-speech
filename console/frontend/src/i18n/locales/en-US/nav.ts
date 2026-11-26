@@ -11,5 +11,6 @@ export default {
   voices: 'Voice Library',
   release: 'Releases & Versions',
   audit: 'Audit Log',
+  callbacks: 'Callbacks',
   group: { lb: 'Load Balancing · Topology', front: 'Voice Frontend', ops: 'Ops · Cluster' }
 }
