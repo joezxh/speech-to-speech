@@ -158,6 +158,75 @@ def test_retry_then_give_up(db_session, monkeypatch: pytest.MonkeyPatch) -> None
     assert [r.status for r in rows] == ["retrying", "failed"]
 
 
+def test_http_500_exhausts_retries(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
+    session, CallbackTarget = db_session
+    session.add(_target(CallbackTarget, retry_max_attempts=3, retry_backoff_ms=0))
+    session.commit()
+    calls = []
+
+    def fake_post(url, **kwargs):  # noqa: ANN001
+        calls.append(1)
+        return _Resp(500, "boom")
+
+    monkeypatch.setattr("speech_to_speech.callback.dispatcher.requests.post", fake_post)
+    from app.models.callbacks import CallbackDeliveryLog
+
+    dispatcher = CallbackDispatcher(session_factory=lambda: session, ttl_seconds=0)
+    dispatcher.dispatch(_event())
+    dispatcher.flush_pending()
+    assert len(calls) == 3
+    rows = list(session.query(CallbackDeliveryLog).all())
+    assert [r.status for r in rows] == ["retrying", "retrying", "failed"]
+    assert [r.attempt for r in rows] == [1, 2, 3]
+    assert all(r.http_status == 500 for r in rows)
+
+
+def test_http_500_500_200_eventually_succeeds(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
+    session, CallbackTarget = db_session
+    session.add(_target(CallbackTarget, retry_max_attempts=3, retry_backoff_ms=0))
+    session.commit()
+    codes = iter((500, 500, 200))
+
+    def fake_post(url, **kwargs):  # noqa: ANN001
+        return _Resp(next(codes))
+
+    monkeypatch.setattr("speech_to_speech.callback.dispatcher.requests.post", fake_post)
+    from app.models.callbacks import CallbackDeliveryLog
+
+    dispatcher = CallbackDispatcher(session_factory=lambda: session, ttl_seconds=0)
+    dispatcher.dispatch(_event())
+    dispatcher.flush_pending()
+    rows = list(session.query(CallbackDeliveryLog).all())
+    assert [r.status for r in rows] == ["retrying", "retrying", "success"]
+    assert [r.attempt for r in rows] == [1, 2, 3]
+    assert [r.http_status for r in rows] == [500, 500, 200]
+
+
+def test_db_failure_falls_back_to_env_target(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
+    session, CallbackTarget = db_session
+    session.add(_target(CallbackTarget))
+    session.commit()
+    monkeypatch.setenv("JAVA_CALLBACK_BASE", "http://ai-fallback")
+    monkeypatch.setenv("MEETING_INTERNAL_TOKEN", "tok")
+
+    def broken_factory():
+        raise RuntimeError("db down")
+
+    posted: dict = {}
+
+    def fake_post(url, **kwargs):  # noqa: ANN001
+        posted.update({"url": url, **kwargs})
+        return _Resp(200)
+
+    monkeypatch.setattr("speech_to_speech.callback.dispatcher.requests.post", fake_post)
+    dispatcher = CallbackDispatcher(session_factory=broken_factory, ttl_seconds=0)
+    dispatcher.dispatch(_event())
+    dispatcher.flush_pending()
+    assert posted["url"] == "http://ai-fallback/admin-api/ai/meeting/internal/transcript"
+    assert posted["params"] == {"roomSid": "room-1"}
+    assert posted["headers"]["X-Internal-Token"] == "tok"
+
+
 def test_filters_event_type_and_speaker(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
     session, CallbackTarget = db_session
     session.add(_target(CallbackTarget, events=["session_end"], filters={"speakers": ["u2"]}))

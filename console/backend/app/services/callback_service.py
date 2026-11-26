@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import time
 
-import requests
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -81,6 +80,12 @@ def create_target(db: Session, payload: CallbackTargetCreate, actor: str) -> dic
 
 def update_target(db: Session, target_id: int, payload: CallbackTargetUpdate, actor: str) -> dict | None:
     _validate_protocol(payload)
+    existing = db.execute(
+        select(CallbackTarget).where(
+            CallbackTarget.name == payload.name, CallbackTarget.id != target_id)
+    ).scalar_one_or_none()
+    if existing is not None:
+        raise CallbackServiceError(f"目标名 {payload.name!r} 已存在")
     row = CallbackRepository(db).update(target_id, **_fields(payload), updated_by=actor)
     return _to_out(row) if row else None
 
@@ -104,9 +109,11 @@ def send_test_event(db: Session, target_id: int) -> dict:
     """发送一条测试 transcript 事件，同步返回投递结果（spec §8.4）。
 
     连接探测不是正式投递：重试固定 1 次，不写 callback_delivery_log。
-    请求构造复用 dispatcher 的协议适配，保证与真实投递同形状。
+    请求构造与单次投递复用 dispatcher 的 build_request/deliver_once，
+    保证与真实投递同形状。
     """
-    from speech_to_speech.callback.dispatcher import CallbackTargetConfig, _build_request
+    from speech_to_speech.callback.dispatcher import (
+        CallbackTargetConfig, build_request, deliver_once)
 
     row = CallbackRepository(db).get(target_id)
     if row is None:
@@ -136,16 +143,14 @@ def send_test_event(db: Session, target_id: int) -> dict:
                 "timestamp": int(time.time() * 1000), "test": True,
             }
 
-    url, payload, headers = _build_request(_FakeEvent(), config)
+    url, payload, headers = build_request(_FakeEvent(), config)
     started = time.monotonic()
     try:
-        resp = requests.post(url, json=payload, headers=headers,
-                             timeout=config.timeout_ms / 1000,
-                             params=({"roomSid": "console-test"} if config.target_type == "java" else None))
-        ok = 200 <= int(resp.status_code) < 300
-        return {"ok": ok, "httpStatus": int(resp.status_code),
+        status, snippet = deliver_once(_FakeEvent(), config, url, payload, headers)
+        ok = 200 <= status < 300
+        return {"ok": ok, "httpStatus": status,
                 "durationMs": int((time.monotonic() - started) * 1000),
-                "error": "" if ok else resp.text[:200]}
+                "error": "" if ok else snippet[:200]}
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "httpStatus": None,
                 "durationMs": int((time.monotonic() - started) * 1000),

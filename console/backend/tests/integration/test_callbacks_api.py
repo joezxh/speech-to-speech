@@ -67,8 +67,9 @@ def test_batch_enable_disable_delete(client, auth_headers: dict) -> None:
 
 
 def test_test_delivery_endpoint(client, auth_headers: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    # send_test_event 复用 dispatcher 的 deliver_once，patch 共享 requests 模块
     monkeypatch.setattr(
-        "app.services.callback_service.requests.post",
+        "speech_to_speech.callback.dispatcher.requests.post",
         lambda url, **kwargs: type("R", (), {"status_code": 200, "text": "ok"})())
     resp = client.post("/api/v1/callbacks/targets", json={
         "name": "probe", "targetType": "python", "baseUrl": "http://probe",

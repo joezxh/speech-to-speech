@@ -4,8 +4,10 @@ serve 进程内单例：dispatch(event) → 读取启用目标（TTL 缓存热�
 → 按目标协议适配投递（java/python）→ 重试 → callback_delivery_log 落库。
 
 - DB 不可用时 env 兜底（JAVA_CALLBACK_BASE + MEETING_INTERNAL_TOKEN → 内存
-  java 目标），保持源工程零改动部署可用（spec §8.3）。
+  java 目标），保持源工程零改动部署可用（spec §8.3）；DB 查询失败期同样回落。
 - 投递在线程池执行，不阻塞转写主流程；每目标独立，单点失败不影响其它目标。
+- 段序说明：异步投递按段并发，同房间 transcript 的到达顺序为 best-effort；
+  需要严格保序的场景由目标端按 startTs 排序。
 """
 from __future__ import annotations
 
@@ -77,6 +79,15 @@ def _env_fallback_target() -> CallbackTargetConfig:
     )
 
 
+def _env_fallback_targets() -> list[CallbackTargetConfig]:
+    """env 兜底目标：JAVA_CALLBACK_BASE + MEETING_INTERNAL_TOKEN 齐备才启用。"""
+    base = os.environ.get("JAVA_CALLBACK_BASE", "").strip()
+    token = os.environ.get("MEETING_INTERNAL_TOKEN", "").strip()
+    if base and token:
+        return [_env_fallback_target()]
+    return []
+
+
 def _passes_filters(event, config: CallbackTargetConfig) -> bool:
     """事件订阅 + 过滤器（speakers / min_text_len）。"""
     if event.event_type not in (config.events or ()):
@@ -92,7 +103,7 @@ def _passes_filters(event, config: CallbackTargetConfig) -> bool:
     return True
 
 
-def _build_request(event, config: CallbackTargetConfig) -> tuple[str, object, dict]:
+def build_request(event, config: CallbackTargetConfig) -> tuple[str, object, dict]:
     """按 target_type 协议适配（spec §8.2 矩阵）。返回 (url, payload, headers)。"""
     headers: dict = dict(config.extra_headers or {})
     if config.target_type == "java":
@@ -119,8 +130,12 @@ def _build_request(event, config: CallbackTargetConfig) -> tuple[str, object, di
     return config.base_url, payload, headers
 
 
-def _deliver_once(event, config: CallbackTargetConfig, url: str, payload: object,
-                  headers: dict) -> tuple[int | None, str]:
+# 兼容别名：保留 _ 前缀引用（既有测试投递与文档调用点）。
+_build_request = build_request
+
+
+def deliver_once(event, config: CallbackTargetConfig, url: str, payload: object,
+                 headers: dict) -> tuple[int | None, str]:
     """单次投递，返回 (http_status, response_snippet)；网络异常向上抛。"""
     resp = requests.post(url, json=payload, headers=headers,
                          timeout=config.timeout_ms / 1000, params=(
@@ -130,8 +145,12 @@ def _deliver_once(event, config: CallbackTargetConfig, url: str, payload: object
     return status, snippet
 
 
+# 兼容别名：保留 _ 前缀引用。
+_deliver_once = deliver_once
+
+
 def _sanitize_payload(payload: object) -> str:
-    """payload 截断 + token 脱敏后入库。"""
+    """payload 截断后入库（仅截断，不含 token 脱敏）。"""
     import json
 
     text = json.dumps(payload, ensure_ascii=False, default=str)
@@ -151,33 +170,36 @@ class CallbackDispatcher:
         self._cache: list[CallbackTargetConfig] | None = None
         self._cache_at = 0.0
         self._lock = threading.Lock()
-        self._pending_futures: list = []
+        self._pending_futures: set = set()
 
     # ---- 目标解析（TTL 缓存热加载，spec §8.3）----
     def invalidate_cache(self) -> None:
+        """清空目标缓存；并发竞态不改——最长 TTL（默认 5s）后自然重载兜底。"""
         with self._lock:
             self._cache = None
             self._cache_at = 0.0
 
     def _load_targets(self) -> list[CallbackTargetConfig]:
         if self._session_factory is None:
-            base = os.environ.get("JAVA_CALLBACK_BASE", "").strip()
-            token = os.environ.get("MEETING_INTERNAL_TOKEN", "").strip()
-            if base and token:
-                return [_env_fallback_target()]
-            return []
+            return _env_fallback_targets()
         now = time.monotonic()
         with self._lock:
             if self._cache is not None and now - self._cache_at < self._ttl_seconds:
                 return self._cache
-        session = self._session_factory()
+        session = None
         try:
+            session = self._session_factory()
             from app.models.callbacks import CallbackTarget
 
             rows = session.query(CallbackTarget).filter(CallbackTarget.enabled.is_(True)).all()
             configs = [_row_to_config(row) for row in rows]
+        except Exception:  # noqa: BLE001 DB 故障期回落 env 兜底（spec §8.3）
+            logger.warning("callback targets DB query failed; falling back to env target",
+                           exc_info=True)
+            return _env_fallback_targets()
         finally:
-            session.close()
+            if session is not None:
+                session.close()
         with self._lock:
             self._cache = configs
             self._cache_at = now
@@ -193,7 +215,8 @@ class CallbackDispatcher:
             if not _passes_filters(event, config):
                 continue
             future = self._pool.submit(self._deliver_with_retry, event, config)
-            self._pending_futures.append(future)
+            self._pending_futures.add(future)
+            future.add_done_callback(self._pending_futures.discard)
 
     def publish_transcript(self, room_sid: str, segments: list[dict]) -> None:
         """worker emit_segments 的 java 兼容入口：逐段产出 transcript 事件。"""
@@ -212,17 +235,23 @@ class CallbackDispatcher:
             ))
 
     def pending_count(self) -> int:
-        return sum(1 for f in self._pending_futures if not f.done())
+        return sum(1 for f in list(self._pending_futures) if not f.done())
 
     def flush_pending(self, timeout: float = 10.0) -> None:
-        """测试/退出用：等待在途投递完成（spec §9 flush 语义）。"""
-        futures, self._pending_futures = self._pending_futures, []
+        """测试/退出用：等待在途投递完成（spec §9 flush 语义）。
+
+        timeout 为总等待预算：多个在途任务按累计剩余时间分配，预算耗尽抛
+        TimeoutError（而非每个 future 各自等待完整 timeout）。
+        """
+        futures = list(self._pending_futures)
+        self._pending_futures = set()
+        deadline = time.monotonic() + timeout
         for future in futures:
-            future.result(timeout=timeout)
+            future.result(timeout=deadline - time.monotonic())
 
     # ---- 投递 + 重试 + 日志 ----
     def _deliver_with_retry(self, event, config: CallbackTargetConfig) -> None:
-        url, payload, headers = _build_request(event, config)
+        url, payload, headers = build_request(event, config)
         body_text = _sanitize_payload(payload)
         attempts = max(1, config.retry_max_attempts)
         last_error = ""
@@ -233,7 +262,7 @@ class CallbackDispatcher:
             error = ""
             ok = False
             try:
-                status, snippet = _deliver_once(event, config, url, payload, headers)
+                status, snippet = deliver_once(event, config, url, payload, headers)
                 ok = 200 <= status < 300
                 if not ok:
                     error = f"HTTP {status}"
