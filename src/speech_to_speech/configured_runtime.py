@@ -202,10 +202,12 @@ class ConfiguredRuntime:
             else:
                 handler.run()
         except BaseException as exc:
-            # Log the real cause: without it, a failed worker/listener stops the
-            # whole runtime with only a generic "A configured worker failed".
-            logger.exception("Configured handler {} failed: {}", type(handler).__name__, exc)
-            self._failure = f"A configured worker, listener, or client failed: {type(exc).__name__}: {exc}"
+            # The error contract keeps provider diagnostics (endpoints, credentials) out of
+            # logs and out of ConfiguredRuntimeError, so only the handler and exception type
+            # names are logged here; the full cause traceback stays available at DEBUG.
+            logger.error("Configured handler %s failed: %s", type(handler).__name__, type(exc).__name__)
+            logger.debug("Configured handler failure details", exc_info=True)
+            self._failure = "A configured worker, listener, or client failed."
             self._signal_stop()
         finally:
             if handler is self.server or handler is self.client:
@@ -390,9 +392,9 @@ def build_configured_server(
             # joins LiveKit rooms and transcribes remote audio. Shares the pipeline stop
             # event (like the agent) and runs as a handler thread; it is intentionally NOT
             # added to _resources, so shutdown is driven by the event rather than cleanup.
-            from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
             from speech_to_speech.livekit_worker import LiveKitWorkerRuntime
             from speech_to_speech.livekit_worker.asr_provider import SttHandlerAdapter
+            from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
 
             livekit = LiveKitWorkerRuntime(event)
             sample_rate = args.vad_handler_kwargs.sample_rate
