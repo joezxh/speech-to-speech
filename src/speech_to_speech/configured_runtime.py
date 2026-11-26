@@ -336,6 +336,18 @@ def build_configured_server(
         raise ConfigurationError("Serving requires exactly one selected pipeline definition.")
     client_config = build_configured_client(config, local=True) if local else None
     arguments = _adapt(config)
+    worker_enabled = bool(config.runtime.get("livekit_worker", {}).get("enabled", False))
+    if worker_enabled:
+        # Fail before any model loads: the worker needs the LiveKit connection env and,
+        # in local ASR mode, a pipeline STT backend. WorkerIntegrationError must surface
+        # untouched (not swallowed into ConfiguredRuntimeError), so this sits outside the
+        # server-construction try below.
+        from speech_to_speech.s2s_pipeline import validate_local_asr_mode
+        from speech_to_speech.worker_integration import SwitchOptions, validate_worker_options
+
+        _worker_args = next(iter(arguments.values()))
+        validate_worker_options(SwitchOptions(autostart=True))
+        validate_local_asr_mode(stt_backend_name=_worker_args.stt_backend.name)
     result = _build_runtime(arguments, stop_event)
     try:
         from speech_to_speech.api.openai_realtime.audio_client import RealtimeAudioClient
@@ -374,6 +386,23 @@ def build_configured_server(
         result._handlers.append(result.server)
         if agent is not None:
             result._handlers.append(agent)
+        if worker_enabled:
+            # Mirror the flag-mode build_pipeline worker block: an embedded runtime that
+            # joins LiveKit rooms and transcribes remote audio. Shares the pipeline stop
+            # event (like the agent) and runs as a handler thread; it is intentionally NOT
+            # added to _resources, so shutdown is driven by the event rather than cleanup.
+            from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
+            from speech_to_speech.livekit_worker import LiveKitWorkerRuntime
+            from speech_to_speech.livekit_worker.asr_provider import SttHandlerAdapter
+
+            livekit = LiveKitWorkerRuntime(event)
+            sample_rate = args.vad_handler_kwargs.sample_rate
+            for unit in pool:
+                for handler in unit.handlers:
+                    if isinstance(handler, BaseSTTHandler):
+                        livekit.attach_stt_handler(SttHandlerAdapter(handler, sample_rate))
+                        break
+            result._handlers.append(livekit)
         if client_config is not None:
             result.client = RealtimeAudioClient(event, client_config)
             result._resources.append(result.client)

@@ -678,3 +678,153 @@ def test_configured_display_policy_wraps_startup(config, monkeypatch, command, s
     monkeypatch.setattr(runtime, "_run_configured_command", lambda *_args, **_kwargs: observed.append(console.quiet))
     runtime.run_configured_command(command, config)
     assert observed == [command != "serve" and not settings]
+
+
+@pytest.fixture
+def stt_builder(monkeypatch):
+    """Like ``builder``, but every unit owns one real BaseSTTHandler subclass."""
+    from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
+
+    class FakeSTT(BaseSTTHandler):
+        pass
+
+    def build(**kwargs):
+        handler = FakeSTT(kwargs["stop_event"], Queue(), Queue())
+        kwargs["resource_ledger"].append(handler)
+        return SimpleNamespace(
+            index=kwargs["index"], handlers=[handler], input_queue=Queue(), output_queue=Queue()
+        )
+
+    monkeypatch.setattr("speech_to_speech.s2s_pipeline._build_pipeline_unit", build)
+    return FakeSTT
+
+
+@pytest.fixture
+def worker_stubs(monkeypatch):
+    """Replace the livekit worker classes the runtime imports lazily, recording usage."""
+    from speech_to_speech import livekit_worker
+    from speech_to_speech.livekit_worker import asr_provider
+
+    constructed = []
+    adapters = []
+
+    class FakeWorkerRuntime:
+        name = "livekit-worker"
+
+        def __init__(self, stop_event, **kwargs):
+            self.stop_event = stop_event
+            self.attached = []
+            constructed.append(self)
+
+        def attach_stt_handler(self, handler):
+            self.attached.append(handler)
+
+    def fake_adapter(handler, sample_rate):
+        adapters.append((handler, sample_rate))
+        return (handler, sample_rate)
+
+    monkeypatch.setattr(livekit_worker, "LiveKitWorkerRuntime", FakeWorkerRuntime)
+    monkeypatch.setattr(asr_provider, "SttHandlerAdapter", fake_adapter)
+    return SimpleNamespace(constructed=constructed, adapters=adapters)
+
+
+def _serve_single_pipeline_with_worker(config):
+    config.pipelines = {"primary": config.pipelines["primary"]}
+    config.runtime["livekit_worker"]["enabled"] = True
+    return config
+
+
+def test_build_configured_server_appends_worker_when_enabled(config, stt_builder, worker_stubs, monkeypatch):
+    from speech_to_speech.STT.base_stt_handler import BaseSTTHandler
+
+    _serve_single_pipeline_with_worker(config)
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "VOICE_GATEWAY_BASE_URL"):
+        monkeypatch.setenv(name, "http://test.invalid" if name.endswith(("URL", "BASE_URL")) else "secret")
+    monkeypatch.setenv("LIVEKIT_WORKER_ASR_MODE", "gateway")
+    result = runtime.build_configured_server(config, Event())
+    assert len(worker_stubs.constructed) == 1
+    livekit = worker_stubs.constructed[0]
+    assert livekit.name == "livekit-worker"
+    assert livekit in result._handlers
+    assert livekit not in result._resources
+    # Every replica contributes its first STT handler, adapted at the pipeline sample rate.
+    assert len(livekit.attached) == 2
+    assert livekit.attached == worker_stubs.adapters
+    assert all(isinstance(handler, BaseSTTHandler) for handler, _ in worker_stubs.adapters)
+    assert all(rate == 16000 for _, rate in worker_stubs.adapters)
+    result.stop()
+
+
+def test_build_configured_server_no_worker_when_disabled(config, stt_builder, worker_stubs, monkeypatch):
+    import sys
+
+    config.pipelines = {"primary": config.pipelines["primary"]}
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        monkeypatch.delenv(name, raising=False)
+    for name in ("speech_to_speech.livekit_worker", "speech_to_speech.livekit_worker.asr_provider"):
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    result = runtime.build_configured_server(config, Event())
+    assert worker_stubs.constructed == []
+    assert [handler for handler in result._handlers if getattr(handler, "name", None) == "livekit-worker"] == []
+    # The disabled path must not even import the livekit worker package.
+    assert "speech_to_speech.livekit_worker" not in sys.modules
+    result.stop()
+
+
+def test_build_configured_server_worker_missing_env_fails_before_runtime(config, stt_builder, monkeypatch):
+    from speech_to_speech.worker_integration import WorkerIntegrationError
+
+    _serve_single_pipeline_with_worker(config)
+    for name in ("LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"):
+        monkeypatch.delenv(name, raising=False)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("runtime built despite missing env")
+
+    monkeypatch.setattr(runtime, "_build_runtime", forbidden)
+    with pytest.raises(WorkerIntegrationError):
+        runtime.build_configured_server(config, Event())
+
+
+def test_diarization_from_yaml_starts_diarization_worker(config, monkeypatch):
+    from speech_to_speech import s2s_pipeline
+    from speech_to_speech.baseHandler import BaseHandler
+
+    class IdleHandler(BaseHandler):
+        pass
+
+    class FakeWorker:
+        instances = []
+
+        def __init__(self, diarizer, stop_event):
+            self.diarizer = diarizer
+            self.stop_event = stop_event
+            FakeWorker.instances.append(self)
+
+        def run(self):
+            self.stop_event.wait()
+
+        def cleanup(self):
+            self.diarizer.reset()
+
+    diarizer = SimpleNamespace(sample_rate=16000, warmup=lambda: None, reset=lambda: None)
+    FakeWorker.instances = []
+    monkeypatch.setattr(s2s_pipeline, "VADHandler", IdleHandler)
+    monkeypatch.setattr(s2s_pipeline, "TranscriptionNotifier", IdleHandler)
+    monkeypatch.setattr(s2s_pipeline, "create_backend_handler", lambda selection, context: IdleHandler(
+        context.stop_event, context.queue_in, context.queue_out
+    ))
+    monkeypatch.setattr("speech_to_speech.LLM.lm_output_processor.LMOutputProcessor", IdleHandler)
+    monkeypatch.setattr("speech_to_speech.diarization.StreamingDiarizer", SimpleNamespace(
+        from_pretrained=staticmethod(lambda *args, **kwargs: diarizer)
+    ))
+    monkeypatch.setattr("speech_to_speech.diarization.worker.DiarizationWorker", FakeWorker)
+
+    config.pipelines = {"primary": config.pipelines["primary"]}
+    config.pipelines["primary"].options["diarization"] = True
+    result = runtime.build_configured_server(config, Event())
+    # Both replicas received a diarization worker through the YAML options alone.
+    assert len(FakeWorker.instances) == 2
+    for unit in result.pools["primary"]:
+        assert any(isinstance(handler, FakeWorker) for handler in unit.handlers)
+    result.stop()
