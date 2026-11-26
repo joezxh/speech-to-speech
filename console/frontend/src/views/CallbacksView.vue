@@ -88,6 +88,9 @@
           </template>
         </a-table>
       </a-tab-pane>
+      <a-tab-pane key="live" :tab="t('callbacks.liveTab')">
+        <LiveSubtitlesPanel />
+      </a-tab-pane>
     </a-tabs>
 
     <a-drawer
@@ -191,6 +194,7 @@ import { useI18n } from 'vue-i18n'
 import { message } from 'ant-design-vue'
 
 import { AppError } from '@/api/client'
+import LiveSubtitlesPanel from '@/components/LiveSubtitlesPanel.vue'
 import {
   batchTargets,
   createTarget,
@@ -213,7 +217,7 @@ function errText(caught: unknown, fallback: string): string {
 }
 
 // ---- 回调目标列表 ----
-const activeTab = ref<'targets' | 'logs'>('targets')
+const activeTab = ref<'targets' | 'logs' | 'live'>('targets')
 const targets = ref<CallbackTarget[]>([])
 const loading = ref(false)
 const page = ref(1)

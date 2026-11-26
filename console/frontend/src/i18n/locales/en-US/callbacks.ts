@@ -1,6 +1,7 @@
 export default {
   targetsTab: 'Callback Targets',
   logsTab: 'Delivery Logs',
+  liveTab: 'Live Subtitles',
   create: 'New Target',
   createTitle: 'New Callback Target',
   editTitle: 'Edit Callback Target',
@@ -51,5 +52,14 @@ export default {
     target: 'Target',
     event: 'Event',
     duration: 'Duration (ms)'
+  },
+  live: {
+    connected: 'Connected to live transcript stream',
+    disconnected: 'Not connected (worker not running in this process or disconnected)',
+    pause: 'Pause',
+    resume: 'Resume',
+    clear: 'Clear',
+    empty:
+      'No transcript events yet; start serve --with-livekitworker and join a room to see subtitles'
   }
 }

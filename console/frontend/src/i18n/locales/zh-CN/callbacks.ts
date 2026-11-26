@@ -1,6 +1,7 @@
 export default {
   targetsTab: '回调目标',
   logsTab: '投递日志',
+  liveTab: '实时字幕',
   create: '新建目标',
   createTitle: '新建回调目标',
   editTitle: '编辑回调目标',
@@ -50,5 +51,13 @@ export default {
     target: '目标',
     event: '事件',
     duration: '耗时 (ms)'
+  },
+  live: {
+    connected: '已连接实时转写流',
+    disconnected: '未连接（worker 未随本进程启动或已断开）',
+    pause: '暂停',
+    resume: '继续',
+    clear: '清空',
+    empty: '暂无转写事件，启动 serve --with-livekitworker 后进房说话即可看到字幕'
   }
 }
