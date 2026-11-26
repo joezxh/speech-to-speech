@@ -8,8 +8,8 @@ import pytest
 from speech_to_speech.worker_integration import (
     DIARIZATION_AUTOSTART_ENV,
     DIARIZATION_WITH_FLAG,
-    LIVEKIT_WORKER_AUTOSTART_ENV,
     LIVEKIT_WITH_FLAG,
+    LIVEKIT_WORKER_AUTOSTART_ENV,
     WorkerIntegrationError,
     parse_worker_arguments,
 )
