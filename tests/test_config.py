@@ -577,3 +577,29 @@ def test_tilde_name_is_rejected_only_on_windows(monkeypatch, os_name, rejected):
             config._expand_home(Path("~someone/config.yaml"))
     else:
         assert config._expand_home(Path("~someone/config.yaml")) == expanded
+
+
+def test_runtime_livekit_worker_enabled_true(document):
+    document.data["runtime"] = {"livekit_worker": {"enabled": True}}
+    validate_config(document)
+    result = resolve_config(document, environ={})
+    assert result.runtime["livekit_worker"]["enabled"] is True
+
+
+def test_runtime_livekit_worker_defaults_disabled(document):
+    result = resolve_config(document, environ={})
+    assert result.runtime.get("livekit_worker", {}).get("enabled") is False
+
+
+def test_runtime_livekit_worker_unknown_key_rejected(document):
+    document.data["runtime"] = {"livekit_worker": {"enabled": True, "bogus": 1}}
+    with pytest.raises(ConfigurationError):
+        validate_config(document)
+    with pytest.raises(ConfigurationError):
+        resolve_config(document, environ={})
+
+
+def test_runtime_livekit_worker_client_only_omits_it(document):
+    document.data["runtime"] = {"livekit_worker": {"enabled": True}}
+    result = resolve_config(document, client_only=True, environ={})
+    assert "livekit_worker" not in result.runtime

@@ -449,7 +449,9 @@ def validate_config(document: ConfigDocument) -> None:
     data = _mapping(document, document.data, (), {"schema_version", "runtime", "blocks", "pipelines", "models"})
     if type(data.get("schema_version")) is not int or data["schema_version"] != 1:
         _error(document, ("schema_version",), "Use integer schema_version: 1.")
-    runtime = _mapping(document, data.get("runtime", {}), ("runtime",), _MODULE_PROCESS | {"server", "client"})
+    runtime = _mapping(
+        document, data.get("runtime", {}), ("runtime",), _MODULE_PROCESS | {"server", "client", "livekit_worker"}
+    )
     _settings(
         document,
         {key: value for key, value in runtime.items() if key in _MODULE_PROCESS},
@@ -459,6 +461,9 @@ def validate_config(document: ConfigDocument) -> None:
         only=_MODULE_PROCESS,
     )
     _settings(document, runtime.get("server", {}), server, ("runtime", "server"), None)
+    if "livekit_worker" in runtime:
+        worker = _mapping(document, runtime["livekit_worker"], ("runtime", "livekit_worker"), {"enabled"})
+        _value(document, worker.get("enabled", False), bool, ("runtime", "livekit_worker", "enabled"), None)
     if "client" in runtime:
         _client_settings(document, runtime["client"], None)
     blocks = _mapping(document, data.get("blocks"), ("blocks",))
@@ -556,6 +561,13 @@ def resolve_config(
         runtime["server"] = _settings(
             document, raw_runtime.get("server", {}), server, ("runtime", "server"), environment, sources
         )
+        worker_block = raw_runtime.get("livekit_worker", {})
+        enabled = False
+        if isinstance(worker_block, dict) and "enabled" in worker_block:
+            enabled = _value(
+                document, worker_block["enabled"], bool, ("runtime", "livekit_worker", "enabled"), environment
+            )
+        runtime["livekit_worker"] = {"enabled": bool(enabled)}
     client = None
     if include_client or client_only:
         client = _client_settings(document, raw_runtime.get("client", {}), environment, sources)
