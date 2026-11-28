@@ -57,9 +57,9 @@ def test_ten_backbone_tables_are_registered():
     assert NEW_TABLES <= {table.name for table in Base.metadata.sorted_tables}
 
 
-def test_head_is_0020():
-    # head 由 0019 前进到 0020（会话消息表加 status/duration_ms）后由 0020 起继续。
-    assert _head().startswith("0020")
+def test_head_is_0021():
+    # head 由 0020 前进到 0021（会话音频片段表）后由 0021 起继续。
+    assert _head().startswith("0021")
 
 
 def test_param_machine_state_defaults_to_pending_register():

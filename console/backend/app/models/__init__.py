@@ -1,5 +1,6 @@
 from app.db.base import Base
 
+from .backend_metric import ParamBackendMetric
 from .callbacks import CallbackDeliveryLog, CallbackTarget
 from .comments import apply_comments
 from .lb import ParamLbAffinity, ParamLbRouteLog, ParamLbRule
@@ -18,6 +19,8 @@ from .param_proxy_metric import ParamProxyMetric
 from .param_user import ParamUser
 from .param_version import ParamVersion
 from .release import ParamRelease
+from .session_record import ParamSessionClip, ParamSessionMessage, ParamSessionRecord
+from .template import ParamTemplate
 from .token_metric import ParamTokenMetric
 from .turn_latency import TurnLatencyRow
 from .voice import Voice
@@ -27,6 +30,7 @@ __all__ = [
     "CallbackTarget",
     "ParamAgentConfigVersion",
     "ParamAllocatorLease",
+    "ParamBackendMetric",
     "ParamAudit",
     "ParamCluster",
     "ParamConfig",
@@ -44,6 +48,10 @@ __all__ = [
     "ParamMachineWorkload",
     "ParamProxyMetric",
     "ParamRelease",
+    "ParamSessionClip",
+    "ParamSessionMessage",
+    "ParamSessionRecord",
+    "ParamTemplate",
     "ParamTokenMetric",
     "ParamUser",
     "ParamVersion",

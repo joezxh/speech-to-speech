@@ -684,3 +684,25 @@ ALTER TABLE param_session_message ADD COLUMN duration_ms INTEGER DEFAULT '0' NOT
 
 UPDATE alembic_version SET version_num='0020_session_message_fields' WHERE alembic_version.version_num = '0019_session_records';
 
+-- Running upgrade 0020_session_message_fields -> 0021_session_clips
+
+CREATE TABLE param_session_clip (
+    id INTEGER NOT NULL,
+    session_id INTEGER NOT NULL,
+    message_ordinal INTEGER DEFAULT '0' NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    item_ref VARCHAR(128) DEFAULT '' NOT NULL,
+    mime VARCHAR(64) DEFAULT 'audio/wav' NOT NULL,
+    sample_rate INTEGER DEFAULT '24000' NOT NULL,
+    duration_ms INTEGER DEFAULT '0' NOT NULL,
+    size_bytes INTEGER DEFAULT '0' NOT NULL,
+    data BLOB NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY(session_id) REFERENCES param_session_record (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_param_session_clip_session_id ON param_session_clip (session_id);
+
+UPDATE alembic_version SET version_num='0021_session_clips' WHERE alembic_version.version_num = '0020_session_message_fields';
+

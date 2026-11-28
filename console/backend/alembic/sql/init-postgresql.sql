@@ -250,6 +250,8 @@ COMMENT ON TABLE "param_session_record" IS '会话记录：一次语音通话一
 
 COMMENT ON TABLE "param_session_message" IS '会话消息行：会话内逐条转写，按 ordinal 保持通话顺序，随会话级联删除';
 
+COMMENT ON TABLE "param_session_clip" IS '会话音频片段：按全局行序挂在消息行上（bytea 存 WAV），随会话级联删除';
+
 COMMENT ON TABLE "param_version" IS '配置版本快照，创建后不可变；保存配置全文用于启动自检';
 
 COMMENT ON TABLE "turn_latency" IS '单轮语音延迟索引，可由日志重建，只存原始毫秒值';
@@ -611,6 +613,28 @@ COMMENT ON COLUMN "param_session_message"."status" IS '识别/合成结果：ok 
 COMMENT ON COLUMN "param_session_message"."duration_ms" IS '该条语音时长（毫秒），无音频来源时为 0';
 
 COMMENT ON COLUMN "param_session_message"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_session_clip"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_session_clip"."session_id" IS '所属会话记录 id，外键级联删除';
+
+COMMENT ON COLUMN "param_session_clip"."message_ordinal" IS '对应消息行的全局行序（param_session_message.ordinal）';
+
+COMMENT ON COLUMN "param_session_clip"."role" IS '角色：user 或 assistant';
+
+COMMENT ON COLUMN "param_session_clip"."item_ref" IS '前端 turn 标识（itemId / responseId），仅作对账展示';
+
+COMMENT ON COLUMN "param_session_clip"."mime" IS '音频 MIME 类型，当前固定 audio/wav';
+
+COMMENT ON COLUMN "param_session_clip"."sample_rate" IS '采样率（Hz），上行 24000';
+
+COMMENT ON COLUMN "param_session_clip"."duration_ms" IS '音频时长（毫秒）';
+
+COMMENT ON COLUMN "param_session_clip"."size_bytes" IS '音频字节数';
+
+COMMENT ON COLUMN "param_session_clip"."data" IS '音频字节（WAV）';
+
+COMMENT ON COLUMN "param_session_clip"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine_command"."id" IS '主键标识';
 
@@ -1360,6 +1384,8 @@ COMMENT ON TABLE "param_session_record" IS '会话记录：一次语音通话一
 
 COMMENT ON TABLE "param_session_message" IS '会话消息行：会话内逐条转写，按 ordinal 保持通话顺序，随会话级联删除';
 
+COMMENT ON TABLE "param_session_clip" IS '会话音频片段：按全局行序挂在消息行上（bytea 存 WAV），随会话级联删除';
+
 COMMENT ON TABLE "param_version" IS '配置版本快照，创建后不可变；保存配置全文用于启动自检';
 
 COMMENT ON TABLE "turn_latency" IS '单轮语音延迟索引，可由日志重建，只存原始毫秒值';
@@ -1721,6 +1747,28 @@ COMMENT ON COLUMN "param_session_message"."status" IS '识别/合成结果：ok 
 COMMENT ON COLUMN "param_session_message"."duration_ms" IS '该条语音时长（毫秒），无音频来源时为 0';
 
 COMMENT ON COLUMN "param_session_message"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_session_clip"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_session_clip"."session_id" IS '所属会话记录 id，外键级联删除';
+
+COMMENT ON COLUMN "param_session_clip"."message_ordinal" IS '对应消息行的全局行序（param_session_message.ordinal）';
+
+COMMENT ON COLUMN "param_session_clip"."role" IS '角色：user 或 assistant';
+
+COMMENT ON COLUMN "param_session_clip"."item_ref" IS '前端 turn 标识（itemId / responseId），仅作对账展示';
+
+COMMENT ON COLUMN "param_session_clip"."mime" IS '音频 MIME 类型，当前固定 audio/wav';
+
+COMMENT ON COLUMN "param_session_clip"."sample_rate" IS '采样率（Hz），上行 24000';
+
+COMMENT ON COLUMN "param_session_clip"."duration_ms" IS '音频时长（毫秒）';
+
+COMMENT ON COLUMN "param_session_clip"."size_bytes" IS '音频字节数';
+
+COMMENT ON COLUMN "param_session_clip"."data" IS '音频字节（WAV）';
+
+COMMENT ON COLUMN "param_session_clip"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine_command"."id" IS '主键标识';
 
@@ -2343,6 +2391,28 @@ COMMENT ON COLUMN "param_session_message"."duration_ms" IS '该条语音时长�
 COMMENT ON COLUMN "param_session_message"."created_at" IS '创建时间（UTC）';
 
 UPDATE alembic_version SET version_num='0020_session_message_fields' WHERE alembic_version.version_num = '0019_session_records';
+
+-- Running upgrade 0020_session_message_fields -> 0021_session_clips
+
+CREATE TABLE param_session_clip (
+    id SERIAL NOT NULL,
+    session_id INTEGER NOT NULL,
+    message_ordinal INTEGER DEFAULT '0' NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    item_ref VARCHAR(128) DEFAULT '' NOT NULL,
+    mime VARCHAR(64) DEFAULT 'audio/wav' NOT NULL,
+    sample_rate INTEGER DEFAULT '24000' NOT NULL,
+    duration_ms INTEGER DEFAULT '0' NOT NULL,
+    size_bytes INTEGER DEFAULT '0' NOT NULL,
+    data BYTEA NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY(session_id) REFERENCES param_session_record (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_param_session_clip_session_id ON param_session_clip (session_id);
+
+UPDATE alembic_version SET version_num='0021_session_clips' WHERE alembic_version.version_num = '0020_session_message_fields';
 
 COMMIT;
 
