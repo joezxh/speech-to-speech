@@ -23,7 +23,16 @@ export const PERMISSION_ROLES: Record<string, readonly string[]> = {
   'console:audit:export': ['admin'],
   'console:agent:enroll': ['admin', 'operator'],
   'console:callback:query': ['admin', 'operator'],
-  'console:callback:manage': ['admin']
+  'console:callback:manage': ['admin'],
+  'console:template:query': ['admin', 'operator'],
+  'console:template:create': ['admin'],
+  'console:template:update': ['admin'],
+  'console:template:delete': ['admin'],
+  'console:smart:analyze': ['admin', 'operator'],
+  'console:tool:query': ['admin', 'operator'],
+  'console:tool:create': ['admin', 'operator'],
+  'console:tool:update': ['admin', 'operator'],
+  'console:tool:delete': ['admin', 'operator']
 }
 
 export function roleHasPermission(role: string, code: string): boolean {

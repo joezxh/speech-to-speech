@@ -7,16 +7,18 @@
 > 按**实际环境与现象**组织的参数组合手册（GPU 档位、边缘盒、噪声环境、弱网等）见
 > [`deployment-tuning-playbook.md`](./deployment-tuning-playbook.md)；单旋钮怎么改仍见 [`model-pipeline.md`](./model-pipeline.md) §6。
 >
-> **本文只覆盖 pipeline 部署参数。** 机器可读文件
-> [`parameter-catalog.yaml`](./parameter-catalog.yaml) 里另有一段 `console_parameters`：
+> **§2–§7 是 pipeline 部署参数；§8 是控制台自己的运行开关（索引式覆盖）。**
+> 机器可读文件 [`parameter-catalog.yaml`](./parameter-catalog.yaml) 里另有一段 `console_parameters`：
 > 那是**控制台自己的运行开关**（探针节奏、LB 开关、路径、上限……），键集合与
 > `console/backend/app/config/_schema.py` 的登记表双向一致，由
 > `console/backend/scripts/validate_catalog_schema.py` 把关；它不进部署页的参数树。
+> 本文 §8 只做生效方式与改造评估的索引，字段定义仍以 YAML 与登记表为准。
 
 - 目录版本：`s2s-parameter-catalog-v1` / 人读版结构 `catalog-md-v2`
 - 覆盖范围：`speech-to-speech-src` 启动参数通道 + 会话运行时通道 + 容器编排 + 客户端
 - 取值基线：源码 `src/speech_to_speech/**` + 实际生效配置 [`config/prod.yaml`](../config/prod.yaml) + `silero-vad` 6.2.3 官方资料 + `fireredvad` 0.0.2 / `FireRedTeam/FireRedVAD` 官方资料
 - 本次变化：**取消 A 层通用 / B 层后端的两段式结构**，改为 `VAD → STT → LLM → TTS → 平台公共` 的组件分组；暴露分级、来源优先级、生效方式、影响面、变更代价等元数据从「表 B」降级为参数行内的属性列；同时按注册表校正了后端名与控制台可选清单。
+- 最近一次增补（生效方式专项）：新增 §7，把 170 行按「运行时可改 8 / 必须重启 162」重新切分，并对 162 个仅重启参数逐行给出可行性分级（高 22 / 中 54 / 低 44 / 不可行 42）与具体改造建议；新增 §8 补齐控制台 61 个配置项（56 hot / 5 startup）及 5 个重启项的评估；§2–§6 的参数行与取值**未改动**。
 - 最近一次 VAD 补充：`firered` 的依赖包、权重目录、帧参数换算与热更新边界落到 §2.5；**参数条数不变，仍是 22 条**（`firered` 复用 `thresh` / `min_silence_ms` / `speech_pad_ms` / `sample_rate`，只新增了原本已登记的 2 个专属参数）。
 
 ---
@@ -33,6 +35,8 @@
 | §4 | LLM：chat-completions / responses-api / 本地后端 | `blocks.llm.settings` | 28 |
 | §5 | TTS：Qwen3-TTS 及 11 个可选后端 | `blocks.tts.settings` | 23（深挖）|
 | §6 | 平台公共：监听、并发、超时、音频、设备、鉴权、日志、环境、配置文件、容器、客户端 | `runtime.*` / `pipelines.*.options` / compose | 91 |
+| §7 | 生效方式总览 + 162 个「仅重启参数」逐项改造评估 | 全量横向索引 | 170（索引，不新增） |
+| §8 | 控制台自身 61 个配置项 + 5 个重启项评估 | `console_parameters` | 61（索引，不新增） |
 | 附录 A | 三条端到端样例（重启 / 热更新 / 回滚） | — | — |
 | 附录 B | 与 `configuration.md` 的分工 | — | — |
 | 附录 C | 计数、溯源与命名对照 | — | — |
@@ -728,6 +732,315 @@ Silero 官方（`VADIterator` / `get_speech_timestamps`）与本项目的对应�
 | `tools` | 可调用工具声明 | `[]`；JSON Schema 数组 | 代码传入 | 启动 | expert | 会话级 · 重启 | 工具描述错误会导致模型乱调或拒调 | 同上 |
 | `tool_executor` | 工具执行回调 | `None`；可调用对象 | 代码传入 | 启动 | ops | 会话级 · 重启 | 执行任意本地逻辑，不应接受用户提交可执行回调 | 同上 |
 | `tool_response_create` | 工具结果是否触发新一轮回复 | `true` | 代码传入 | 启动 | advanced | 会话级 · 重启 | 关掉后模型看不到执行结果 | 同上 |
+
+---
+
+## 7. 生效方式总览与「仅重启参数」改造评估
+
+> 本章是 §2–§6 全部参数行的**横向索引**，不新增参数、不改变 §0.5 的语义。
+> 原文每张参数表已有「生效」列；本章把 170 行按「运行时 / 重启」重新切分，并对 162 个仅重启参数**逐行给出可行性判断与改造建议**，供平台排期使用。
+
+### 7.1 判定口径
+
+| 归类 | 对应 `生效` 取值 | 含义 |
+|---|---|---|
+| 运行时可改 | `热更新`、`启动+热更新` | 无需重启进程；但 `热更新` 只作用于已连接会话、不持久化，新连接仍读 YAML 种子（见 A.2） |
+| 必须重启 | `启动`、`容器`、`固定` | `启动`＝改 YAML/env 后重建进程；`容器`＝改 compose/build arg 后重建容器；`固定`＝无配置入口，需改源码才能实现 |
+
+> 已有热更新链路的三条限制必须同时说明：① 只影响活跃连接（空闲 unit 与新连接读启动值）；② 不持久化，重启回退到 YAML；③ 受 `S2S_ADMIN_TOKEN` / `S2S_INTERNAL_TOKEN` fail-closed 保护（未配置即不可用）。
+
+### 7.2 生效方式分布（全量 170 行）
+
+| 章节 | 总行数 | 运行时可改 | 必须重启 | 其中 `容器` | 其中 `固定` |
+|---|---:|---:|---:|---:|---:|
+| 2. VAD 参数 | 22 | 2 | 20 | 0 | 0 |
+| 3. STT 参数 | 6 | 1 | 5 | 0 | 0 |
+| 4. LLM 参数 | 28 | 1 | 27 | 0 | 0 |
+| 5. TTS 参数 | 23 | 1 | 22 | 0 | 0 |
+| 6. 平台与运行时公共参数 | 91 | 3 | 88 | 6 | 14 |
+| **合计** | **170** | **8** | **162** | **6** | **14** |
+
+### 7.3 可行性分级定义
+
+| 级别 | 定义 | 典型改造路径 | 建议优先级 |
+|---|---|---|---|
+| 高 | 已有运行时写入路径，或值在每次调用处读取并与对象生命周期无关 | 扩白名单 + 逐次读取，改动 1–2 个文件 | P0：一个迭代内可做 |
+| 中 | 值已逐请求读取但未入 schema；或需重建轻量客户端 | 扩 `RuntimeConfig.session` + 客户端原子换入 | P1：需回归测试与灰度 |
+| 低 | 需重建 handler / 模型 / 池，牵涉显存与在途会话 | 双实例蓝绿切换 + 优雅 drain | P2：按业务需求立项 |
+| 不可行 | 进程级绑定、导入期读取、安全凭据或源码常量 | 保持重启，靠上层蓝绿部署 | 不改造 |
+
+> 表中「可行性」只回答**技术上能否动态生效**，不等于「现在就该改」。安全敏感项即使技术上可做，也因 fail-closed 语义判为不可行。
+
+### 7.4 逐参数评估（162 个仅重启参数）
+
+> 表内「§原行」为 §2–§6 中的原编号，便于回查。已可运行时生效的 8 项见 7.5，不再重复。
+
+#### 7.4.1 VAD 参数
+
+| §原行 | 参数 | 当前生效 | 可行性 | 判断依据 | 改造建议 |
+|---:|---|---|---|---|---|
+| 1 | `vad` | 启动 | **低** | 后端选择决定 handler 类型与模型加载方式，不是单个可变字段 | 走蓝绿实例切换：先以新 `vad` 后端起一组 pipeline 并预热，探活通过后切流量；需同时满足新后端的依赖与权重前置条件 |
+| 3 | `sample_rate` | 启动 | **低** | VAD 采样率与上游音频流、`CHUNK_SAMPLES` 强绑定，运行中改值会让所有分块判停失准 | 不建议单独动态化；如确需多采样率，应作为新 pipeline 实例的一等配置并整体切换 |
+| 5 | `min_speech_ms` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 6 | `min_speech_continuation_ms` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 7 | `max_speech_ms` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 8 | `speech_pad_ms` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 9 | `audio_enhancement` | 启动 | **低** | 需加载 DeepFilterNet 模型并挂进音频前处理链，不是简单布尔开关 | 可预加载增强器再用标志位旁路，此时可降为「中」；若按需加载则必须重建 handler |
+| 10 | `speculative_reopen_ms` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 11 | `unanswered_reopen_ms` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 12 | `short_segment_merge_ms` | 启动 | **高** | 迭代器内为普通时间阈值，但存在硬约束 `>= min_silence_ms` | 加入热更新白名单时必须成对校验 `min_silence_ms` 的新值，违反约束整批拒绝而非逐个拒绝 |
+| 13 | `enable_realtime_transcription` | 启动 | **中** | 打开/关闭会改变 partial 事件流的产生与订阅，涉及已推送事件的收尾 | 改为逐会话标志并在关闭时发最后一次 final 事件；客户端需容忍事件流突然停止 |
+| 14 | `realtime_processing_pause` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 15 | `smart_turn` | 启动 | **高** | ONNX 模型可常驻内存，只在 VAD 语音→静音边界用一个布尔判定是否调用 | 把 `smart_turn` 提升为 `RuntimeConfig.session` 字段，判停处读取；关闭后不卸载模型，避免反复加载 |
+| 16 | `smart_turn_model_path` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 17 | `smart_turn_threshold` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 18 | `smart_turn_max_wait_ms` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 19 | `smart_turn_incomplete_delay_ms` | 启动 | **高** | 数值/开关在每次判定或每轮调用处读取，`vad_handler` 已存在同类的运行时写入路径（`thresh` / `min_silence_ms`） | 扩展 `session.update` 白名单：在 `config_sync.py` 的 `HOT_SESSION_FIELDS` 与 `hot_update_service.py` 树形剪枝中登记，写入点复用 handler 的可变字段；会话结束恢复启动值 |
+| 20 | `smart_turn_cpu_count` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 21 | `vad_firered_model_dir` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 22 | `vad_firered_use_gpu` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+#### 7.4.2 STT 参数
+
+| §原行 | 参数 | 当前生效 | 可行性 | 判断依据 | 改造建议 |
+|---:|---|---|---|---|---|
+| 23 | `qwen3_asr_model_name` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 24 | `qwen3_asr_device` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 25 | `qwen3_asr_torch_dtype` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 27 | `qwen3_asr_prompt` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 28 | `qwen3_asr_gen_max_new_tokens` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+#### 7.4.3 LLM 参数
+
+| §原行 | 参数 | 当前生效 | 可行性 | 判断依据 | 改造建议 |
+|---:|---|---|---|---|---|
+| 29 | `model_name` | 启动 | **低** | 远端模型名决定 provider 路由与音频输入能力，换名等价于换后端 | 模型名调整仍走发布重建；如需无损切换需 provider 侧支持并行注册名 |
+| 30 | `user_role` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 31 | `init_chat_role` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 33 | `chat_size` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 34 | `stream_batch_sentences` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 35 | `enable_lang_prompt` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 36 | `compact_history` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 37 | `model_name` | 启动 | **低** | `chat-completions` 覆写的模型名默认，运行时改会改变音频输入能力判断 | 同 §4.2 的 `model_name`，维持启动固化 |
+| 38 | `responses_api_api_key` | 启动 | **中** | 技术上可随 HTTP client 一起换入，但属于额度凭据，不应走 session 通道 | 仅允许管理员端点触发客户端重建；密钥仍由 `{env:}` 注入，不进 `RuntimeConfig.session`、不回显 |
+| 39 | `responses_api_base_url` | 启动 | **中** | 凭据 / 端点由 HTTP 客户端对象在构造时持有，改值需换客户端而非换参数 | 把客户端改为可替换的懒加载缓存，配置变更时以新 client 原子换入，在途请求继续用旧实例；密钥仍只从 `{env:}` 注入，不落 session |
+| 40 | `responses_api_stream` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 41 | `responses_api_disable_thinking` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 42 | `responses_api_reasoning_effort` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 43 | `responses_api_audio_max_tokens` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 44 | `responses_api_audio_temperature` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 45 | `responses_api_audio_content_type` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 46 | `responses_api_audio_history_turns` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 47 | `responses_api_provider_unavailable_message` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 48 | `llm_device` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 49 | `llm_torch_dtype` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 50 | `llm_load_in_8bit` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 51 | `llm_load_in_4bit` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 52 | `llm_gen_max_new_tokens` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 53 | `llm_gen_min_new_tokens` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 54 | `llm_gen_temperature` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 55 | `llm_gen_do_sample` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 56 | `llm_is_vlm` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+#### 7.4.4 TTS 参数
+
+| §原行 | 参数 | 当前生效 | 可行性 | 判断依据 | 改造建议 |
+|---:|---|---|---|---|---|
+| 57 | `qwen3_tts_model_name` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 58 | `qwen3_tts_device` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 59 | `qwen3_tts_dtype` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 60 | `qwen3_tts_attn_implementation` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 61 | `qwen3_tts_backend` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 62 | `qwen3_tts_ggml_quantization` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 63 | `qwen3_tts_gguf_talker_path` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 64 | `qwen3_tts_gguf_codec_path` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 65 | `qwen3_tts_ref_cache_dir` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 66 | `qwen3_tts_ref_audio` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 67 | `qwen3_tts_ref_spk` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 68 | `qwen3_tts_ref_rvq` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 69 | `qwen3_tts_ref_text` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 71 | `qwen3_tts_instruct` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 72 | `qwen3_tts_xvec_only` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 73 | `qwen3_tts_parity_mode` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 74 | `qwen3_tts_non_streaming_mode` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 75 | `qwen3_tts_mlx_quantization` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 76 | `qwen3_tts_language` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 77 | `qwen3_tts_streaming_chunk_size` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 78 | `qwen3_tts_max_new_tokens` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 79 | `qwen3_tts_blocksize` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+#### 7.4.5 平台与运行时公共参数
+
+| §原行 | 参数 | 当前生效 | 可行性 | 判断依据 | 改造建议 |
+|---:|---|---|---|---|---|
+| 80 | `host` | 启动 | **不可行** | socket 绑定在进程启动时完成，运行中无法改监听地址 | 保持重启；用上层蓝绿部署实现无损迁移 |
+| 81 | `port` | 启动 | **不可行** | 同 `host`，端口由已监听的 socket 持有 | 保持重启；同时需同步 compose 映射与探活配置 |
+| 82 | `num_pipelines` | 启动 | **低** | 池在 `s2s_pipeline.py` 按 `range(num_pipelines)` 一次性创建，`/v1/pool` 目前只读 | 需新增扩缩容 API + drain + 新实例预热；扩缩容期间总显存预算需按峰值计算 |
+| 83 | `-np` | 容器 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 84 | 池满拒绝 | 固定 | **不可行** | 固定行为由路由代码决定，不是可配置值 | 无改造必要；如需排队能力须新增队列实现，属新功能而非配置热更新 |
+| 85 | `llm_proxy_connect_timeout_s` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 86 | `openai_stt_timeout` | 启动 | **中** | 凭据 / 端点由 HTTP 客户端对象在构造时持有，改值需换客户端而非换参数 | 把客户端改为可替换的懒加载缓存，配置变更时以新 client 原子换入，在途请求继续用旧实例；密钥仍只从 `{env:}` 注入，不落 session |
+| 87 | `openai_tts_timeout` | 启动 | **中** | 凭据 / 端点由 HTTP 客户端对象在构造时持有，改值需换客户端而非换参数 | 把客户端改为可替换的懒加载缓存，配置变更时以新 client 原子换入，在途请求继续用旧实例；密钥仍只从 `{env:}` 注入，不落 session |
+| 88 | `connection_retry_timeout_s` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 89 | `request_timeout_s`（LLM）〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 90 | 重试策略〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 91 | `PIPELINE_SAMPLE_RATE`〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 92 | `CHUNK_SAMPLES`〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 93 | `send_rate` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 94 | `recv_rate` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 95 | `chunk_size` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 96 | `playback_buffer_ms` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 97 | `openai_tts_sample_rate` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 98 | `device` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 99 | `mac_optimal_settings` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 100 | `torch_num_threads` | 启动 | **低** | `torch.set_num_threads` 是进程全局状态，但对已创建的算子线程池不一定生效 | 可尝试运行时调用并实测；无法保证生效时按「不可行」处理，维持启动固化 |
+| 101 | `diarization` | 启动 | **低** | 开启需加载分离模型并改变转写链路拓扑 | 以整组 pipeline 蓝绿切换；不建议逐会话开关 |
+| 102 | `diarization_model_name` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 103 | `diarization_revision` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 104 | `diarization_device` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 105 | `diarization_dtype` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 106 | `diarization_streaming_mode` | 启动 | **中** | 生成类参数虽在请求构造处读取，但未进入 session schema，需同时改白名单与读取回退链 | 在 `RuntimeConfig.session` 增字段并放行白名单，读取点改为 `session → 启动默认` 回退；注意 `max_tokens` 与流式批次的联动需回归测试 |
+| 107 | `diarization_threshold` | 启动 | **高** | 若分离模型常驻，阈值只是推理后处理参数 | 提升为逐会话阈值并沿用现有 VAD 的白名单扩展方式 |
+| 108 | `detect_llm_output_language` | 启动 | **高** | 检测器已在启动时预热，运行中只需决定是否调用 | 提升为逐会话布尔标志，在输出语言探测处读取；无需重建检测器 |
+| 109 | `enable_llm_proxy` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 110 | `openai_stt_api_key` | 启动 | **中** | 同上：客户端可原子换入，但密钥不可经会话下发 | 管理员端点 + secrets manager；`OPENAI_API_KEY` 隐式回退链应一并清理 |
+| 111 | `openai_tts_api_key` | 启动 | **中** | 同上：客户端可原子换入，但密钥不可经会话下发 | 管理员端点 + secrets manager；`OPENAI_API_KEY` 隐式回退链应一并清理 |
+| 112 | `USAGE_HASH_SECRET` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 113 | `UNLIMITED_ORGS` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 114 | `AUTH_DEBUG` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 115 | `S2S_ADMIN_TOKEN` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 116 | `S2S_INTERNAL_TOKEN` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 117 | CORS 策略〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 118 | Realtime API 鉴权〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 119 | `log_level` | 启动 | **高** | Python `logging` 原生支持运行时改级别 | 控制台下发后调用 `logging.getLogger().setLevel()`；无需重启也无会话边界 |
+| 120 | `log_transcripts` | 启动 | **高** | 仅控制写日志前的分支判断 | 改为逐条日志读取标志位；注意该开关是隐私项，变更必须写审计日志 |
+| 121 | `enable_live_transcription` | 启动 | **高** | 纯日志 / 开关类标志，标准库可运行时调整或无状态依赖 | 改为 `logger.setLevel()` 与逐次读取的标志位，接入 `config_sync.py` 的 hot 链路即可 |
+| 122 | `live_transcription_update_interval` | 启动 | **高** | 仅控制 partial 事件节流间隔，无状态依赖 | 改为每次事件调度时读取当前值，定时器按新间隔重排 |
+| 123 | `MODEL_METRICS_LOG` | 启动 | **中** | `RotatingFileHandler` 可在运行时新建，但旧 handler 需要正确关闭 | 配置变更时创建新 handler 并原子替换，保留旧 handler 排空在途写入 |
+| 124 | `MODEL_METRICS_LOG_MAX_BYTES` | 启动 | **高** | 仅影响下一轮滚动判定 | 更新 handler 的 `maxBytes` 属性即可 |
+| 125 | `MODEL_METRICS_LOG_BACKUPS` | 启动 | **高** | 仅影响下一轮滚动保留份数 | 更新 handler 的 `backupCount` 属性即可 |
+| 126 | 监控端点〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 127 | `HF_HUB_OFFLINE` | 启动 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 128 | `TRANSFORMERS_OFFLINE` | 启动 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 129 | `TOKENIZERS_PARALLELISM` | 启动 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 130 | `HF_ENDPOINT` | 启动 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 131 | `HF_HUB_ENABLE_PROGRESS_BARS` | 启动 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 132 | `MODELSCOPE_ENDPOINT` | 启动 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 133 | `GPUSTACK_BASE_URL` | 启动 | **中** | 远端网关地址由 OpenAI 兼容 client 持有，换址需重建 client | 懒加载 client + 原子换入；在途流式请求保留旧 client，新请求用新地址 |
+| 134 | `GPUSTACK_MODEL` | 启动 | **中** | 远端模型名是请求体字段，可逐请求替换，但会改变音频输入能力 | 提升为运行时字段前必须重新校验能力位；`stt=none` 时禁止切换到不支持音频的模型 |
+| 135 | `GPUSTACK_API_KEY` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 136 | `SERPER_API_KEY` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 137 | `RTC_ICE_SERVERS` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 138 | `OPENAI_API_KEY` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 139 | `SILERO_VAD_REPO_PATH` | 启动 | **低** | 模型 / 权重 / 设备 / 精度在 `setup()` 中一次性加载并缓存，无法原地换参 | 需双实例蓝绿切换（新旧 handler 并存 → 预热 → 原子换流量 → 释放旧实例），显存预算需 ×2；仅在确有灰度切换需求时立项 |
+| 140 | `schema_version` | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 141 | 顶层结构 | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 142 | `{env: NAME}` 引用 | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 143 | 路径字段解析 | 启动 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 144 | 文件体积上限〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 145 | 嵌套深度上限〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 146 | `DOCKERFILE`（build arg） | 容器 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 147 | `BASE_IMAGE`（build arg） | 容器 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 148 | `PIPELINE_PORT`（host 侧） | 容器 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 149 | `PIPELINE_GPU_ID`（host 侧） | 容器 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 150 | GPU 能力声明〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 151 | 权重/缓存卷〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 152 | Silero VAD 卷〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 153 | 重启策略 | 容器 | **不可行** | 进程级 socket / 构建参数 / 第三方库导入期读取，运行期改值无法回溯到已绑定的资源 | 保持重启；无损切换只能靠上层蓝绿部署 + 流量切换，不建议在进程内做「假热更新」 |
+| 154 | 健康检查〔只读〕 | 固定 | **不可行** | 安全敏感、fail-closed 凭据或源码常量；运行时改写会破坏安全语义或须改源码 | 不建议动态化；维持启动固化，密钥轮换走重建 + 审计 |
+| 155 | `url` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 157 | `api_key` | 启动 | **中** | 客户端连接凭据，仅建连时读取 | 仅允许客户端侧下次重连生效，禁止经 session.update 下发 |
+| 158 | `send_rate` / `recv_rate` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 159 | `playback_buffer_ms` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 160 | `chunk_size` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 161 | `input_device` / `output_device` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 164 | `print_json` | 启动 | **高** | 纯日志 / 开关类标志，标准库可运行时调整或无状态依赖 | 改为 `logger.setLevel()` 与逐次读取的标志位，接入 `config_sync.py` 的 hot 链路即可 |
+| 165 | `block_mic_during_playback` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 166 | `log_transcripts` | 启动 | **高** | 仅控制写日志前的分支判断 | 改为逐条日志读取标志位；注意该开关是隐私项，变更必须写审计日志 |
+| 167 | `connection_retry_timeout_s` | 启动 | **中** | 客户端参数只在建连 / 重连时使用，会话中途改值不影响已打开的音频流 | 客户端侧改为可热替换的连接参数，标记「下次重连生效」并显式提示用户；服务端不参与 |
+| 168 | `tools` | 启动 | **中** | 工具声明是每轮请求体的一部分，技术上可逐会话替换 | 需防提示词注入：工具 schema 必须由服务端白名单提供，不接受客户端提交的任意 schema |
+| 169 | `tool_executor` | 启动 | **不可行** | 可执行回调无法跨配置序列化，且让配置拥有任意代码执行能力是重大安全面 | 维持代码内注册；只对工具「开关/参数」做动态化，执行器本体固定 |
+| 170 | `tool_response_create` | 启动 | **中** | 工具结果是否触发新一轮回复是服务端编排开关，不是客户端连接参数 | 提升为服务端 session 字段，由服务端控制；不接受客户端提交该值，避免绕过轮次判定 |
+
+> 共评估 162 行。§原行 29/37 的 `model_name` 是两处不同语义的覆写，§原行 93/158 的 `send_rate` 与 95/160 的 `chunk_size` 是服务端客户端同名参数，均按各自作用域分别判断。
+
+### 7.5 已支持运行时生效的 8 项（无需改造，但需知道边界）
+
+| §原行 | 参数 | 生效 | 通道 | 边界 |
+|---:|---|---|---|---|
+| 2 | `thresh` | 启动+热更新 | `session.update.audio.input.turn_detection.threshold` → `iterator.threshold` | 会话结束恢复启动值；`firered` 下同步改写包内阈值 |
+| 4 | `min_silence_ms` | 启动+热更新 | `session.update.audio.input.turn_detection.silence_duration_ms` → `iterator.min_silence_samples` | 会话结束恢复启动值；`firered` 下按 10 ms 帧取整 |
+| 26 | `qwen3_asr_language` | 启动+热更新 | `session.update.audio.input.transcription.language` → STT 每请求读取 | 需通过后端语言能力校验；会话结束恢复启动值 |
+| 32 | `init_chat_prompt` | 启动+热更新 | `session.update.instructions` → LLM 每轮生成时读取 | 只作用于当前连接，覆盖服务端默认人设 |
+| 70 | `qwen3_tts_speaker` | 启动+热更新 | `session.update.audio.output.voice` → `handler.speaker` | 仅 `qwen3` 命中支持列表时生效，其他后端只回显（§5.4） |
+| 156 | `model` | 启动+热更新 | `session.update.model` | 只记日志，本地后端忽略该值（实际不生效） |
+| 162 | `instructions` | 热更新 | 客户端首帧 `session.update.instructions` | 覆盖服务端 `init_chat_prompt`；过长抬高首 token 延迟 |
+| 163 | `voice` | 热更新 | 客户端首帧 `session.update.audio.output.voice` | 仅 `qwen3`（支持列表内）与 `kitten` 真正生效（§5.4） |
+
+### 7.6 建议改造路线
+
+> 分级统计：高 22 项 / 中 54 项 / 低 44 项 / 不可行 42 项（合计 162）。
+
+| 阶段 | 改造项 | 做法 | 收益 / 风险 |
+|---|---|---|---|
+| P0（高可行性） | VAD 9 个数值/开关、日志 8 项、Smart Turn 开关、实时转写开关、语言检测开关 | 复用 `config_sync.py` hot 链路：`HOT_SESSION_FIELDS` + `hot_update_service.py` 白名单扩项；日志项直接用 `logger.setLevel` | 无需重建实例；风险是新增字段需补校验与会话回滚 |
+| P1（中可行性） | LLM 生成类 17 项、TTS 生成类 7 项、STT 提示词/生成长度、3 个超时、远端 base_url | 扩 `RuntimeConfig.session`，读取点统一改为 `session → 启动默认`；HTTP client 改懒加载原子换入 | 覆盖大部分「调prompt/调温度/调音色」运营场景；需防止在途请求参数半新半旧 |
+| P2（低可行性） | 模型名、设备、精度、量化、后端、`num_pipelines`、diarization、参考音频 | 蓝绿 handler + `/v1/pool` 扩缩容 API + 优雅 drain | 显存需 ×2，改造周期长；仅在有多版本灰度诉求时立项 |
+| 不改造 | host/port、导入期环境变量、密钥/令牌、源码常量、compose/build arg | 维持重启；用上层蓝绿部署与流量切换实现无损升级 | 强行动态化会破坏 fail-closed 与可审计性 |
+
+### 7.7 落地时的三个必检点
+
+1. **白名单两处必须同步**：`console/backend/app/services/hot_update_service.py` 的树形剪枝（Chain B）与 `src/speech_to_speech/agent/config_sync.py` 的 `HOT_SESSION_FIELDS`（Chain A 落地侧）。只改一处会出现「控制台显示已生效、agent 推送被忽略」。
+2. **目录标注必须同步**：`docs/parameter-catalog.yaml` 对应条目的 `effect: hot` / `startup` 驱动 `console/backend/app/config/_schema.py` 的 `ConfigItem.hot`；改完运行 `console/backend/scripts/validate_catalog_schema.py` 校验双向一致。
+3. **会话回滚必须补齐**：仿照 `vad_handler.py` 的 `_configured_threshold` / `_configured_min_silence_samples`，为每个新增热字段保存启动值并在会话结束时恢复；否则长连接会永久带上一次热更新值。
+
+---
+
+## 8. 控制台自身配置项（61 项）
+
+> §2–§7 覆盖 pipeline 与客户端；本章补齐 `parameter-catalog.yaml` 的 `console_parameters` 段，它与 `console/backend/app/config/_schema.py` 登记表双向一致（由 `console/backend/scripts/validate_catalog_schema.py` 把关）。
+> **控制台配置不走 pipeline 的发布链路**：库 `param_config` 优先于 env，`_store.py` 有 2 s TTL 缓存并在 `set()` 后立即失效；`PUT /api/v1/config` 返回 `restartRequired` 汇总，标 `hot` 的项秒级生效。
+
+### 8.1 生效方式分布
+
+| stage | 条数 | `hot`（运行时生效） | `startup`（需重启控制台） |
+|---|---:|---:|---:|
+| `allocator` | 12 | 9 | 3 |
+| `app` | 4 | 4 | 0 |
+| `bootstrap` | 2 | 0 | 2 |
+| `console` | 37 | 37 | 0 |
+| `demo` | 6 | 6 | 0 |
+| **合计** | **61** | **56** | **5** |
+
+### 8.2 五个需重启项的逐项评估
+
+| 参数 | 环境变量 | 作用 | 可行性 | 判断依据 | 改造建议 |
+|---|---|---|---|---|---|
+| `mode` | `ALLOCATOR_MODE` | 本地分配器模式：off 为单实例直连，local 为注册表选台 | **中** | 分配器实例在 FastAPI lifespan 中按模式构建，切换 `off ↔ local` 会改变选台拓扑与注册中心的交互方式 | 把选台策略抽成可替换对象，经管理员端点原子换入并 drain 在途会话；切换前必须先校验注册表可用性，否则应拒绝而非半切换 |
+| `seed_path` | `INSTANCES_SEED_PATH` | 声明式实例 seed 文件路径；留空则以数据库为唯一来源 | **中** | seed 文件只在启动时读取并灌入实例表，运行中改路径不会自动重新对账 | 新增管理员端点触发「重新读取 seed + 幂等 upsert」，与数据库现状做差异预览后再应用；不建议自动监听文件变化 |
+| `webrtc_hangup_enabled` | `INSTANCE_WEBRTC_HANGUP_ENABLED` | 是否注册跨机挂断代理路由 | **低** | 该开关决定是否在 app 启动时注册跨机挂断代理路由；FastAPI 路由表在运行期不可安全增删 | 改为「路由无条件注册 + handler 内读标志位」：这样开关本身可降为 hot，且失败时只返回明确的 disabled 响应而不是 404 |
+| `default_admin_role` | `DEFAULT_ADMIN_ROLE` | 首次启动管理员角色 | **不可行** | 仅首次启动创建管理员时使用，运行中修改不构成对现有管理员的变更，反而制造权限认知偏差 | 维持启动固化；需要改管理员权限应走既有用户/角色管理 API，而不是 bootstrap 参数 |
+| `default_admin_username` | `DEFAULT_ADMIN_USERNAME` | 首次启动创建的管理员用户名 | **不可行** | 同上，且属于 bootstrap 身份凭据，运行时改写会破坏审计链的连续性 | 维持启动固化；管理员变更走用户管理 API + 审计 |
+
+> 这 5 项全部是 `ops` 暴露级别。即使技术上可改造，也必须保留管理员端点鉴权与审计留痕，不能下放到普通配置页任意切换。
+
+### 8.3 已支持运行时生效的 56 项（索引）
+
+> 这些项的 `effect: hot` 已驱动 `_schema.py` 的 `ConfigItem.hot = True`，经 `PUT /api/v1/config` 写库后由 `_store.invalidate()` 秒级生效；无需改造。下表按 stage 列出，完整字段定义以 `parameter-catalog.yaml` 的 `console_parameters` 段为准。
+
+**`allocator`（9 项）**：`console_id` / `CONSOLE_ID`、`fail_threshold` / `INSTANCE_FAIL_THRESHOLD`、`grant_ttl_s` / `INSTANCE_GRANT_TTL_S`、`metric_retention_days` / `INSTANCE_METRIC_RETENTION_DAYS`、`probe_interval_s` / `INSTANCE_PROBE_INTERVAL_S`、`probe_timeout_s` / `INSTANCE_PROBE_TIMEOUT_S`、`queue_enabled` / `INSTANCE_QUEUE_ENABLED`、`recover_threshold` / `INSTANCE_RECOVER_THRESHOLD`、`usage_interval_s` / `INSTANCE_USAGE_INTERVAL_S`
+
+**`app`（4 项）**：`cors_origins` / `CORS_ORIGINS`、`env` / `ENV`、`log_level` / `LOG_LEVEL`、`max_body_bytes` / `MAX_BODY_BYTES`
+
+**`console`（37 项）**：`data_dir` / `DATA_DIR`、`lb_asr_timeout_s` / `LB_ASR_TIMEOUT_S`、`lb_audio_max_bytes` / `LB_AUDIO_MAX_BYTES`、`lb_capability_interval_s` / `LB_CAPABILITY_INTERVAL_S`、`lb_capability_probe_timeout_s` / `LB_CAPABILITY_PROBE_TIMEOUT_S`、`lb_emotion_timeout_s` / `LB_EMOTION_TIMEOUT_S`、`lb_failover_attempts` / `LB_FAILOVER_ATTEMPTS`、`lb_mode` / `CONSOLE_LB_MODE`、`lb_stateless_max_inflight` / `LB_STATELESS_MAX_INFLIGHT`、`lb_tts_timeout_s` / `LB_TTS_TIMEOUT_S`、`lb_upstream_ready_timeout_s` / `LB_UPSTREAM_READY_TIMEOUT_S`、`lb_voiceprint_timeout_s` / `LB_VOICEPRINT_TIMEOUT_S`、`log_dir` / `LOG_DIR`、`model_metrics_log` / `MODEL_METRICS_LOG`、`param_catalog_path` / `PARAM_CATALOG_PATH`、`param_config_dir` / `PARAM_CONFIG_DIR`、`pipeline_base_url` / `PIPELINE_BASE_URL`、`pipeline_container` / `PIPELINE_CONTAINER`、`pipeline_timeout_s` / `PIPELINE_TIMEOUT_S`、`restart_mode` / `RESTART_MODE`、`session_audio_max_bytes` / `SESSION_AUDIO_MAX_BYTES`、`session_audio_max_seconds` / `SESSION_AUDIO_MAX_SECONDS`、`session_data_dir` / `SESSION_DATA_DIR`、`session_record_enabled` / `SESSION_RECORD_ENABLED`、`session_retention_days` / `SESSION_RETENTION_DAYS`、`session_retention_max_days` / `SESSION_RETENTION_MAX_DAYS`、`static_dir` / `STATIC_DIR`、`supervisor_program` / `SUPERVISOR_PROGRAM`、`supervisor_socket` / `SUPERVISOR_SOCKET`、`verifier_mode` / `VERIFIER_MODE`、`voice_data_dir` / `VOICE_DATA_DIR`、`voice_max_bytes` / `VOICE_MAX_BYTES`、`voice_max_seconds` / `VOICE_MAX_SECONDS`、`voice_min_seconds` / `VOICE_MIN_SECONDS`、`voice_precompute_concurrency` / `VOICE_PRECOMPUTE_CONCURRENCY`、`voice_precompute_timeout_s` / `VOICE_PRECOMPUTE_TIMEOUT_S`、`voice_retention_max_days` / `VOICE_RETENTION_MAX_DAYS`
+
+**`demo`（6 项）**：`load_balancer_url` / `LOAD_BALANCER_URL`、`oauth_client_id` / `OAUTH_CLIENT_ID`、`rtc_ice_servers` / `RTC_ICE_SERVERS`、`space_id` / `SPACE_ID`、`speech_to_speech_url` / `SPEECH_TO_SPEECH_URL`、`startup_greeting` / `STARTUP_GREETING`
+
+### 8.4 控制台与 pipeline 热更新链的分工
+
+| 链路 | 入口 | 作用范围 | 持久化 | 关键约束 |
+|---|---|---|---|---|
+| 控制台配置（本章 hot 项） | `PUT /api/v1/config` → `param_config` → `_store.invalidate()` | 控制台自身（探针节奏、摘除阈值、上限等） | 是，写库 | 库值优先于 env；2 s 缓存 |
+| Chain A：agent 拉取 | `GET /api/v1/agent/config` → `config_sync.py` 原子替换 YAML → `effects` 分流 | pipeline 启动默认值 | 是（YAML 文件） | `hot`→会话更新、`start`→supervisor 重启、`container`→只记声明 |
+| Chain B：会话热更新 | `/api/v1/sessions/update` → `/internal/sessions/update` → `/admin/sessions/update` | 已连接会话 | 否，会话结束恢复启动值 | token fail-closed；只放行白名单字段 |
+
+> 三条链不要混用：改控制台探针频率是 Chain 0；改「下次会话的默认系统提示词」要 Chain A；改「当前所有在线会话的提示词」才是 Chain B。若只做 Chain B，新连接仍读旧 YAML。
 
 ---
 

@@ -364,6 +364,15 @@ class AudioHandler(RealtimeBaseHandler):
         st.input_audio_resampler = None
         st.input_audio_resampler_rate = None
         st.audio_buffer_has_data = False
+        # append_pcm withholds the sub-chunk tail (< 1024 bytes / 32 ms) so the
+        # VAD sees fixed-size chunks. On commit that tail is the end of the
+        # user's utterance, so it must be delivered or the last syllables are
+        # swallowed. The VAD accepts variable-length chunks, so it is yielded
+        # as-is instead of zero-padded. A failed commit returns above and
+        # keeps the tail withheld for the next append to complete the chunk.
+        if st.audio_remainder:
+            chunks.append(st.audio_remainder)
+            st.audio_remainder = b""
         logger.debug("Audio buffer committed")
         return chunks, None
 

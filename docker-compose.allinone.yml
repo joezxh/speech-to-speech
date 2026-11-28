@@ -35,7 +35,7 @@ services:
     volumes:
       - s2s-model-cache:/root/.cache/
       - ./silero-vad:/opt/silero-vad:ro
-      - ./config.container:/app/config
+      - ./config.container.0.6b:/app/config
       - ./data:/app/data
       - ./docs/parameter-catalog.yaml:/app/catalog/parameter-catalog.yaml:ro
     extra_hosts:

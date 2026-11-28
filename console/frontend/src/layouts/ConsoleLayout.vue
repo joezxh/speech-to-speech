@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 
-import { frontOverlays, type NavIcon, type NavMeta, type VoiceOverlay } from '@/router/nav'
+import { buildNavGroups, type NavGroup, type NavMeta, type NavRow } from '@/router/nav'
 import { useAuthStore } from '@/stores/auth'
 import { useClusterStore } from '@/stores/cluster'
 import { useConsoleStore } from '@/stores/console'
@@ -33,40 +33,17 @@ const showAccount = computed(() => voice.me.enabled)
 // （demo 的 `_markUnread` / `_openPanel`）。直接用 `voice.unread` 而不是「有没有条目」：
 // 后者在纯手动的抽屉上没有任何信息量，且会让顶栏随每条转写重渲染。
 
-// 侧栏导航从路由表 `meta` 派生（spec §6.1）：`navGroup` 分桶、`navOrder` 排序，
-// 路由项受 `hasRoute` 约束；front 段额外拼上三个非路由的 overlay。
-interface Row { key: string; icon: NavIcon; labelKey: string; to?: string; overlay?: VoiceOverlay }
-interface Group { key: 'lb' | 'front' | 'ops'; rows: Row[] }
-
-const GROUP_ORDER: Array<Group['key']> = ['lb', 'front', 'ops']
-
-const groups = computed<Group[]>(() => {
-  const buckets: Record<Group['key'], Array<{ row: Row; order: number }>> = { lb: [], front: [], ops: [] }
-  for (const rec of router.getRoutes()) {
-    const m = rec.meta as unknown as NavMeta
-    if (!m.navKey || !m.navGroup) continue
-    if (rec.name && !router.hasRoute(rec.name)) continue
-    buckets[m.navGroup].push({
-      row: { key: String(rec.name), icon: m.navIcon, labelKey: m.navKey, to: String(rec.name) },
-      order: m.navOrder
-    })
-  }
-  for (const ov of frontOverlays) {
-    buckets.front.push({
-      row: { key: `overlay:${ov.overlay}`, icon: ov.navIcon, labelKey: ov.navKey, overlay: ov.overlay },
-      order: ov.navOrder
-    })
-  }
-  return GROUP_ORDER.map((key) => ({
-    key,
-    rows: buckets[key].sort((a, b) => a.order - b.order).map((entry) => entry.row)
-  })).filter((group) => group.rows.length > 0)
-})
+// 侧栏导航从路由表 `meta` 派生（spec §6.1）：派生逻辑提取到 `buildNavGroups`，
+// 便于用真实路由表回归断言菜单不重复（nav.spec.ts）。
 
 /** 当前路由项高亮：对话页时 `voice`，其余页面对应路由；浮层项不参与。 */
-function isCurrent(row: Row): boolean {
+function isCurrent(row: NavRow): boolean {
   return row.to !== undefined && route.name === row.to
 }
+
+const groups = computed<NavGroup[]>(() =>
+  buildNavGroups(router.getRoutes(), (name) => router.hasRoute(name))
+)
 
 // 面包屑（demo `#crumb`）：`分组名 › 页面名`，无导航元数据的页面不渲染。
 const crumb = computed<{ group: string; label: string } | null>(() => {
@@ -138,14 +115,9 @@ onBeforeUnmount(() => {
   consoleStore.stopPolling()
 })
 
-function onNavClick(row: Row): void {
+function onNavClick(row: NavRow): void {
   if (row.to) {
     void router.push({ name: row.to })
-  } else if (row.overlay) {
-    // 先写待处理的浮层，再导航到对话页；VoiceView 的 `immediate` watch 会接手开启。
-    // 已在对话页时，openOverlay 触发 watch 变更 → 直接开浮层。
-    shell.openOverlay(row.overlay)
-    if (route.name !== 'voice') void router.push({ name: 'voice' })
   }
   shell.closeDrawer()
 }

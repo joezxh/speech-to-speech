@@ -479,7 +479,7 @@ def test_cli_builds_a_qwen3_asr_handler_from_its_flags(monkeypatch: pytest.Monke
     assert isinstance(handler, Qwen3ASRSTTHandler)
     assert handler.speculative_turns is context.speculative_turns
     assert handler.forced_language == "fr"
-    assert handler.gen_kwargs == {"max_new_tokens": 64}
+    assert handler.gen_kwargs == {"max_new_tokens": 64, "num_beams": 1}
     assert fake.loaded == [("processor", model_id, revision), ("model", model_id, revision)]
 
 
@@ -496,7 +496,7 @@ def test_registry_normalizes_qwen3_asr_arguments() -> None:
     assert selection.config["torch_dtype"] == "auto"
     assert selection.config["language"] == "fr"
     assert selection.config["prompt"] is None
-    assert selection.config["gen_kwargs"] == {"max_new_tokens": 64}
+    assert selection.config["gen_kwargs"] == {"max_new_tokens": 64, "num_beams": 1}
     assert selection.spec.required_extra is None
 
 

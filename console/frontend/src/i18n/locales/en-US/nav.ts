@@ -7,6 +7,7 @@ export default {
   settings: 'Settings',
   machines: 'Machines',
   deploy: 'Deployments & Params',
+  templates: 'Template Management',
   sessionUpdate: 'Session Hot Update',
   voices: 'Voice Library',
   release: 'Releases & Versions',

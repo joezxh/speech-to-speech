@@ -21,11 +21,13 @@ from ._database import DatabaseSettings
 from ._demo import DemoSettings
 from ._schema import item_for, items_for_section
 from ._store import SOURCE_DB, ConfigStore, coerce
+from ._tools import ToolSettings
 
 _app_settings = settings
 _console_settings = ConsoleSettings()
 _database_settings = DatabaseSettings()
 _auth_settings = AuthSettings()
+_tools_settings = ToolSettings()
 # First boot only; an empty password keeps it off (see services/bootstrap_service.py).
 _bootstrap_settings = BootstrapSettings()
 _demo_settings = DemoSettings()
@@ -153,6 +155,7 @@ allocator = AllocatorLiveSettings("allocator", _allocator_settings, store)
 # 连接串与密钥不搬进配置表，保持走 env。
 database = _database_settings
 auth = _auth_settings
+tools = _tools_settings
 # 原始 pydantic 实例保留给需要直接读 env 解析值的场合。
 allocator_settings = _allocator_settings
 
@@ -169,6 +172,7 @@ __all__ = [
     "DatabaseSettings",
     "DemoLiveSettings",
     "DemoSettings",
+    "ToolSettings",
     "LiveSettings",
     "app",
     "allocator",
@@ -180,4 +184,5 @@ __all__ = [
     "demo",
     "settings",
     "store",
+    "tools",
 ]

@@ -268,7 +268,7 @@
   @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgba(91,140,255,.12); } }
 
   /* conversation page */
-  .voice-grid { display: grid; grid-template-columns: 1fr 300px; gap: 16px; }
+  .voice-grid { display: grid; grid-template-columns: 1fr 360px; gap: 16px; }
   @media (max-width: 1100px) { .voice-grid { grid-template-columns: 1fr; } }
   .v-card { background: var(--voice-surface); border: 1px solid var(--voice-border); border-radius: var(--radius-lg); padding: 18px; color: var(--voice-text); }
   .v-stage { text-align: center; padding: 26px 18px 20px; }
@@ -295,39 +295,121 @@
   .switch.on::after { left: 18px; background: var(--voice-accent); }
   #page-conversation { background: var(--voice-bg); margin: -22px -26px -60px; padding: 22px 26px; min-height: calc(100% + 82px); }
 
-  /* drawers */
-  .overlay { position: fixed; inset: 0; background: rgba(5,8,18,.6); backdrop-filter: blur(3px); display: none; z-index: 40; }
-  .overlay.open { display: block; }
-  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: 430px; max-width: 92vw; background: var(--surface); border-left: 1px solid var(--border-strong); z-index: 50; transform: translateX(100%); transition: transform .22s ease; display: flex; flex-direction: column; }
-  .drawer.open { transform: translateX(0); }
-  .drawer-head { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
-  .drawer-head h3 { margin: 0; font-size: 15px; }
-  .drawer-body { padding: 14px 18px; overflow-y: auto; flex: 1; }
-  .x-btn { border: 0; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; padding: 4px 8px; }
-  .hist-item { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 10px; background: var(--surface-2); }
-  .hist-item .h-top { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-  .hist-item .h-excerpt { font-size: 13px; line-height: 1.5; }
-  .tool-row { display: flex; align-items: center; justify-content: space-between; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; margin-bottom: 10px; gap: 12px; }
-  .tool-row .t-name { font-weight: 600; font-size: 13px; } .tool-row .t-desc { font-size: 12px; color: var(--muted); margin-top: 3px; }
-  .set-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-bottom: 1px solid var(--border); font-size: 13px; gap: 14px; }
-  .set-row .s-sub { font-size: 11.5px; color: var(--faint); margin-top: 2px; }
-  .set-row input[type=text], .set-row select { background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; font: inherit; padding: 5px 8px; max-width: 210px; }
+  /* right column — session log / access routing, switched by tabs */
+  .v-panel { display: flex; flex-direction: column; min-height: 0; }
+  .v-tabs { display: flex; gap: 2px; margin: -18px -18px 14px; padding: 0 10px; border-bottom: 1px solid var(--voice-border); }
+  .v-tab { appearance: none; background: transparent; border: 0; border-bottom: 2px solid transparent; color: var(--voice-faint); font: inherit; font-size: 12.5px; padding: 13px 10px 10px; cursor: pointer; }
+  .v-tab:hover { color: var(--voice-dim); }
+  .v-tab.active { color: var(--voice-accent); border-bottom-color: var(--voice-accent); font-weight: 600; }
+  .v-tab .n { font-family: var(--mono); font-size: 11px; opacity: .7; margin-left: 5px; }
+  .v-pane { display: none; }
+  .v-pane.on { display: block; }
+  .v-scroll { max-height: 62vh; overflow-y: auto; padding-right: 4px; }
+  .sess-hint { font-size: 11.5px; color: var(--voice-faint); line-height: 1.5; margin: 0 0 10px; }
+  .sess { border: 1px solid var(--voice-border); border-radius: var(--radius-md); background: var(--voice-surface-2); padding: 10px 12px; margin-bottom: 10px; }
+  .sess.live { border-color: rgba(139,125,255,.5); }
+  .sess-top { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--voice-faint); }
+  .sess-top .s-id { font-family: var(--mono); color: var(--voice-dim); }
+  .sess-line { display: flex; gap: 9px; margin-top: 9px; align-items: flex-start; }
+  .sess-line .who { flex: 0 0 32px; font-size: 10.5px; color: var(--voice-faint); padding-top: 2px; }
+  .sess-body { flex: 1; min-width: 0; }
+  .sess-text { font-size: 12.5px; line-height: 1.55; color: var(--voice-text); }
+  .sess-text .lbl { font-size: 10.5px; color: var(--voice-faint); margin-right: 5px; letter-spacing: .04em; }
+  .sess-audio { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .clip { display: inline-flex; align-items: center; gap: 7px; padding: 3px 9px 3px 8px; border-radius: 999px; border: 1px solid var(--voice-border); background: rgba(139,125,255,.12); color: var(--voice-dim); font: inherit; font-size: 11px; cursor: pointer; }
+  .clip:hover { border-color: var(--voice-accent); color: var(--voice-text); }
+  .clip .bars { display: flex; align-items: flex-end; gap: 1.5px; height: 11px; }
+  .clip .bars i { width: 2px; background: var(--voice-accent); opacity: .8; border-radius: 1px; }
+  .clip .dur { font-family: var(--mono); font-size: 10.5px; }
+  .sess-flag { font-size: 10.5px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--voice-border); color: var(--voice-faint); }
+  .sess-flag.ok { color: var(--voice-ready); border-color: rgba(52,211,153,.4); }
+  .sess-flag.pending { color: var(--voice-listening); border-color: rgba(34,211,238,.4); }
+  .sess-flag.fail { color: var(--danger); border-color: rgba(240,101,92,.45); }
+  .sess-foot { margin-top: 9px; padding-top: 7px; border-top: 1px dashed var(--voice-border); display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--voice-faint); }
+
+  /* ── 独立页面：会话历史 / 会话工具 / 设置 ── */
+  .filter-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 12px; }
+  .fbar { grid-column: span 3; min-width: 0; }
+  .fbar.wide { grid-column: span 6; }
+  .fbar.n2 { grid-column: span 2; }
+  .fbar label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .fbar .fin { margin: 0; }
+  .fbar-actions { grid-column: span 12; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .tbl-scroll { overflow-x: auto; border-radius: var(--radius-sm); }
+  .tbl-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .tbl tbody tr.sel td { background: var(--accent-soft); }
+  .tbl th.num, .tbl td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .tbl td.acts { white-space: nowrap; }
+  .tbl td.acts .btn { margin-right: 6px; }
+  .checkbox { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+  .cell-clip { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; font-size: 12.5px; color: var(--muted); }
+  .btn.danger { color: var(--danger); border-color: rgba(240,101,92,.45); }
+  .btn.danger:hover { border-color: var(--danger); color: var(--danger); background: rgba(240,101,92,.1); }
+  .badge-builtin { font-size: 10px; padding: 1px 7px; border-radius: 999px; border: 1px dashed var(--border-strong); color: var(--faint); white-space: nowrap; }
+  .badge-custom { font-size: 10px; padding: 1px 7px; border-radius: 999px; border: 1px solid rgba(167,139,250,.4); background: rgba(167,139,250,.1); color: var(--purple); white-space: nowrap; }
+  .prow { display: grid; grid-template-columns: 1.4fr .9fr auto auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .prow .pcheck { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  fieldset.tparams { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 10px 12px 12px; margin: 14px 0 0; }
+  fieldset.tparams legend { font-size: 12px; color: var(--muted); padding: 0 6px; }
+  .set-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 18px; }
+  @media (max-width: 1100px) { .set-grid { grid-template-columns: 1fr; } }
+  .sfield { min-width: 0; }
+  .sfield > label, .sfield .f-lbl { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
+  .sfield .fin { margin: 0; }
+  .sfield.sw .switch { align-self: flex-start; }
+  .sfield.ta-wrap { grid-column: span 2; }
+  textarea.fin { resize: vertical; min-height: 96px; font-family: var(--mono); font-size: 12px; line-height: 1.6; }
+  .counter { text-align: right; font-size: 11px; color: var(--faint); margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .set-actions { display: flex; align-items: center; gap: 10px; }
+  .tpl-banner { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-left: 3px solid var(--accent); }
+  .tpl-banner p { margin: 4px 0 0; font-size: 12px; }
+  .sfield.tpl-cold { opacity: .62; }
+  .sfield.tpl-cold input, .sfield.tpl-cold select, .sfield.tpl-cold button { pointer-events: none; }
+  .tpl-cold-note { font-size: 11px; color: var(--faint); margin-top: 5px; }
+  .tpl-cold-note a { color: var(--accent); cursor: pointer; text-decoration: none; }
+  .tpl-cold-note a:hover { text-decoration: underline; }
+  .tpl-src { display: block; font-size: 10.5px; color: var(--faint); margin-top: 3px; font-family: var(--mono); }
+  .smart-log { max-height: 120px; overflow: auto; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin: 12px 0 0; font-size: 11.5px; line-height: 1.55; color: var(--muted); font-family: var(--mono); }
+  .switch { padding: 0; }
+
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--surface-3); border: 1px solid var(--border-strong); color: var(--text); padding: 10px 18px; border-radius: var(--radius-md); font-size: 13px; opacity: 0; pointer-events: none; transition: .25s; z-index: 60; box-shadow: 0 8px 30px rgba(0,0,0,.4); }
   .toast.show { opacity: 1; transform: translateX(-50%); }
   .icon-sprite { display: none; }
 
-  /* modal (cluster / machine CRUD) */
-  .modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -46%) scale(.98); width: 540px; max-width: 94vw; max-height: 86vh; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; z-index: 55; opacity: 0; pointer-events: none; transition: .18s ease; box-shadow: 0 18px 60px rgba(0,0,0,.45); }
-  .modal.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%) scale(1); }
+  /* modal（集群 / 机器 / 工具 CRUD）—— 原生 <dialog>：焦点收敛、Esc 关闭、top layer 由浏览器负责 */
+  .modal, .confirm {
+    width: 540px; max-width: 94vw; max-height: 86vh; overflow-y: auto; padding: 0;
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 14px;
+    box-shadow: 0 18px 60px rgba(0,0,0,.45);
+  }
+  .confirm { width: 460px; }
+  .modal::backdrop, .confirm::backdrop { background: rgba(5,8,18,.6); backdrop-filter: blur(3px); }
+  .modal:modal, .confirm:modal { overscroll-behavior: contain; }
+  .modal[open], .confirm[open] { animation: modalIn .18s ease; }
+  @keyframes modalIn { from { opacity: 0; transform: translateY(8px) scale(.985); } }
   .modal-head { padding: 15px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
   .modal-head h3 { margin: 0; font-size: 15px; }
   .modal-body { padding: 10px 20px 20px; }
+  .confirm-head { padding: 16px 20px 0; }
+  .confirm-head h3 { margin: 0; font-size: 15px; }
+  .confirm-body { padding: 12px 20px 4px; font-size: 13px; color: var(--muted); line-height: 1.65; }
+  .confirm-body .warn { color: var(--warning); }
+  .confirm-body strong { color: var(--text); }
+  .confirm-foot { padding: 14px 20px 18px; display: flex; justify-content: flex-end; gap: 10px; }
+  .confirm-foot .btn.primary.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .confirm-foot .btn.primary.danger:hover { filter: brightness(1.08); color: #fff; }
+  .x-btn { border: 0; background: transparent; color: var(--muted); font-size: 18px; cursor: pointer; padding: 4px 8px; border-radius: var(--radius-sm); }
+  .x-btn:hover { color: var(--text); background: var(--surface-2); }
   .field { margin: 12px 0; }
   .field label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 6px; }
   .fin { width: 100%; box-sizing: border-box; background: var(--surface-2); color: var(--text); border: 1px solid var(--border-strong); border-radius: 6px; font: inherit; padding: 7px 10px; font-size: 13px; }
   .fin:disabled { opacity: .55; cursor: not-allowed; }
   .fhint { font-size: 11.5px; color: var(--faint); margin-top: 5px; }
   .ferr { display: none; margin-top: 10px; padding: 8px 12px; border-radius: 6px; background: rgba(240,101,92,.12); border: 1px solid rgba(240,101,92,.4); color: var(--danger); font-size: 12.5px; }
+  .ferr.show { display: block; }
   .test-steps { margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); padding: 4px 14px; background: var(--surface-2); }
   .tstep { display: flex; align-items: center; gap: 10px; padding: 9px 0; font-size: 13px; border-bottom: 1px dashed var(--border); }
   .tstep:last-child { border-bottom: 0; }
@@ -383,13 +465,9 @@
   </div>
 </div>
 
-<div class="overlay" id="overlay"></div>
-<div class="drawer" id="drawer-history"><div class="drawer-head"><h3 id="hist-title"></h3><button class="x-btn" data-close>✕</button></div><div class="drawer-body" id="hist-body"></div></div>
-<div class="drawer" id="drawer-tools"><div class="drawer-head"><h3 id="tools-title"></h3><button class="x-btn" data-close>✕</button></div><div class="drawer-body" id="tool-body"></div></div>
-<div class="drawer" id="drawer-settings"><div class="drawer-head"><h3 id="settings-title"></h3><button class="x-btn" data-close>✕</button></div><div class="drawer-body" id="set-body"></div></div>
-<div class="overlay" id="modal-overlay"></div>
-<div class="modal" id="modal" role="dialog" aria-modal="true"><div class="modal-head"><h3 id="modal-title"></h3><button class="x-btn" data-modal-close>✕</button></div><div class="modal-body" id="modal-body"></div></div>
-<div class="toast" id="toast"></div>
+<dialog class="modal" id="modal" aria-labelledby="modal-title"><div class="modal-head"><h3 id="modal-title"></h3><button class="x-btn" id="modal-close" type="button" data-modal-close>✕</button></div><div class="modal-body" id="modal-body"></div></dialog>
+<dialog class="confirm" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-body"><div class="confirm-head"><h3 id="confirm-title"></h3></div><div class="confirm-body" id="confirm-body"></div><div class="confirm-foot"><button class="btn" type="button" id="confirm-cancel"></button><button class="btn primary" type="button" id="confirm-ok"></button></div></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
 'use strict';
 
@@ -469,11 +547,205 @@ const I18N = {
     'conv.instance': 'Selected instance', 'conv.endpoint': 'Endpoint', 'conv.voice': 'Voice', 'conv.lastttft': 'Last TTFT',
     'conv.turn': 'Turn decided by', 'conv.meta': 'routed by LB · least-in-use · {node}', 'conv.calling': 'Connecting…',
     'conv.session.started': 'Session started', 'conv.stopped': 'Call ended', 'conv.hint': 'Press Start call to play the demo conversation.',
+    'conv.tab.log': 'Session Log', 'conv.tab.route': 'Access Routing',
+    'conv.log.hint': 'Newest first — each record keeps the voice clip and the text recognised from it.',
+    'conv.log.empty': 'No session records yet.', 'conv.log.count': '{n} records',
+    'conv.log.caller': 'Caller', 'conv.log.bot': 'Assistant', 'conv.log.asr': 'ASR', 'conv.log.reply': 'Reply',
+    'conv.log.voice': 'Voice clip',
+    'conv.log.state.done': 'Completed', 'conv.log.state.live': 'Live', 'conv.log.state.failed': 'Failed',
+    'conv.log.stt.ok': 'transcribed', 'conv.log.stt.pending': 'transcribing', 'conv.log.stt.fail': 'ASR failed',
+    'conv.log.tts.ok': 'synthesized', 'conv.log.tts.pending': 'synthesizing', 'conv.log.tts.fail': 'TTS failed',
+    'conv.log.turns': '{n} turns', 'conv.log.dur': 'Voice {n}s', 'conv.log.ttft': 'TTFT {ms} ms',
+    'conv.route.policy': 'Scheduling policy', 'conv.route.registry': 'Registry', 'conv.route.session': 'Session id',
+    'conv.route.node': 'Machine', 'conv.route.rule': 'Matched rule', 'conv.route.sticky': 'Sticky TTL',
+    'toast.clip': 'Voice playback is mocked in the prototype',
     'hist.desc': 'Recent conversations of this account.', 'hist.empty': 'No sessions yet.', 'hist.filter': 'Last 7 days',
     'tools.desc': 'Tools the assistant may call during a conversation.', 'set.lang': 'Language', 'set.lang.sub': 'Interface language, remembered locally.',
     'set.voice': 'Voice', 'set.voice.sub': 'TTS timbre used on calls.', 'set.verbosity': 'Reply verbosity',
     'set.terse': 'Terse', 'set.balanced': 'Balanced', 'set.detailed': 'Detailed', 'set.wake': 'Wake word',
     'set.denoise': 'Mic noise suppression', 'set.reconnect': 'Auto-reconnect',
+    /* ── 会话历史页 ── */
+    'hist.page.desc': 'Sessions routed through the load balancer, with their transcripts and messages.',
+    'hist.kpi.total': 'Sessions', 'hist.kpi.live': 'In progress', 'hist.kpi.failed': 'Failed',
+    'hist.kpi.ttft': 'Average TTFT', 'hist.kpi.sub': 'on this cluster',
+    'hist.filter.title': 'Session query', 'hist.kw': 'Keyword', 'hist.kw.ph': 'Session ID / instance / transcript',
+    'hist.filter.state': 'Status', 'hist.filter.inst': 'Instance', 'hist.filter.range': 'Time range',
+    'hist.filter.all': 'All', 'hist.range.today': 'Today', 'hist.range.24h': 'Last 24 h', 'hist.range.7d': 'Last 7 days',
+    'hist.query': 'Query', 'hist.reset': 'Reset', 'hist.count': '{n} sessions match',
+    'hist.sel': 'Select session {id}', 'hist.sel.all': 'Select every session on this page',
+    'hist.sel.count': '{n} selected', 'hist.delete.selected': 'Delete selected',
+    'hist.table.title': 'Sessions', 'hist.view.messages': 'Messages',
+    'hist.col.id': 'Session ID', 'hist.col.start': 'Started', 'hist.col.route': 'Instance · node',
+    'hist.col.excerpt': 'Transcript',
+    'hist.col.turns': 'Turns', 'hist.col.msgs': 'Messages', 'hist.col.dur': 'Voice',
+    'hist.col.ttft': 'TTFT', 'hist.col.actions': 'Actions', 'hist.col.mid': 'Message ID',
+    'hist.col.role': 'Role', 'hist.col.type': 'Type', 'hist.col.content': 'Content', 'hist.col.at': 'At',
+    'hist.empty': 'No session matches the query.',
+    'hist.prev': 'Previous', 'hist.next': 'Next', 'hist.page.of': 'Page {n} of {m}',
+    'hist.msg.title': 'Session messages', 'hist.msg.count': '{n} messages', 'hist.msg.kw': 'Search in the messages',
+    'hist.msg.clear': 'Clear all messages', 'hist.msg.no.match': 'No message matches.',
+    'hist.del.title': 'Delete the session',
+    'hist.del.body': 'Session <strong>{id}</strong> and its {n} messages will be removed. This cannot be undone.',
+    'hist.del.batch.title': 'Delete the selected sessions',
+    'hist.del.batch.body': '{n} selected sessions and their messages will be removed. This cannot be undone.',
+    'hist.msg.del.title': 'Delete the message',
+    'hist.msg.del.body': 'Message <strong>{id}</strong> will be removed from session {sid}.',
+    'hist.msg.clear.title': 'Clear the session messages',
+    'hist.msg.clear.body': 'All {n} messages of session <strong>{id}</strong> will be removed; the session itself is kept.',
+    /* ── 会话工具页 ── */
+    'tools.page.desc': 'Tools the assistant may call during a conversation.',
+    'tools.kpi.total': 'Tools', 'tools.kpi.on': 'Enabled', 'tools.kpi.builtin': 'Built-in',
+    'tools.kpi.custom': 'Custom', 'tools.kpi.sub': 'for this account',
+    'tools.filter.title': 'Tool query', 'tools.kw': 'Keyword', 'tools.kw.ph': 'Name / description / id',
+    'tools.filter.scope': 'Scope', 'tools.filter.on': 'Enabled', 'tools.on.yes': 'Enabled', 'tools.on.no': 'Disabled',
+    'tools.new': 'New tool', 'tools.edit': 'Edit', 'tools.copy': 'Copy', 'tools.count': '{n} tools',
+    'tools.empty': 'No tool matches the query.',
+    'tools.col.name': 'Name', 'tools.col.type': 'Type', 'tools.col.desc': 'Description',
+    'tools.col.params': 'Parameters', 'tools.col.scope': 'Scope', 'tools.col.on': 'Enabled',
+    'tools.col.updated': 'Updated', 'tools.col.actions': 'Actions',
+    'tool.type.web_search': 'Web search', 'tool.type.calendar': 'Calendar', 'tool.type.weather': 'Weather',
+    'tool.type.kb': 'Knowledge base', 'tool.type.http': 'HTTP',
+    'tool.scope.global': 'Global', 'tool.scope.session': 'Session', 'tool.scope.tenant': 'Tenant',
+    'tool.builtin': 'built-in', 'tool.custom': 'custom', 'tool.copy.suffix': 'copy',
+    'tool.toggle': 'Enable the tool {name}',
+    'tool.form.new': 'New tool', 'tool.form.edit': 'Edit tool · {name}',
+    'tool.f.name': 'Name', 'tool.f.name.hint': 'Unique within the account.',
+    'tool.f.type': 'Type', 'tool.f.desc': 'Description', 'tool.f.endpoint': 'Endpoint',
+    'tool.f.method': 'Method', 'tool.f.scope': 'Scope', 'tool.f.on': 'Enabled by default',
+    'tool.f.params': 'Parameters', 'tool.f.params.add': 'Add a parameter',
+    'tool.f.params.req': 'required', 'tool.f.params.name': 'Parameter name',
+    'tool.f.params.type': 'Parameter type', 'tool.f.params.remove': 'Remove the parameter',
+    'tool.f.save': 'Save the tool',
+    'tool.err.name': 'The tool name is required.',
+    'tool.err.dup': 'Another tool already uses this name.',
+    'tool.err.endpoint': 'An HTTP tool needs an endpoint.',
+    'tool.err.param.dup': 'Duplicate parameter name: {name}',
+    'tool.builtin.warn.title': 'Editing a built-in tool',
+    'tool.builtin.warn.body': '<strong>{name}</strong> is a built-in tool. Changing it affects every session on the cluster until it is restored.',
+    'tool.builtin.del.title': 'Deleting a built-in tool',
+    'tool.builtin.del.body': '<strong>{name}</strong> is a built-in tool. Deleting it removes the capability from every session on the cluster.',
+    'tool.delete.title': 'Delete the tool',
+    'tool.delete.body': '<strong>{name}</strong> will be removed and the assistant can no longer call it.',
+    /* ── 设置页 ── */
+    'set.page.desc': 'Voice model, role prompt and call parameters of this account.',
+    'set.group.llm': 'Voice model & role prompt', 'set.group.llm.hint': 'LLM model, persona and turn parameters',
+    'set.group.voice': 'Voice & TTS', 'set.group.voice.hint': 'Timbre and synthesis parameters',
+    'set.group.call': 'Call parameters', 'set.group.call.hint': 'Wake word, VAD and session limits',
+    'set.group.ui': 'Interface & language', 'set.group.ui.hint': 'Console preferences',
+    'set.f.llm_model': 'LLM model', 'set.f.init_chat_prompt': 'Role prompt (system prompt)',
+    'set.f.init_chat_role': 'System role name', 'set.f.user_role': 'User role name',
+    'set.f.instructions': 'First-frame instructions override', 'set.f.temperature': 'Temperature',
+    'set.f.chat_size': 'History turns kept', 'set.f.verbosity': 'Reply verbosity',
+    'set.f.turn_model': 'Turn model', 'set.f.stream_batch_sentences': 'Sentences per TTS batch',
+    'set.f.enable_lang_prompt': 'Append the turn language to the prompt',
+    'set.f.voice': 'Default timbre', 'set.f.tts_model': 'TTS model', 'set.f.tts_temperature': 'TTS temperature',
+    'set.f.tts_speed': 'TTS speed', 'set.f.tts_stream': 'Stream the synthesis',
+    'set.f.wake_word': 'Wake word', 'set.f.denoise': 'Mic noise suppression',
+    'set.f.reconnect': 'Auto-reconnect', 'set.f.min_silence_ms': 'Silence before the turn ends (ms)',
+    'set.f.min_speech_ms': 'Minimum speech segment (ms)', 'set.f.max_session_s': 'Maximum session length (s)',
+    'set.f.lang': 'Interface language',
+    'settings.f.init_chat_prompt': 'Persona of the voice assistant. Keep it under 2 000 characters — a long prompt raises the first-token latency and the KV VRAM.',
+    'settings.f.init_chat_role': 'Role of the initial system message.',
+    'settings.f.user_role': 'Role name used for the user messages.',
+    'settings.f.instructions': 'Sent on the first frame by the client; overrides the role prompt.',
+    'settings.f.temperature': 'Higher values make the answer less predictable.',
+    'settings.f.chat_size': 'How many past turns stay in the context.',
+    'settings.f.turn_model': 'Model that decides when the caller finished speaking.',
+    'settings.f.stream_batch_sentences': 'Sentences synthesised per chunk.',
+    'settings.f.enable_lang_prompt': 'Adds “answer in the caller language” to every turn.',
+    'settings.f.voice': 'Timbre used on the new calls.',
+    'settings.f.tts_model': 'TTS engine — read only, it follows the deployment.',
+    'settings.f.tts_temperature': 'Higher values make the synthesis less stable.',
+    'settings.f.tts_speed': 'Playback speed multiplier.',
+    'settings.f.tts_stream': 'Stream the audio chunk by chunk.',
+    'settings.f.wake_word': 'Leave it empty to keep the always-on mode.',
+    'settings.f.denoise': 'Suppress the background noise on the microphone.',
+    'settings.f.reconnect': 'Reconnect automatically after a network drop.',
+    'settings.f.min_silence_ms': 'Silence that ends a caller turn.',
+    'settings.f.min_speech_ms': 'The shorter segments are treated as noise.',
+    'settings.f.max_session_s': 'The session is closed after this duration.',
+    'settings.f.lang': 'Interface language — remembered on this device.',
+    'set.save': 'Save the settings', 'set.reset': 'Reset',
+    'set.save.hint': 'The prototype stores these values on this device only.',
+    'set.reset.body': 'Every parameter goes back to its default value.',
+    'set.err.prompt': 'The role prompt must stay under 2 000 characters.',
+    'set.err.temp': 'The temperature must be between 0 and 2.',
+    /* ── 统一参数模板 ── */
+    'tpl.title': 'Unified parameter template',
+    'tpl.desc': 'Front-office settings and ops deployment share one catalog-driven template. Hot fields apply to the live runtime; the rest require publish + restart.',
+    'tpl.source': 'source: parameter catalog',
+    'tpl.group.hint': '{hot} hot · {cold} restart-required',
+    'tpl.cold.note': 'Runtime change not supported —',
+    'tpl.cold.link': 'open in ops console',
+    'tpl.save': 'Apply hot settings to runtime',
+    'tpl.save.hint': 'Only hot fields are pushed to live sessions (hot_update whitelist). Others stay on the ops side.',
+    'toast.tpl.hot': 'Applied {n} hot fields to the current runtime',
+    'act.tpl.hot': 'runtime hot update',
+    'set.f.turn_detection': 'Turn detection',
+    'settings.f.turn_detection': 'How the caller turn ends and whether the assistant can be interrupted.',
+    'set.f.interrupt_response_enabled': 'Allow barge-in',
+    'settings.f.interrupt_response_enabled': 'Let the caller interrupt a speaking response.',
+    'set.f.llm_model': 'LLM model',
+    'tpl.hot': 'hot', 'tpl.restart': 'restart required',
+    'tpl.plat.gpu': 'GPU', 'tpl.plat.npu': 'NPU', 'tpl.plat.amd': 'AMD', 'tpl.plat.cpu': 'CPU',
+    'tpl.minVram': 'min {n} GB', 'tpl.driver.any': 'no driver constraint',
+    'tpl.check.ok': 'compatible', 'tpl.check.platform': 'platform not supported',
+    'tpl.check.vram': 'insufficient VRAM', 'tpl.check.driver': 'driver below requirement',
+    'tpl.ops.title': 'Template constraints on this machine',
+    'tpl.ops.hint': 'validated against {machine} hardware',
+    'tpl.ops.blocked': '{n} incompatible', 'tpl.ops.ready': 'all compatible',
+    'tpl.ops.note': 'Publishing a template whose constraints are not met by the target machine is rejected on the ops side.',
+    'tpl.col.field': 'Field', 'tpl.col.platform': 'Platforms', 'tpl.col.require': 'Requirement',
+    'tpl.col.effect': 'Effect', 'tpl.col.check': 'Check',
+    /* ── 模板管理 ── */
+    'nav.templates': 'Template Management', 'tplmgr.desc': 'Two template classes: conversation hot settings (live sessions) and pipeline restart params (publish + restart). Shared by front-office settings and ops deployment.',
+    'tplmgr.total': 'Total templates', 'tplmgr.platforms': 'Platforms covered',
+    'tplmgr.status.published': 'Published', 'tplmgr.status.draft': 'Draft', 'tplmgr.status.review': 'In review', 'tplmgr.status.archived': 'Archived',
+    'tplmgr.add': 'New template', 'tplmgr.view': 'View', 'tplmgr.edit': 'Edit', 'tplmgr.delete': 'Delete', 'tplmgr.save': 'Save template',
+    'tplmgr.search': 'Search by name, id or description…', 'tplmgr.empty': 'No template matches the filters.',
+    'tplmgr.col.name': 'Template name', 'tplmgr.col.effect': 'Effect', 'tplmgr.col.type': 'Platform type', 'tplmgr.col.status': 'Status',
+    'tplmgr.effect.runtime': 'Conversation hot', 'tplmgr.effect.runtime.hint': 'applies to live sessions',
+    'tplmgr.effect.restart': 'Pipeline restart', 'tplmgr.effect.restart.hint': 'publish + restart required',
+    'tplmgr.effect.hint': 'runtime = session.update whitelist; restart = startup params, needs publish + pipeline restart',
+    'tplmgr.col.fields': 'Fields', 'tplmgr.col.vram': 'Min VRAM', 'tplmgr.col.created': 'Created',
+    'tplmgr.col.updated': 'Updated', 'tplmgr.col.desc': 'Description', 'tplmgr.col.actions': 'Actions',
+    'tplmgr.form.name': 'Template name',
+    'tplmgr.col.scene': 'Scenario', 'tplmgr.form.scene': 'Recommended configuration (fixed in template)',
+    'tpl.select.title': 'Parameter templates', 'tpl.select.hint': 'Select a template to view its configuration (read-only)',
+    'tpl.view.title': 'Template · {name}', 'tpl.view.scene': 'Recommended configuration (fixed in template)',
+    'tpl.view.noscene': 'No scenario bound to this template', 'tpl.view.readonly': 'Read-only — template content is not applied to this machine',
+    'scene.tpl.note': 'Recommendations are now part of the template. Pick a template at the top to view them.',
+    'tplmgr.del.body': 'Delete template <b>{name}</b>? This cannot be undone.',
+    'tplmgr.err.name': 'Template name is required.',
+    'tplmgr.toast.saved': 'Template saved', 'tplmgr.toast.deleted': 'Template deleted',
+    'act.tpl.save': 'template saved', 'act.tpl.delete': 'template deleted',
+    /* ── 通用确认框 / 操作审计 ── */
+    'confirm.ok': 'Confirm', 'confirm.cancel': 'Cancel',
+    'audit.cat.session': 'Session', 'audit.cat.tool': 'Tool', 'audit.cat.setting': 'Setting', 'audit.cat.template': 'Template', 'audit.cat.smart': 'Smart settings',
+    'act.session.delete': 'delete session {value}',
+    'act.session.delete.detail': 'Removed the session and its messages from the transcript store.',
+    'act.session.msg.delete': 'delete message {value}',
+    'act.session.msg.delete.detail': 'Removed one message; the session itself is kept.',
+    'act.session.msg.clear': 'clear the messages of session {value}',
+    'act.session.msg.clear.detail': 'Removed every message; the session itself is kept.',
+    'act.tool.create': 'create tool {value}',
+    'act.tool.create.detail': 'Added to the account tool list; available to the next sessions.',
+    'act.tool.update': 'update tool {value}',
+    'act.tool.update.detail': 'Changed the definition; the next calls pick it up.',
+    'act.tool.delete': 'delete tool {value}',
+    'act.tool.delete.detail': 'Removed the capability from the account.',
+    'act.set.update': 'update the settings {value}',
+    'act.set.update.detail': 'Voice model, role prompt and call parameters saved.',
+    'toast.hist.deleted': 'Session {id} deleted',
+    'toast.hist.batch.deleted': '{n} sessions deleted',
+    'toast.hist.msg.deleted': 'Message {id} deleted',
+    'toast.hist.msgs.cleared': '{n} messages cleared',
+    'toast.hist.query': '{n} sessions match the query',
+    'toast.tool.saved': 'Tool {name} saved', 'toast.tool.created': 'Tool {name} created',
+    'toast.tool.deleted': 'Tool {name} deleted', 'toast.tool.copied': 'Tool {name} copied',
+    'toast.tool.toggled': '“{name}” turned {state}',
+    'toast.tool.cancelled': 'Cancelled — nothing was changed',
+    'toast.set.saved': 'Settings saved', 'toast.set.reset': 'Settings restored to the defaults',
     'tool.search': 'Web search', 'tool.search.desc': 'Attach realtime results to the answer.', 'tool.calendar': 'Calendar',
     'tool.calendar.desc': 'Read the schedule and draft events.', 'tool.weather': 'Weather', 'tool.weather.desc': 'Current conditions and forecast.',
     'tool.kb': 'Knowledge base', 'tool.kb.desc': 'RAG over internal documents.',
@@ -561,11 +833,208 @@ const I18N = {
     'conv.instance': '选中实例', 'conv.endpoint': '接入点', 'conv.voice': '音色', 'conv.lastttft': '最近首包延迟',
     'conv.turn': '轮次判定', 'conv.meta': '负载均衡选路 · least-in-use · {node}', 'conv.calling': '接入中…',
     'conv.session.started': '会话已开始', 'conv.stopped': '通话已结束', 'conv.hint': '点击“开始通话”播放演示对话。',
+    'conv.tab.log': '会话记录', 'conv.tab.route': '接入路由',
+    'conv.log.hint': '最新记录在最上方 —— 每条记录保留原始语音与识别后的文字。',
+    'conv.log.empty': '暂无会话记录。', 'conv.log.count': '共 {n} 条',
+    'conv.log.caller': '用户', 'conv.log.bot': '助理', 'conv.log.asr': 'ASR', 'conv.log.reply': '回复',
+    'conv.log.voice': '语音片段',
+    'conv.log.state.done': '已完成', 'conv.log.state.live': '进行中', 'conv.log.state.failed': '失败',
+    'conv.log.stt.ok': '已转写', 'conv.log.stt.pending': '转写中', 'conv.log.stt.fail': 'ASR 失败',
+    'conv.log.tts.ok': '已合成', 'conv.log.tts.pending': '合成中', 'conv.log.tts.fail': 'TTS 失败',
+    'conv.log.turns': '{n} 轮', 'conv.log.dur': '语音 {n} 秒', 'conv.log.ttft': '首包 {ms} ms',
+    'conv.route.policy': '调度策略', 'conv.route.registry': '注册中心', 'conv.route.session': '会话 ID',
+    'conv.route.node': '所在机器', 'conv.route.rule': '命中规则', 'conv.route.sticky': '粘性 TTL',
+    'toast.clip': '原型中语音播放为占位',
     'hist.desc': '当前账号最近的会话记录。', 'hist.empty': '暂无会话记录。', 'hist.filter': '最近 7 天',
     'tools.desc': '通话中助理可调用的工具。', 'set.lang': '语言', 'set.lang.sub': '界面语言，仅本地记忆。',
     'set.voice': '音色', 'set.voice.sub': '通话使用的 TTS 音色。', 'set.verbosity': '回复详略',
     'set.terse': '简洁', 'set.balanced': '均衡', 'set.detailed': '详细', 'set.wake': '唤醒词',
     'set.denoise': '麦克风降噪', 'set.reconnect': '自动重连',
+    /* ── 会话历史页 ── */
+    'hist.page.desc': '经负载均衡路由的会话，含转写与逐条消息。',
+    'hist.kpi.total': '会话总数', 'hist.kpi.live': '进行中', 'hist.kpi.failed': '失败',
+    'hist.kpi.ttft': '平均首包', 'hist.kpi.sub': '本集群',
+    'hist.filter.title': '会话查询', 'hist.kw': '关键字', 'hist.kw.ph': '会话 ID / 实例 / 转写正文',
+    'hist.filter.state': '状态', 'hist.filter.inst': '实例', 'hist.filter.range': '时间范围',
+    'hist.filter.all': '全部', 'hist.range.today': '今天', 'hist.range.24h': '最近 24 小时', 'hist.range.7d': '最近 7 天',
+    'hist.query': '查询', 'hist.reset': '重置', 'hist.count': '命中 {n} 个会话',
+    'hist.sel': '选择会话 {id}', 'hist.sel.all': '选择本页全部会话',
+    'hist.sel.count': '已选 {n} 项', 'hist.delete.selected': '删除所选',
+    'hist.table.title': '会话列表', 'hist.view.messages': '查看消息',
+    'hist.col.id': '会话 ID', 'hist.col.start': '开始时间', 'hist.col.route': '实例 · 节点',
+    'hist.col.excerpt': '转写摘要',
+    'hist.col.turns': '轮数', 'hist.col.msgs': '消息数', 'hist.col.dur': '语音时长',
+    'hist.col.ttft': '首包', 'hist.col.actions': '操作', 'hist.col.mid': '消息 ID',
+    'hist.col.role': '角色', 'hist.col.type': '类型', 'hist.col.content': '内容', 'hist.col.at': '发生时间',
+    'hist.empty': '没有符合条件的会话。',
+    'hist.prev': '上一页', 'hist.next': '下一页', 'hist.page.of': '第 {n} 页 / 共 {m} 页',
+    'hist.msg.title': '会话消息', 'hist.msg.count': '{n} 条消息', 'hist.msg.kw': '在消息内检索',
+    'hist.msg.clear': '清空全部消息', 'hist.msg.no.match': '没有匹配的消息。',
+    'hist.del.title': '删除会话',
+    'hist.del.body': '会话 <strong>{id}</strong> 及其 {n} 条消息将被删除，且不可恢复。',
+    'hist.del.batch.title': '删除所选会话',
+    'hist.del.batch.body': '所选 {n} 个会话及其消息将被删除，且不可恢复。',
+    'hist.msg.del.title': '删除消息',
+    'hist.msg.del.body': '消息 <strong>{id}</strong> 将从会话 {sid} 中移除。',
+    'hist.msg.clear.title': '清空会话消息',
+    'hist.msg.clear.body': '会话 <strong>{id}</strong> 的全部 {n} 条消息将被删除，会话本身保留。',
+    /* ── 会话工具页 ── */
+    'tools.page.desc': '通话中助理可调用的工具。',
+    'tools.kpi.total': '工具总数', 'tools.kpi.on': '已启用', 'tools.kpi.builtin': '内置',
+    'tools.kpi.custom': '自定义', 'tools.kpi.sub': '当前账号',
+    'tools.filter.title': '工具查询', 'tools.kw': '关键字', 'tools.kw.ph': '名称 / 描述 / ID',
+    'tools.filter.scope': '作用域', 'tools.filter.on': '启用状态', 'tools.on.yes': '已启用', 'tools.on.no': '已停用',
+    'tools.new': '新建工具', 'tools.edit': '编辑', 'tools.copy': '复制', 'tools.count': '共 {n} 个工具',
+    'tools.empty': '没有符合条件的工具。',
+    'tools.col.name': '名称', 'tools.col.type': '类型', 'tools.col.desc': '描述',
+    'tools.col.params': '参数', 'tools.col.scope': '作用域', 'tools.col.on': '启用',
+    'tools.col.updated': '更新时间', 'tools.col.actions': '操作',
+    'tool.type.web_search': '联网搜索', 'tool.type.calendar': '日历', 'tool.type.weather': '天气',
+    'tool.type.kb': '知识库', 'tool.type.http': 'HTTP 接口',
+    'tool.scope.global': '全局', 'tool.scope.session': '会话级', 'tool.scope.tenant': '租户级',
+    'tool.builtin': '内置', 'tool.custom': '自定义', 'tool.copy.suffix': '副本',
+    'tool.toggle': '启用工具 {name}',
+    'tool.form.new': '新建工具', 'tool.form.edit': '编辑工具 · {name}',
+    'tool.f.name': '名称', 'tool.f.name.hint': '在当前账号内唯一。',
+    'tool.f.type': '类型', 'tool.f.desc': '描述', 'tool.f.endpoint': '接口地址',
+    'tool.f.method': '请求方法', 'tool.f.scope': '作用域', 'tool.f.on': '默认启用',
+    'tool.f.params': '参数', 'tool.f.params.add': '添加参数',
+    'tool.f.params.req': '必填', 'tool.f.params.name': '参数名',
+    'tool.f.params.type': '参数类型', 'tool.f.params.remove': '删除该参数',
+    'tool.f.save': '保存工具',
+    'tool.err.name': '请填写工具名称。',
+    'tool.err.dup': '已存在同名工具。',
+    'tool.err.endpoint': 'HTTP 工具必须填写接口地址。',
+    'tool.err.param.dup': '参数名重复：{name}',
+    'tool.builtin.warn.title': '正在编辑内置工具',
+    'tool.builtin.warn.body': '<strong>{name}</strong> 是内置工具。修改后集群内所有会话都会受影响，直到恢复为止。',
+    'tool.builtin.del.title': '正在删除内置工具',
+    'tool.builtin.del.body': '<strong>{name}</strong> 是内置工具。删除后集群内所有会话都将失去该能力。',
+    'tool.delete.title': '删除工具',
+    'tool.delete.body': '<strong>{name}</strong> 将被删除，助理将无法再调用该工具。',
+    /* ── 设置页 ── */
+    'set.page.desc': '当前账号的语音模型、角色提示词与通话参数。',
+    'set.group.llm': '语音模型与角色提示词', 'set.group.llm.hint': 'LLM 模型、人设与轮次判定',
+    'set.group.voice': '音色与 TTS', 'set.group.voice.hint': '音色与合成参数',
+    'set.group.call': '通话参数', 'set.group.call.hint': '唤醒词、VAD 与会话上限',
+    'set.group.ui': '界面与语言', 'set.group.ui.hint': '控制台偏好',
+    'set.f.llm_model': 'LLM 模型', 'set.f.init_chat_prompt': 'role 提示词（系统提示词）',
+    'set.f.init_chat_role': '系统角色名', 'set.f.user_role': '用户角色名',
+    'set.f.instructions': '首帧 instructions 覆盖', 'set.f.temperature': '温度',
+    'set.f.chat_size': '保留的历史轮数', 'set.f.verbosity': '回复详略',
+    'set.f.turn_model': '轮次判定模型', 'set.f.stream_batch_sentences': '每次合成的句子数',
+    'set.f.enable_lang_prompt': '在提示词中追加轮次语言',
+    'set.f.voice': '默认音色', 'set.f.tts_model': 'TTS 模型', 'set.f.tts_temperature': 'TTS 温度',
+    'set.f.tts_speed': 'TTS 语速', 'set.f.tts_stream': '流式输出合成音频',
+    'set.f.wake_word': '唤醒词', 'set.f.denoise': '麦克风降噪',
+    'set.f.reconnect': '自动重连', 'set.f.min_silence_ms': '判停静默阈值（毫秒）',
+    'set.f.min_speech_ms': '最短有效语音段（毫秒）', 'set.f.max_session_s': '最大通话时长（秒）',
+    'set.f.lang': '界面语言',
+    'settings.f.init_chat_prompt': '语音助理的人设。请控制在 2000 字以内 —— 提示词过长会抬高首 token 延迟与 KV 显存。',
+    'settings.f.init_chat_role': '首条系统消息使用的角色名。',
+    'settings.f.user_role': '用户消息使用的角色名。',
+    'settings.f.instructions': '由客户端在首帧下发，会覆盖 role 提示词。',
+    'settings.f.temperature': '数值越高，回答越发散。',
+    'settings.f.chat_size': '上下文里保留多少轮历史对话。',
+    'settings.f.turn_model': '判定“用户是否说完”的模型。',
+    'settings.f.stream_batch_sentences': '每个分块合成的句子数。',
+    'settings.f.enable_lang_prompt': '每一轮都追加“用用户的语言回答”。',
+    'settings.f.voice': '新建通话使用的音色。',
+    'settings.f.tts_model': 'TTS 引擎 —— 只读，跟随部署版本。',
+    'settings.f.tts_temperature': '数值越高，合成越不稳定。',
+    'settings.f.tts_speed': '播放速度倍率。',
+    'settings.f.tts_stream': '按分块流式下发音频。',
+    'settings.f.wake_word': '留空表示保持常开模式。',
+    'settings.f.denoise': '抑制麦克风背景噪音。',
+    'settings.f.reconnect': '网络中断后自动重连。',
+    'settings.f.min_silence_ms': '静默多久判定用户说完。',
+    'settings.f.min_speech_ms': '短于该时长的片段视为噪音。',
+    'settings.f.max_session_s': '超过该时长自动结束会话。',
+    'settings.f.lang': '界面语言 —— 在本机记忆。',
+    'set.save': '保存设置', 'set.reset': '重置',
+    'set.save.hint': '原型仅把这些参数保存在本机。',
+    'set.reset.body': '所有参数将恢复为默认值。',
+    'set.err.prompt': 'role 提示词需控制在 2000 字以内。',
+    'set.err.temp': '温度需在 0 到 2 之间。',
+    /* ── 统一参数模板 ── */
+    'tpl.title': '统一参数模板',
+    'tpl.desc': '前台设置与运维部署共用同一份目录驱动模板。热更项即时作用于当前 runtime，其余需发布并重启。',
+    'tpl.source': '来源：参数目录',
+    'tpl.group.hint': '{hot} 项热更 · {cold} 项需重启',
+    'tpl.cold.note': '当前 runtime 不支持修改 ——',
+    'tpl.cold.link': '到运维台配置',
+    'tpl.save': '应用热更到 runtime',
+    'tpl.save.hint': '仅热更字段推送到活跃会话（热更白名单），其余留在运维侧。',
+    'toast.tpl.hot': '已对当前 runtime 应用 {n} 个热更字段',
+    'act.tpl.hot': 'runtime 热更',
+    'set.f.turn_detection': '轮次检测',
+    'settings.f.turn_detection': '判定用户说完的方式，以及是否允许打断助手。',
+    'set.f.interrupt_response_enabled': '允许打断',
+    'settings.f.interrupt_response_enabled': '用户在助手说话时可打断。',
+    'set.f.llm_model': 'LLM 模型',
+    'tpl.hot': '热更', 'tpl.restart': '需重启',
+    'tpl.plat.gpu': 'GPU', 'tpl.plat.npu': 'NPU', 'tpl.plat.amd': 'AMD', 'tpl.plat.cpu': 'CPU',
+    'tpl.minVram': '最低 {n} GB', 'tpl.driver.any': '无驱动要求',
+    'tpl.check.ok': '满足', 'tpl.check.platform': '平台不支持',
+    'tpl.check.vram': '显存不足', 'tpl.check.driver': '驱动版本过低',
+    'tpl.ops.title': '本机模板约束校验',
+    'tpl.ops.hint': '按 {machine} 实际硬件校验',
+    'tpl.ops.blocked': '{n} 项不满足', 'tpl.ops.ready': '全部满足',
+    'tpl.ops.note': '目标机器不满足模板约束时，运维侧发布会被拒绝。',
+    'tpl.col.field': '字段', 'tpl.col.platform': '适用平台', 'tpl.col.require': '要求',
+    'tpl.col.effect': '生效', 'tpl.col.check': '校验',
+    /* ── 模板管理 ── */
+    'nav.templates': '模板管理', 'tplmgr.desc': '两类模板：对话态热更（即时作用于活跃会话）与重启生效（需发布并重启 pipeline），前台设置与运维部署共用。',
+    'tplmgr.total': '模板总数', 'tplmgr.platforms': '覆盖平台数',
+    'tplmgr.status.published': '已发布', 'tplmgr.status.draft': '草稿', 'tplmgr.status.review': '审核中', 'tplmgr.status.archived': '已归档',
+    'tplmgr.add': '新建模板', 'tplmgr.view': '查看', 'tplmgr.edit': '编辑', 'tplmgr.delete': '删除', 'tplmgr.save': '保存模板',
+    'tplmgr.search': '按名称、ID 或描述搜索…', 'tplmgr.empty': '没有符合筛选条件的模板。',
+    'tplmgr.col.name': '模板名称', 'tplmgr.col.effect': '生效方式', 'tplmgr.col.type': '平台类型', 'tplmgr.col.status': '状态',
+    'tplmgr.effect.runtime': '对话态热更', 'tplmgr.effect.runtime.hint': '即时作用于活跃会话',
+    'tplmgr.effect.restart': '重启生效', 'tplmgr.effect.restart.hint': '需发布并重启 pipeline',
+    'tplmgr.effect.hint': '热更 = session.update 白名单；重启 = 启动参数，需发布并重启 pipeline',
+    'tplmgr.col.fields': '字段数', 'tplmgr.col.vram': '最低显存', 'tplmgr.col.created': '创建时间',
+    'tplmgr.col.updated': '更新时间', 'tplmgr.col.desc': '描述', 'tplmgr.col.actions': '操作',
+    'tplmgr.form.name': '模板名称',
+    'tplmgr.col.scene': '绑定场景', 'tplmgr.form.scene': '推荐配置方案（模板固定组成部分）',
+    'tpl.select.title': '参数模板', 'tpl.select.hint': '选择模板查看配置（只读）',
+    'tpl.view.title': '模板 · {name}', 'tpl.view.scene': '推荐配置方案（模板固定组成部分）',
+    'tpl.view.noscene': '该模板未绑定场景', 'tpl.view.readonly': '只读查看 —— 模板内容不会应用到本机',
+    'scene.tpl.note': '推荐配置已收拢到模板，请从顶部选择模板查看。',
+    'tplmgr.del.body': '确认删除模板 <b>{name}</b>？此操作不可撤销。',
+    'tplmgr.err.name': '模板名称不能为空。',
+    'tplmgr.toast.saved': '模板已保存', 'tplmgr.toast.deleted': '模板已删除',
+    'act.tpl.save': '模板已保存', 'act.tpl.delete': '模板已删除',
+    /* ── 通用确认框 / 操作审计 ── */
+    'confirm.ok': '确认', 'confirm.cancel': '取消',
+    'audit.cat.session': '会话', 'audit.cat.tool': '工具', 'audit.cat.setting': '设置', 'audit.cat.template': '模板', 'audit.cat.smart': '智能设置',
+    'act.session.delete': '删除会话 {value}',
+    'act.session.delete.detail': '已从转写存储中移除该会话及其消息。',
+    'act.session.msg.delete': '删除消息 {value}',
+    'act.session.msg.delete.detail': '移除单条消息，会话本身保留。',
+    'act.session.msg.clear': '清空会话 {value} 的消息',
+    'act.session.msg.clear.detail': '清空全部消息，会话本身保留。',
+    'act.tool.create': '新建工具 {value}',
+    'act.tool.create.detail': '已加入账号工具列表，后续会话可用。',
+    'act.tool.update': '修改工具 {value}',
+    'act.tool.update.detail': '已修改定义，后续调用按新定义执行。',
+    'act.tool.delete': '删除工具 {value}',
+    'act.tool.delete.detail': '已从账号移除该能力。',
+    'act.set.update': '修改设置 {value}',
+    'act.set.update.detail': '语音模型、role 提示词与通话参数已保存。',
+    'toast.hist.deleted': '会话 {id} 已删除',
+    'toast.hist.batch.deleted': '已删除 {n} 个会话',
+    'toast.hist.msg.deleted': '消息 {id} 已删除',
+    'toast.hist.msgs.cleared': '已清空 {n} 条消息',
+    'toast.hist.query': '命中 {n} 个会话',
+    'toast.tool.saved': '工具 {name} 已保存',
+    'toast.tool.created': '工具 {name} 已创建',
+    'toast.tool.deleted': '工具 {name} 已删除',
+    'toast.tool.copied': '工具 {name} 已复制',
+    'toast.tool.toggled': '“{name}”已{state}',
+    'toast.tool.cancelled': '已取消，未做任何修改',
+    'toast.set.saved': '设置已保存',
+    'toast.set.reset': '设置已恢复默认值',
     'tool.search': '联网搜索', 'tool.search.desc': '为回答附加实时搜索结果。', 'tool.calendar': '日历',
     'tool.calendar.desc': '读取日程并草拟安排。', 'tool.weather': '天气', 'tool.weather.desc': '实时天气与预报。',
     'tool.kb': '知识库', 'tool.kb.desc': '面向内部文档的 RAG 检索。',
@@ -591,6 +1060,77 @@ function t(key, vars) {
 /* supplementary effect keys (kept next to the data they describe) */
 Object.assign(I18N.en, { 'eff.session': 'next session', 'eff.immediate': 'immediate', 'eff.restart': 'needs restart', 'params.title': 'Runtime parameters on this machine', 'deploy.drift.equal': '- equals expected', 'deploy.drift.diff': '- differs from expected', 'config.source.console': 'console (prod.yaml)', 'failures': 'failures', 'voice.preview': 'Preview', 'rel.canary.batch': 'canary batch 1/4', 'overview.desc': 'The cluster behind the unified load-balancing entry - one console for the front office and the ops desk.' });
 Object.assign(I18N.zh, { 'eff.session': '下个会话生效', 'eff.immediate': '立即生效', 'eff.restart': '需重启实例', 'params.title': '该机器运行时参数', 'deploy.drift.equal': '— 与期望一致', 'deploy.drift.diff': '— 与期望不一致', 'config.source.console': '控制台（prod.yaml）', 'failures': '次失败', 'voice.preview': '试听', 'rel.canary.batch': '金丝雀第 1/4 批', 'overview.desc': '统一负载均衡入口后的集群视图 —— 对话前台与运维台共用同一控制台。' });
+/* 统一参数模板字段文案：与 docs/parameter-catalog.md §7.5 / §7.4 对齐 */
+Object.assign(I18N.en, {
+  'tpl.field.thresh': 'VAD speech threshold', 'tpl.field.thresh.hint': '§7.5 hot via turn_detection.threshold; 0–1, default 0.6.',
+  'tpl.field.min_silence_ms': 'Trailing silence (ms)', 'tpl.field.min_silence_ms.hint': '§7.5 hot via turn_detection.silence_duration_ms; production 450 ms.',
+  'tpl.field.qwen3_asr_language': 'Transcription language', 'tpl.field.qwen3_asr_language.hint': '§7.5 hot via transcription.language; backend capability check applies.',
+  'tpl.field.init_chat_prompt': 'System persona prompt', 'tpl.field.qwen3_tts_speaker': 'TTS speaker',
+  'tpl.field.qwen3_tts_speaker.hint': '§7.5 hot via audio.output.voice; only qwen3 supported speakers take effect.',
+  'tpl.field.instructions': 'Instructions (client first frame)', 'tpl.field.voice': 'Voice (client first frame)',
+  'tpl.field.model': 'Model label', 'tpl.field.model.hint': '§7.5: logged only; local backends ignore the value.',
+  'tpl.field.vad': 'VAD backend', 'tpl.field.vad.hint': '§7.4 restart: backend selects handler type and model loading.',
+  'tpl.field.sample_rate': 'VAD sample rate', 'tpl.field.sample_rate.hint': '§7.4 restart: 8000/16000 only, model hard constraint.',
+  'tpl.field.min_speech_ms': 'Min speech duration (ms)',
+  'tpl.field.qwen3_asr_model_name': 'STT model path', 'tpl.field.model_name': 'LLM model name',
+  'tpl.field.model_name.hint': '§4.3 remote backends; changing model requires a new client + restart.',
+  'tpl.field.responses_api_base_url': 'LLM base URL', 'tpl.field.responses_api_base_url.hint': '§4.3 remote compatible endpoint; restart required.',
+  'tpl.field.num_pipelines': 'Pipeline count', 'tpl.field.num_pipelines.hint': '§6.1 concurrency; floor(VRAM × 0.85 / per-slot).',
+  'tpl.field.diarization': 'Speaker diarization', 'tpl.field.diarization.hint': '§6.4 adds VRAM alongside STT/TTS; restart required.',
+  'tpl.live.title': 'Conversation hot settings', 'tpl.live.hint': '{n} live-updatable parameters',
+  'tpl.live.col.field': 'Parameter', 'tpl.live.col.value': 'Current value', 'tpl.live.col.patch': 'session.update path', 'tpl.live.col.src': 'Catalog ref',
+  'tpl.live.note': 'These values apply to the active session only (session.update whitelist). New connections read YAML defaults until published.',
+  'tpl.live.edit': 'Edit conversation hot settings', 'tpl.live.edit.hint': 'changes apply to the live runtime',
+  'tpl.col.actual': 'Deployed value', 'tpl.col.driver': 'Driver',
+  'tpl.save.as': 'Save as template', 'tpl.save.as.hint': 'Create a reusable template from current parameters',
+  'tpl.save.as.desc': 'Snapshot from {source} — {n} parameters will be captured.',
+  'tpl.source.front': 'front-office hot settings', 'tpl.source.ops': 'machine deployment params',
+  'smart.title': 'Smart settings', 'smart.hint': 'agent on {machine}: live params + logs + AI advisor',
+  'smart.fetch': 'Pull live params from agent', 'smart.fetch.hint': 'reads current deployment parameters and recent logs',
+  'smart.fetched': 'agent data loaded', 'smart.fault': 'Describe the symptom',
+  'smart.fault.ph': 'e.g. callers get cut off mid-sentence / barge-in not working / OOM on node-a01',
+  'smart.analyze': 'Analyze with AI', 'smart.busy': 'analyzing logs + params…',
+  'smart.apply': 'Apply', 'smart.result.generic': 'Insufficient signal in logs; suggest raising trailing silence to 500 ms and rechecking.',
+  'smart.toast.fetched': 'Live parameters and logs loaded from agent',
+  'smart.toast.analyzed': 'AI analysis complete — recommended parameters listed below',
+  'smart.toast.applied': 'Applied recommended value for {key}',
+  'act.smart.apply': 'AI recommended parameter applied',
+});
+Object.assign(I18N.zh, {
+  'tpl.field.thresh': 'VAD 语音判定阈值', 'tpl.field.thresh.hint': '§7.5 热更：turn_detection.threshold；0–1，默认 0.6。',
+  'tpl.field.min_silence_ms': '句末静音时长（ms）', 'tpl.field.min_silence_ms.hint': '§7.5 热更：turn_detection.silence_duration_ms；生产 450 ms。',
+  'tpl.field.qwen3_asr_language': '转写语言', 'tpl.field.qwen3_asr_language.hint': '§7.5 热更：transcription.language；需通过后端语言能力校验。',
+  'tpl.field.init_chat_prompt': '系统人设提示词', 'tpl.field.qwen3_tts_speaker': 'TTS 音色',
+  'tpl.field.qwen3_tts_speaker.hint': '§7.5 热更：audio.output.voice；仅 qwen3 支持列表内音色生效。',
+  'tpl.field.instructions': '指令（客户端首帧）', 'tpl.field.voice': '音色（客户端首帧）',
+  'tpl.field.model': '模型标签', 'tpl.field.model.hint': '§7.5：仅记日志，本地后端忽略该值。',
+  'tpl.field.vad': 'VAD 后端', 'tpl.field.vad.hint': '§7.4 重启：后端决定 handler 类型与模型加载方式。',
+  'tpl.field.sample_rate': 'VAD 采样率', 'tpl.field.sample_rate.hint': '§7.4 重启：仅 8000/16000，模型硬约束。',
+  'tpl.field.min_speech_ms': '最短有效语音（ms）',
+  'tpl.field.qwen3_asr_model_name': 'STT 模型路径', 'tpl.field.model_name': 'LLM 模型名',
+  'tpl.field.model_name.hint': '§4.3 远端后端；换模型需重建客户端并重启。',
+  'tpl.field.responses_api_base_url': 'LLM 基址', 'tpl.field.responses_api_base_url.hint': '§4.3 远端 OpenAI 兼容端点；需重启。',
+  'tpl.field.num_pipelines': 'Pipeline 路数', 'tpl.field.num_pipelines.hint': '§6.1 并发；floor(显存×0.85 / 单路实测)。',
+  'tpl.field.diarization': '说话人分离', 'tpl.field.diarization.hint': '§6.4 与 STT/TTS 共用显存；需重启。',
+  'tpl.live.title': '对话态热更参数', 'tpl.live.hint': '{n} 项可动态更新参数',
+  'tpl.live.col.field': '参数', 'tpl.live.col.value': '当前值', 'tpl.live.col.patch': 'session.update 路径', 'tpl.live.col.src': '目录溯源',
+  'tpl.live.note': '这些值只作用于当前会话（热更白名单）；发布前新连接仍读 YAML 默认值。',
+  'tpl.live.edit': '编辑对话态热更参数', 'tpl.live.edit.hint': '修改即时作用于当前 runtime',
+  'tpl.col.actual': '实际部署值', 'tpl.col.driver': '驱动',
+  'tpl.save.as': '保存为模板', 'tpl.save.as.hint': '用当前参数创建可复用模板',
+  'tpl.save.as.desc': '来自 {source} 的快照 —— 将采集 {n} 个参数。',
+  'tpl.source.front': '前台对话态热更设置', 'tpl.source.ops': '机器实际部署参数',
+  'smart.title': '智能设置', 'smart.hint': '来自 {machine} 的 agent：当前参数 + 日志 + AI 分析',
+  'smart.fetch': '从 Agent 拉取当前参数', 'smart.fetch.hint': '读取当前部署参数与近期日志',
+  'smart.fetched': '已获取 agent 数据', 'smart.fault': '描述当前故障现象',
+  'smart.fault.ph': '例如：用户说话被截断 / 打断不生效 / node-a01 显存溢出',
+  'smart.analyze': 'AI 分析故障', 'smart.busy': '正在分析日志与参数…',
+  'smart.apply': '应用', 'smart.result.generic': '日志信号不足：建议将句末静音调到 500 ms 后复查。',
+  'smart.toast.fetched': '已从 agent 获取当前参数与日志',
+  'smart.toast.analyzed': 'AI 分析完成 —— 推荐参数如下',
+  'smart.toast.applied': '已应用 {key} 的推荐值',
+  'act.smart.apply': '应用 AI 推荐参数',
+});
 
 /* ── deploy module strings (parameter table + scenario advisor), en/zh in lockstep ── */
 Object.assign(I18N.en, {
@@ -607,7 +1147,7 @@ Object.assign(I18N.en, {
   'deploy.platform.note': '§6 platform & runtime surface: shown read-only here. It is maintained on the ops side and is not editable in this console (91 entries in the catalog; a representative subset is listed).',
   'deploy.offline.note': 'No running deployment on {machine}: actual values cannot be collected. Only the expected baseline is shown.',
   'deploy.push.row': 'Push', 'deploy.rollback.one': 'Roll back', 'deploy.draft.target': 'draft target',
-  'scene.title': 'Recommended configuration for the scenario', 'scene.hint': 'Target: {machine} · advisor output is a draft, never a live write',
+  'scene.title': 'Recommended configuration', 'scene.hint': 'Target: {machine} · advisor output is a draft, never a live write',
   'scene.none': 'No scenario', 'scene.rec.count': '{n} recommended parameters', 'scene.why': 'Why', 'scene.gain': 'Expected gain', 'scene.cost': 'Attached cost',
   'scene.risk': 'Risk reminder', 'scene.ref': 'Traceability', 'scene.now': 'current', 'scene.suggest': 'suggest', 'scene.equal': 'already at the recommended value',
   'scene.btn.diff': 'Diff preview', 'scene.btn.apply': 'Apply to draft', 'scene.draft.clear': 'Clear draft',
@@ -659,7 +1199,7 @@ Object.assign(I18N.zh, {
   'deploy.platform.note': '§6 平台与运行时公共面：此处只读展示，由运维侧单独维护，本控制台不可配置（目录共 91 项，此处为代表性子集）。',
   'deploy.offline.note': '{machine} 上没有运行中的部署，无法采集实际值，仅展示期望基线。',
   'deploy.push.row': '下发', 'deploy.rollback.one': '回滚', 'deploy.draft.target': '草稿目标',
-  'scene.title': '按当前场景推荐配置', 'scene.hint': '作用对象：{machine} · 推荐结果只写入草稿，不直接改线上',
+  'scene.title': '推荐配置方案', 'scene.hint': '作用对象：{machine} · 推荐结果只写入草稿，不直接改线上',
   'scene.none': '不选场景', 'scene.rec.count': '推荐 {n} 项参数', 'scene.why': '改动理由', 'scene.gain': '预期收益', 'scene.cost': '连带代价',
   'scene.risk': '风险提醒', 'scene.ref': '依据', 'scene.now': '现值', 'scene.suggest': '建议', 'scene.equal': '已是推荐值',
   'scene.btn.diff': 'diff 预览', 'scene.btn.apply': '应用到草稿', 'scene.draft.clear': '清空草稿',
@@ -947,14 +1487,97 @@ const CLUSTERS = [
 ];
 
 const MACHINES = [
-  { id: 'node-a01', addr: '10.12.0.11:8765', role: 'gateway',  state: 'ok',       gpu: 'L40S 48G', util: 64, ver: 'v1.4.1', pushed: '2026-10-25 14:02', by: 'ops.liu', cluster: 'prod-cluster-cn-east', reg: 'auto' },
-  { id: 'node-a02', addr: '10.12.0.12:8765', role: 'agent',    state: 'ok',       gpu: 'L40S 48G', util: 58, ver: 'v1.4.1', pushed: '2026-10-25 14:02', by: 'ops.liu', cluster: 'prod-cluster-cn-east', reg: 'auto' },
-  { id: 'node-b01', addr: '10.12.1.21:8765', role: 'canary',   state: 'warn',     gpu: 'H100 80G', util: 22, ver: 'v1.4.2', pushed: '2026-10-26 09:41', by: 'ops.zhang', cluster: 'prod-cluster-cn-east', reg: 'auto' },
-  { id: 'node-c01', addr: '10.12.1.31:8765', role: 'draining', state: 'draining', gpu: 'L40S 48G', util: 11, ver: 'v1.4.1', pushed: '2026-10-20 11:15', by: 'ops.liu', cluster: 'prod-cluster-cn-east', reg: 'auto' },
-  { id: 'node-d01', addr: '10.12.2.41:8765', role: 'offline',  state: 'bad',      gpu: 'L4 24G',   util: 0,  ver: '—',      pushed: '2026-10-18 20:33', by: 'ops.zhang', cluster: 'prod-cluster-cn-east', reg: 'auto' },
-  { id: 'stage-x01', addr: '10.20.1.11:8765', role: 'agent',   state: 'ok',       gpu: 'L4 24G',   util: 35, ver: 'v1.4.1', pushed: '2026-10-24 10:08', by: 'ops.liu', cluster: 'staging-cluster', reg: 'auto' },
-  { id: 'stage-x02', addr: '10.20.1.12:8765', role: 'gateway', state: 'ok',       gpu: 'L4 24G',   util: 18, ver: 'v1.4.1', pushed: '2026-10-24 10:08', by: 'ops.liu', cluster: 'staging-cluster', reg: 'auto' },
+  { id: 'node-a01', addr: '10.12.0.11:8765', role: 'gateway',  state: 'ok',       gpu: 'L40S 48G', util: 64, ver: 'v1.4.1', pushed: '2026-10-25 14:02', by: 'ops.liu', cluster: 'prod-cluster-cn-east', reg: 'auto', platform: 'gpu',  driver: 'CUDA 12.4', vramGb: 48 },
+  { id: 'node-a02', addr: '10.12.0.12:8765', role: 'agent',    state: 'ok',       gpu: 'L40S 48G', util: 58, ver: 'v1.4.1', pushed: '2026-10-25 14:02', by: 'ops.liu', cluster: 'prod-cluster-cn-east', reg: 'auto', platform: 'gpu',  driver: 'CUDA 12.4', vramGb: 48 },
+  { id: 'node-b01', addr: '10.12.1.21:8765', role: 'canary',   state: 'warn',     gpu: 'H100 80G', util: 22, ver: 'v1.4.2', pushed: '2026-10-26 09:41', by: 'ops.zhang', cluster: 'prod-cluster-cn-east', reg: 'auto', platform: 'gpu',  driver: 'CUDA 12.6', vramGb: 80 },
+  { id: 'node-c01', addr: '10.12.1.31:8765', role: 'draining', state: 'draining', gpu: 'L40S 48G', util: 11, ver: 'v1.4.1', pushed: '2026-10-20 11:15', by: 'ops.liu', cluster: 'prod-cluster-cn-east', reg: 'auto', platform: 'gpu',  driver: 'CUDA 12.4', vramGb: 48 },
+  { id: 'node-d01', addr: '10.12.2.41:8765', role: 'offline',  state: 'bad',      gpu: 'L4 24G',   util: 0,  ver: '—',      pushed: '2026-10-18 20:33', by: 'ops.zhang', cluster: 'prod-cluster-cn-east', reg: 'auto', platform: 'gpu',  driver: 'CUDA 12.2', vramGb: 24 },
+  { id: 'stage-x01', addr: '10.20.1.11:8765', role: 'agent',   state: 'ok',       gpu: 'L4 24G',   util: 35, ver: 'v1.4.1', pushed: '2026-10-24 10:08', by: 'ops.liu', cluster: 'staging-cluster', reg: 'auto', platform: 'npu',  driver: 'CANN 8.0',   vramGb: 32 },
+  { id: 'stage-x02', addr: '10.20.1.12:8765', role: 'gateway', state: 'ok',       gpu: 'L4 24G',   util: 18, ver: 'v1.4.1', pushed: '2026-10-24 10:08', by: 'ops.liu', cluster: 'staging-cluster', reg: 'auto', platform: 'amd',  driver: 'ROCm 6.1',   vramGb: 32 },
 ];
+
+/* ── 统一参数模板（catalog 驱动；字段与 docs/parameter-catalog.md 对齐）──
+   热更字段 = §7.5 已支持运行时生效的 8 项（session.update 通道）；
+   重启字段 = §7.4 仅重启参数的各章代表项（需发布 + 重启 / 重建容器）。
+   surface: front = 前台设置菜单，ops = 运维台部署页，both = 两处都出现。
+   platform/minVram/driver: 模板硬件约束，发布时按机器实际硬件校验。 */
+const PARAM_TEMPLATES = [
+  /* ── 对话态热更（§7.5，8 项）── */
+  { key: 'thresh', group: 'vad', surface: 'both', hot: true, type: 'number', min: 0, max: 1, step: 0.05, def: 0.6,
+    label: 'tpl.field.thresh', hint: 'tpl.field.thresh.hint', src: '§2.2 · vad_arguments.py:22',
+    patch: 'audio.input.turn_detection.threshold',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'min_silence_ms', group: 'vad', surface: 'both', hot: true, type: 'number', min: 0, max: 5000, step: 50, def: 450,
+    label: 'tpl.field.min_silence_ms', hint: 'tpl.field.min_silence_ms.hint', src: '§2.2 · vad_arguments.py:34',
+    patch: 'audio.input.turn_detection.silence_duration_ms',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'qwen3_asr_language', group: 'stt', surface: 'both', hot: true, type: 'select', opts: ['auto','zh','en'], def: 'auto',
+    label: 'tpl.field.qwen3_asr_language', hint: 'tpl.field.qwen3_asr_language.hint', src: '§3.2 · §7.5',
+    patch: 'audio.input.transcription.language',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'init_chat_prompt', group: 'llm', surface: 'both', hot: true, type: 'textarea', def: '',
+    label: 'tpl.field.init_chat_prompt', hint: 'settings.f.init_chat_prompt', src: '§4.2 · §7.5',
+    patch: 'instructions',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'instructions', group: 'llm', surface: 'front', hot: true, type: 'textarea', def: '',
+    label: 'tpl.field.instructions', hint: 'settings.f.instructions', src: '§7.5 · 客户端首帧',
+    patch: 'instructions',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'qwen3_tts_speaker', group: 'tts', surface: 'both', hot: true, type: 'select', opts: 'voices',
+    label: 'tpl.field.qwen3_tts_speaker', hint: 'tpl.field.qwen3_tts_speaker.hint', src: '§5.2 · §7.5',
+    patch: 'audio.output.voice',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'voice', group: 'tts', surface: 'front', hot: true, type: 'select', opts: 'voices',
+    label: 'tpl.field.voice', hint: 'settings.f.voice', src: '§7.5 · 客户端首帧',
+    patch: 'audio.output.voice',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'model', group: 'llm', surface: 'ops', hot: true, type: 'text', def: '',
+    label: 'tpl.field.model', hint: 'tpl.field.model.hint', src: '§7.5 · 仅记日志',
+    patch: 'model',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  /* ── 重启生效（§7.4 各章代表项）── */
+  { key: 'vad', group: 'vad', surface: 'ops', hot: false, type: 'select', opts: ['silero','firered'], def: 'silero',
+    label: 'tpl.field.vad', hint: 'tpl.field.vad.hint', src: '§2.2 · vad_arguments.py:6',
+    platform: ['gpu','cpu'], minVram: 0, driver: 'CUDA 12.0+' },
+  { key: 'sample_rate', group: 'vad', surface: 'ops', hot: false, type: 'select', opts: ['8000','16000'], def: '16000',
+    label: 'tpl.field.sample_rate', hint: 'tpl.field.sample_rate.hint', src: '§2.2 · vad_arguments.py:28',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'min_speech_ms', group: 'vad', surface: 'ops', hot: false, type: 'number', min: 0, max: 5000, step: 50, def: 384,
+    label: 'tpl.field.min_speech_ms', hint: 'settings.f.min_speech_ms', src: '§2.2 · vad_arguments.py:40',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'qwen3_asr_model_name', group: 'stt', surface: 'ops', hot: false, type: 'text', def: '',
+    label: 'tpl.field.qwen3_asr_model_name', hint: 'tpl.field.model', src: '§3.2 · 模型路径',
+    platform: ['gpu','npu','amd'], minVram: 16, driver: '' },
+  { key: 'model_name', group: 'llm', surface: 'ops', hot: false, type: 'text', def: '',
+    label: 'tpl.field.model_name', hint: 'tpl.field.model_name.hint', src: '§4.3 · 模型名',
+    platform: ['gpu','npu','amd','cpu'], minVram: 16, driver: '' },
+  { key: 'responses_api_base_url', group: 'llm', surface: 'ops', hot: false, type: 'text', def: '',
+    label: 'tpl.field.responses_api_base_url', hint: 'tpl.field.responses_api_base_url.hint', src: '§4.3 · 远端基址',
+    platform: ['gpu','npu','amd','cpu'], minVram: 0, driver: '' },
+  { key: 'stream_batch_sentences', group: 'llm', surface: 'ops', hot: false, type: 'number', min: 1, max: 8, step: 1, def: 3,
+    label: 'settings.f.stream_batch_sentences', hint: 'settings.f.stream_batch_sentences', src: '§4.2 · LLM 生成',
+    platform: ['gpu','npu','amd'], minVram: 16, driver: '' },
+  { key: 'voxcpm_tts_model_name', group: 'tts', surface: 'ops', hot: false, type: 'text', def: '',
+    label: 'tpl.field.voxcpm_tts_model_name', hint: 'tpl.field.model', src: '§5.2 · 模型路径',
+    platform: ['gpu','npu'], minVram: 12, driver: '' },
+  { key: 'num_pipelines', group: 'platform', surface: 'ops', hot: false, type: 'number', min: 1, max: 8, step: 1, def: 2,
+    label: 'tpl.field.num_pipelines', hint: 'tpl.field.num_pipelines.hint', src: '§6.1 · 并发',
+    platform: ['gpu','npu','amd','cpu'], minVram: 16, driver: '' },
+  { key: 'diarization', group: 'platform', surface: 'ops', hot: false, type: 'switch', def: false,
+    label: 'tpl.field.diarization', hint: 'tpl.field.diarization.hint', src: '§6.4 · 说话人分离',
+    platform: ['gpu','npu','amd'], minVram: 16, driver: '' },
+];
+const templateField = (key) => PARAM_TEMPLATES.find((f) => f.key === key);
+const templateFor = (surface) => PARAM_TEMPLATES.filter((f) => f.surface === surface || f.surface === 'both');
+
+/* 按机器实际硬件校验模板约束；返回 {ok, reasons[]} */
+function checkTemplateHardware(field, m) {
+  const reasons = [];
+  if (field.platform && !field.platform.includes(m.platform || 'gpu')) reasons.push('tpl.check.platform');
+  if (field.minVram && (m.vramGb || 0) < field.minVram) reasons.push('tpl.check.vram');
+  if (field.driver && !(m.driver || '').startsWith(field.driver.replace('+',''))) reasons.push('tpl.check.driver');
+  return { ok: reasons.length === 0, reasons };
+}
 
 const INSTANCES = [
   { id: 's2s-a1-1', node: 'node-a01', size: 4, inUse: 3, rpm: 96,  ttft: 412, rtf: 0.31, err: 0, state: 'ok',       tkr: 268 },
@@ -1812,19 +2435,151 @@ const AUDITS = [
   { time: '10-25 07:41', who: 'ops.liu',    cat: 'access',  act: 'act.access.login',      val: 'console',               result: 'ok',   detail: 'act.access.login.detail' },
 ];
 
-const HISTORY = [
-  { when: '10-27 09:15', dur: 214, turns: 12, inst: 's2s-a1-2', excerpt: { en: 'Asked for a weekend trip plan; assistant routed via node-a02 and offered three options.', zh: '咨询周末出行安排，助理给出三个方案并完成改签。' } },
-  { when: '10-26 18:02', dur: 88,  turns: 5,  inst: 's2s-b1-1', excerpt: { en: 'Canary smoke call on node-b01, TTFT within budget.', zh: '金丝雀节点通话冒烟测试，首包延迟达标。' } },
-  { when: '10-26 15:37', dur: 341, turns: 19, inst: 's2s-c1-1', excerpt: { en: 'Long meeting transcript with diarization; tail timeouts on node-c01.', zh: '会议纪要多人对话，排空节点出现尾超时。' } },
-  { when: '10-25 11:08', dur: 46,  turns: 3,  inst: 's2s-a1-1', excerpt: { en: 'Weather lookup with the web search tool enabled.', zh: '开启联网搜索后查询天气。' } },
+/* ── 会话与消息的唯一数据源 ────────────────────────────────
+   对话演示页的「会话记录」与会话历史页共用这一份 store：
+   在历史页删除会话 = 从 SESSIONS 移除 → 对话页的记录列表立即同步消失。 */
+let SESSIONS = [
+  {
+    id: 'sess-7c1d', when: '10-27 09:15:42', inst: 's2s-a1-2', node: 'node-a01', state: 'done',
+    turns: 4, dur: 22, ttft: 620,
+    lines: [
+      { role: 'user', clip: 'u-0915-1', dur: 4.2, stt: 'ok', asr: { en: 'Hi, what is the health of the cluster today?', zh: '你好，今天集群健康状况怎么样？' } },
+      { role: 'assistant', clip: 'a-0915-1', dur: 6.8, tts: 'ok', text: { en: 'Four of five machines are online; one is draining, so we are running in degraded mode.', zh: '5 台机器中 4 台在线，1 台正在排空，集群处于降级状态。' } },
+      { role: 'user', clip: 'u-0915-2', dur: 3.1, stt: 'ok', asr: { en: 'And how long does the pool need to finish the rollout?', zh: '全量发布大概还需要多久？' } },
+      { role: 'assistant', clip: 'a-0915-2', dur: 7.4, tts: 'ok', text: { en: 'The canary is on batch 1 of 4, so roughly two hours if the error rate stays under 1%.', zh: '金丝雀在第 1/4 批，若错误率保持低于 1%，大约还需两小时。' } },
+    ],
+  },
+  {
+    id: 'sess-6ab4', when: '10-27 08:52:07', inst: 's2s-a2-1', node: 'node-a02', state: 'done',
+    turns: 2, dur: 6, ttft: 386,
+    lines: [
+      { role: 'user', clip: 'u-0852-1', dur: 2.9, stt: 'ok', asr: { en: 'Please replay the ticket number for me.', zh: '请把工单号再念一遍。' } },
+      { role: 'assistant', clip: 'a-0852-1', dur: 3.4, tts: 'ok', text: { en: 'The ticket is SD-40192, opened 12 minutes ago on node-a02.', zh: '工单号是 SD-40192，12 分钟前在 node-a02 上创建。' } },
+    ],
+  },
+  {
+    id: 'sess-5f30', when: '10-26 18:02:55', inst: 's2s-b1-1', node: 'node-b01', state: 'failed',
+    turns: 2, dur: 6, ttft: 1204,
+    lines: [
+      { role: 'user', clip: 'u-1802-1', dur: 5.6, stt: 'ok', asr: { en: 'Canary smoke call — read back the routing policy.', zh: '金丝雀冒烟测试 —— 读一下当前路由策略。' } },
+      { role: 'assistant', clip: 'a-1802-1', dur: 0, tts: 'fail', text: { en: '—', zh: '—' } },
+    ],
+  },
+  {
+    id: 'sess-4e12', when: '10-26 15:37:20', inst: 's2s-c1-1', node: 'node-c01', state: 'done',
+    turns: 3, dur: 21, ttft: 744,
+    lines: [
+      { role: 'user', clip: 'u-1537-1', dur: 6.2, stt: 'ok', asr: { en: 'Summarise the meeting we just finished.', zh: '把刚刚结束的会议做个总结。' } },
+      { role: 'assistant', clip: 'a-1537-1', dur: 12.4, tts: 'ok', text: { en: 'Three speakers, four decisions, two open items on the rollout checklist.', zh: '三位发言人、四项决议，发布清单上还有两项未闭环。' } },
+      { role: 'user', clip: 'u-1537-2', dur: 2.4, stt: 'fail', asr: { en: '—', zh: '—' } },
+    ],
+  },
+  {
+    id: 'sess-3b88', when: '10-25 11:08:31', inst: 's2s-a1-1', node: 'node-a01', state: 'done',
+    turns: 2, dur: 9, ttft: 412,
+    lines: [
+      { role: 'user', clip: 'u-1108-1', dur: 3.6, stt: 'ok', asr: { en: 'What is the weather in Shanghai tomorrow?', zh: '上海明天天气怎么样？' } },
+      { role: 'assistant', clip: 'a-1108-1', dur: 5.1, tts: 'ok', text: { en: 'Light rain, 19 to 24 °C, wind from the east.', zh: '小雨，19 到 24 度，东风。' } },
+    ],
+  },
 ];
 
+/* 补齐消息级字段：消息 ID / 发生时间 / 时间戳 —— 历史页按消息粒度查询与删除 */
+const sessTs = (when) => {
+  const [d, tm] = when.split(' ');
+  const [mo, da] = d.split('-').map(Number);
+  const [h, mi, s] = tm.split(':').map(Number);
+  return new Date(2026, mo - 1, da, h, mi, s).getTime();
+};
+const stampOf = (ts) => {
+  const d = new Date(ts), p = (n) => String(n).padStart(2, '0');
+  return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+};
+SESSIONS.forEach((s, si) => {
+  s.ts = sessTs(s.when);
+  s.lines.forEach((l, li) => {
+    l.mid = 'm' + (si + 1) + '-' + (li + 1);
+    l.ts = s.ts + li * 60000;
+    l.at = stampOf(l.ts);
+  });
+});
+
+/* ── 会话工具：id 稳定（对话页开关按 id 引用，增删后不错位），builtin 标记内置 ── */
 const TOOLS = [
-  { key: 'tool.search',  on: true },
-  { key: 'tool.calendar', on: false },
-  { key: 'tool.weather', on: true },
-  { key: 'tool.kb',      on: false },
+  { id: 'tool-search', key: 'tool.search', builtin: true, on: true, type: 'web_search',
+    desc: { en: 'Attach realtime results to the answer.', zh: '为回答附加实时搜索结果。' },
+    endpoint: 'https://api.example.com/search', method: 'GET', scope: 'global', updated: '10-25 14:02',
+    params: [{ k: 'query', t: 'string', req: true }, { k: 'top_k', t: 'number', req: false }] },
+  { id: 'tool-calendar', key: 'tool.calendar', builtin: true, on: false, type: 'calendar',
+    desc: { en: 'Read the schedule and draft events.', zh: '读取日程并草拟安排。' },
+    endpoint: 'https://api.example.com/calendar', method: 'GET', scope: 'global', updated: '10-25 14:02',
+    params: [{ k: 'range', t: 'string', req: false }] },
+  { id: 'tool-weather', key: 'tool.weather', builtin: true, on: true, type: 'weather',
+    desc: { en: 'Current conditions and forecast.', zh: '实时天气与预报。' },
+    endpoint: 'https://api.example.com/weather', method: 'GET', scope: 'global', updated: '10-25 14:02',
+    params: [{ k: 'city', t: 'string', req: true }] },
+  { id: 'tool-kb', key: 'tool.kb', builtin: true, on: false, type: 'kb',
+    desc: { en: 'RAG over internal documents.', zh: '面向内部文档的 RAG 检索。' },
+    endpoint: 'https://api.example.com/kb/search', method: 'POST', scope: 'tenant', updated: '10-25 14:02',
+    params: [{ k: 'query', t: 'string', req: true }, { k: 'top_k', t: 'number', req: false }] },
 ];
+
+/* ── 设置页：数据驱动描述，新增参数只改这里 ──────────────────
+   字段名沿用参数目录里的真实参数名，保证原型与运行时语义一致。 */
+const SETTINGS_LLM_OPTS = ['qwen3-8b', 'qwen3-32b', 'qwen-plus', 'gpt-4o-mini'];
+const SETTINGS_GROUPS = [
+  { key: 'llm', fields: [
+    { k: 'llm_model', type: 'select', opts: SETTINGS_LLM_OPTS, def: 'qwen3-8b' },
+    { k: 'init_chat_prompt', type: 'textarea', rows: 5, def: 'You are a concise voice assistant for the cluster console. Answer in one or two short sentences, in the language the caller used. Never invent metrics.',
+      hint: 'settings.f.init_chat_prompt' },
+    { k: 'init_chat_role', type: 'text', def: 'system', hint: 'settings.f.init_chat_role' },
+    { k: 'user_role', type: 'text', def: 'user', hint: 'settings.f.user_role' },
+    { k: 'instructions', type: 'text', def: '', hint: 'settings.f.instructions' },
+    { k: 'temperature', type: 'number', def: 0.7, min: 0, max: 2, step: 0.1, hint: 'settings.f.temperature' },
+    { k: 'chat_size', type: 'number', def: 24, min: 4, max: 128, step: 1, hint: 'settings.f.chat_size' },
+    { k: 'verbosity', type: 'select', opts: ['set.terse', 'set.balanced', 'set.detailed'], def: 'set.balanced' },
+    { k: 'turn_model', type: 'text', def: 'smart-turn-v3.2', hint: 'settings.f.turn_model' },
+    { k: 'stream_batch_sentences', type: 'number', def: 1, min: 1, max: 4, step: 1, hint: 'settings.f.stream_batch_sentences' },
+    { k: 'enable_lang_prompt', type: 'switch', def: false, hint: 'settings.f.enable_lang_prompt' },
+  ]},
+  { key: 'voice', fields: [
+    { k: 'voice', type: 'select', opts: 'voices', def: 'sara', hint: 'settings.f.voice' },
+    { k: 'tts_model', type: 'text', def: 'qwen3-tts-1.7b', readonly: true, hint: 'settings.f.tts_model' },
+    { k: 'tts_temperature', type: 'number', def: 0.8, min: 0, max: 2, step: 0.05, hint: 'settings.f.tts_temperature' },
+    { k: 'tts_speed', type: 'number', def: 1, min: 0.5, max: 2, step: 0.05, hint: 'settings.f.tts_speed' },
+    { k: 'tts_stream', type: 'switch', def: true, hint: 'settings.f.tts_stream' },
+  ]},
+  { key: 'call', fields: [
+    { k: 'wake_word', type: 'text', def: '', hint: 'settings.f.wake_word' },
+    { k: 'denoise', type: 'switch', def: true, hint: 'settings.f.denoise' },
+    { k: 'reconnect', type: 'switch', def: true, hint: 'settings.f.reconnect' },
+    { k: 'min_silence_ms', type: 'number', def: 700, min: 100, max: 5000, step: 50, hint: 'settings.f.min_silence_ms' },
+    { k: 'min_speech_ms', type: 'number', def: 300, min: 50, max: 3000, step: 50, hint: 'settings.f.min_speech_ms' },
+    { k: 'max_session_s', type: 'number', def: 1800, min: 60, max: 7200, step: 60, hint: 'settings.f.max_session_s' },
+  ]},
+  { key: 'ui', fields: [
+    { k: 'lang', type: 'select', opts: ['en', 'zh'], def: 'en', hint: 'settings.f.lang' },
+  ]},
+];
+
+/* 设置项的默认值与本地持久化（原型仅落本地，真实运行时走 profile 草稿 / 发布） */
+const SETTINGS_KEY = 's2s-demo-settings';
+const settingsDefaults = () => {
+  const out = {};
+  PARAM_TEMPLATES.forEach((f) => { out[f.key] = f.def !== undefined ? f.def : (f.opts === 'voices' ? 'sara' : ''); });
+  return out;
+};
+const loadSettings = () => {
+  const def = settingsDefaults();
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (e) { saved = null; }
+  const out = Object.assign({}, def, saved && typeof saved === 'object' ? saved : {});
+  if (!('lang' in out)) out.lang = def.lang;
+  return out;
+};
+const storeSettings = (vals) => {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(vals)); } catch (e) { /* 原型：隐私模式下忽略 */ }
+};
 
 const SCRIPT_LINES = [
   { role: 'user',      text: { en: 'Hi, what is the health of the cluster today?', zh: '你好，今天集群健康状况怎么样？' } },
@@ -1841,21 +2596,61 @@ const NAV = [
   ]},
   { key: 'front', items: [
     { page: 'conversation', icon: 'target', label: 'nav.conversation' },
-    { overlay: 'history', icon: 'history', label: 'nav.history' },
-    { overlay: 'tools', icon: 'wrench', label: 'nav.tools' },
-    { overlay: 'settings', icon: 'gear', label: 'nav.settings' },
+    { page: 'history', icon: 'history', label: 'nav.history' },
+    { page: 'tools', icon: 'wrench', label: 'nav.tools' },
+    { page: 'settings', icon: 'gear', label: 'nav.settings' },
   ]},
   { key: 'ops', items: [
     { page: 'machines', icon: 'server', label: 'nav.machines' },
     { page: 'deploy', icon: 'cpu', label: 'nav.deploy' },
+    { page: 'templates', icon: 'layers', label: 'nav.templates' },
     { page: 'voices', icon: 'wave', label: 'nav.voices' },
     { page: 'release', icon: 'check', label: 'nav.release' },
     { page: 'audit', icon: 'history', label: 'nav.audit' },
   ]},
 ];
 
-const PAGES = { overview: 1, lb: 1, conversation: 1, machines: 1, deploy: 1, voices: 1, release: 1, audit: 1 };
-const state = { page: 'overview', cluster: 'prod-cluster-cn-east', machine: 'node-a01', group: 'ALL', cat: 'all', overlay: null, calling: false, timer: 0, step: 0, instance: null, scene: '', draft: {}, opsOn: {}, diffOn: false, mq: '', tkWin: '1h', svcOpen: {}, voice: null };
+const PAGES = { overview: 1, lb: 1, conversation: 1, history: 1, tools: 1, settings: 1, machines: 1, deploy: 1, templates: 1, voices: 1, release: 1, audit: 1 };
+const state = {
+  page: 'overview', cluster: 'prod-cluster-cn-east', machine: 'node-a01', group: 'ALL', cat: 'all',
+  calling: false, timer: 0, step: 0, instance: null, scene: '', draft: {}, opsOn: {}, diffOn: false,
+  mq: '', tkWin: '1h', svcOpen: {}, voice: null, vtab: 'log', live: null, sessionId: '',
+  /* 会话历史页查询态 */
+  hq: { kw: '', state: 'all', inst: 'all', range: 'all', page: 1 },
+  hsel: {},        /* 勾选待批量删除的会话 id */
+  hopen: '',      /* 展开消息明细的会话 id */
+  hmsg: '',       /* 消息关键字（会话内检索） */
+  /* 会话工具页查询态 */
+  tq: { kw: '', type: 'all', scope: 'all', on: 'all' },
+  /* 设置页 */
+  settings: loadSettings(),
+  /* 模板管理页 */
+  tpl: { q: '', effect: 'runtime', type: 'all', status: 'all' },
+  /* 智能设置：agent 拉取 + AI 故障分析（mode=front|deploy） */
+  smart: {
+    front:  { fetched: false, fault: '', logs: [], result: null, busy: false },
+    deploy: { fetched: false, fault: '', logs: [], result: null, busy: false },
+  },
+};
+
+/* 模板管理数据（原型：与 PARAM_TEMPLATES 共用同一套 schema 概念） */
+/* effect = runtime：对话态热更模板（前台设置菜单，session.update 白名单即时生效）
+   effect = restart：pipeline 全量重启模板（backend / model / VAD 等启动参数，需发布+重启） */
+/* scene = 模板内置的推荐配置方案（SCENES 的 key）；推荐参数随模板固定，不改机器即查看 */
+const TEMPLATES = [
+  { id: 'tpl-rt-conversation', name: 'Conversation hot settings', type: 'gpu', effect: 'runtime', status: 'published', created: '2026-11-02 09:20', updated: '2026-11-25 14:02', fields: 8, vram: 0, scene: 'latency', desc: '§7.5: thresh / min_silence_ms / qwen3_asr_language / init_chat_prompt / instructions / qwen3_tts_speaker / voice / model' },
+  { id: 'tpl-rt-canary', name: 'Canary turn detection', type: 'npu', effect: 'runtime', status: 'draft', created: '2026-11-18 16:33', updated: '2026-11-20 11:05', fields: 3, vram: 0, scene: 'noisy', desc: 'thresh / min_silence_ms / qwen3_asr_language — live turns only' },
+  { id: 'tpl-rt-remote', name: 'Remote API voice profile', type: 'cpu', effect: 'runtime', status: 'review', created: '2026-11-21 10:12', updated: '2026-11-24 08:50', fields: 4, vram: 0, scene: 'remote', desc: 'instructions / voice / model / qwen3_asr_language — remote-only endpoints' },
+  { id: 'tpl-rs-gpu-24g', name: 'GPU 24G pipeline baseline', type: 'gpu', effect: 'restart', status: 'published', created: '2026-10-12 09:20', updated: '2026-10-25 14:02', fields: 10, vram: 24, scene: 'edge', desc: '§7.4: vad / sample_rate / min_speech_ms / model_name / num_pipelines — publish + restart' },
+  { id: 'tpl-rs-gpu-48g', name: 'GPU 48G production', type: 'gpu', effect: 'restart', status: 'published', created: '2026-09-28 11:05', updated: '2026-10-26 09:41', fields: 10, vram: 48, scene: 'meeting', desc: 'L40S: stream_batch_sentences / diarization / voxcpm_tts_model_name — restart' },
+  { id: 'tpl-rs-npu-32g', name: 'NPU 32G CANN pipeline', type: 'npu', effect: 'restart', status: 'draft', created: '2026-10-20 16:33', updated: '2026-10-20 16:33', fields: 8, vram: 32, scene: 'slow', desc: 'CANN 8.0 backends: vad / sample_rate / qwen3_asr_model_name — restart' },
+  { id: 'tpl-rs-amd-32g', name: 'AMD 32G ROCm pipeline', type: 'amd', effect: 'restart', status: 'review', created: '2026-10-22 10:12', updated: '2026-10-24 08:50', fields: 8, vram: 32, scene: 'mix', desc: 'ROCm 6.1: diarization / num_pipelines / model_name — restart' },
+];
+const templateTypeTag = (tp) => '<span class="tag ' + (tp === 'gpu' ? 'accent' : tp === 'npu' ? 'warn' : tp === 'amd' ? 'orange' : '') + '">' + esc(t('tpl.plat.' + tp)) + '</span>';
+const templateEffectTag = (ef) => '<span class="tag ' + (ef === 'runtime' ? 'ok' : 'warn') + '">' + esc(t('tplmgr.effect.' + ef)) + '</span>';
+const templateStatusTag = (st) => '<span class="tag ' + (st === 'published' ? 'ok' : st === 'draft' ? '' : st === 'review' ? 'warn' : 'bad') + '">' + esc(t('tplmgr.status.' + st)) + '</span>';
+/* 设置项里的界面语言优先（与顶栏语言开关共享同一份本地记忆） */
+if (state.settings.lang === 'zh' || state.settings.lang === 'en') lang = state.settings.lang;
 
 /* ───────────────────────── markup helpers ───────────────────────── */
 const tag = (text, cls) => '<span class="tag ' + (cls || '') + '">' + esc(text) + '</span>';
@@ -2418,6 +3213,180 @@ function groupCard(g, m) {
     backendFold(g) + '</div>';
 }
 
+/* 运维台模板面板：展示共用模板 + 按机器实际硬件校验约束 */
+function templatePanel(m) {
+  const fields = templateFor('ops');
+  const rows = fields.map((f) => {
+    const chk = checkTemplateHardware(f, m);
+    const badges = (f.platform || []).map((p) => '<span class="tag' + (p === m.platform ? ' ok' : '') + '">' + esc(t('tpl.plat.' + p)) + '</span>').join(' ');
+    const req = (f.minVram ? t('tpl.minVram', { n: f.minVram }) + ' · ' : '') + (f.driver || t('tpl.driver.any'));
+    const status = chk.ok
+      ? '<span class="tag ok">' + esc(t('tpl.check.ok')) + '</span>'
+      : '<span class="tag bad">' + esc(chk.reasons.map((r) => t(r)).join(' / ')) + '</span>';
+    /* 机器实际部署值：优先 CATALOG 实际值，否则模板默认 */
+    const entry = ENTRIES.find((e) => e.row.p === f.key);
+    const actual = entry ? actualOf(m.id, entry.row, entry.g.g) : (f.def !== undefined ? f.def : '—');
+    const shown = actual === null ? '—' : (String(actual).length > 28 ? String(actual).slice(0, 28) + '…' : String(actual));
+    return '<tr><td class="mono">' + esc(f.key) + '</td><td class="mono">' + esc(shown) + '</td><td>' + badges + '</td><td class="mono">' + esc(req) + '</td>' +
+      '<td>' + esc(t(f.hot ? 'tpl.hot' : 'tpl.restart')) + '</td><td>' + status + '</td></tr>';
+  }).join('');
+  const bad = fields.filter((f) => !checkTemplateHardware(f, m).ok).length;
+  return '<div class="card"><h3>' + esc(t('tpl.ops.title')) +
+    '<span class="hint">' + esc(t('tpl.ops.hint', { machine: m.id })) + '</span>' +
+    (bad ? '<span class="tag bad">' + esc(t('tpl.ops.blocked', { n: bad })) + '</span>' : '<span class="tag ok">' + esc(t('tpl.ops.ready')) + '</span>') +
+    '</h3><div class="rowline" style="margin:8px 0 12px;gap:18px;flex-wrap:wrap">' +
+    '<span>' + esc(t('tpl.plat.gpu')) + ' <b>' + esc(t('tpl.plat.' + (m.platform || 'gpu'))) + '</b></span>' +
+    '<span>' + esc(t('tpl.col.driver')) + ' <b>' + esc(m.driver || '—') + '</b></span>' +
+    '<span>' + esc(t('tpl.col.vram')) + ' <b>' + esc(m.vramGb || 0) + ' GB</b></span>' +
+    '<span>' + esc(t('status')) + ' ' + statusTag(m.state) + '</span></div>' +
+    '<div class="tscroll"><table class="tbl"><thead><tr><th>' + esc(t('tpl.col.field')) + '</th><th>' +
+    esc(t('tpl.col.actual')) + '</th><th>' + esc(t('tpl.col.platform')) + '</th><th>' + esc(t('tpl.col.require')) + '</th><th>' + esc(t('tpl.col.effect')) +
+    '</th><th>' + esc(t('tpl.col.check')) + '</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<div class="rowline" style="margin-top:12px;justify-content:flex-end"><button class="btn sm" data-save-as-tpl="ops">' +
+    esc(t('tpl.save.as')) + '</button></div>' +
+    '<p class="note">' + esc(t('tpl.ops.note')) + '</p></div>';
+}
+
+/* ── 共用：机器选择条（前台动态设置 / 运维台部署参数同款） ── */
+function machineBar(page) {
+  return '<div class="card" style="padding:10px 14px"><div class="chips">' +
+    clusterMachines().map((x) =>
+      '<button class="chip' + (x.id === state.machine ? ' active' : '') + '" data-machine-pick-page="' + esc(x.id) + '" data-page-target="' + page + '">' +
+      dotFor(x.state) + esc(x.id) + ' <span style="color:var(--faint);font-size:11px">' + esc(t('tpl.plat.' + (x.platform || 'gpu'))) + '</span></button>').join('') +
+    '</div></div>';
+}
+
+/* ── 运维台：顶部模板选择条（与场景选择同款 chips；推荐配置方案固化在模板内） ── */
+function templateSelectBar() {
+  const chips = TEMPLATES.map((x) =>
+    '<button class="chip' + (x.effect === 'restart' ? ' warn' : '') + '" data-tpl-view="' + esc(x.id) + '">' +
+    esc(x.name) + ' <span style="color:var(--faint);font-size:11px">' + esc(t('tplmgr.effect.' + x.effect)) + '</span></button>').join('');
+  return '<div class="card" style="padding:10px 14px"><div class="rowline" style="gap:12px;flex-wrap:wrap">' +
+    '<b>' + esc(t('tpl.select.title')) + '</b>' +
+    '<span class="hint">' + esc(t('tpl.select.hint')) + '</span></div>' +
+    '<div class="chips" style="margin-top:8px">' + chips + '</div></div>';
+}
+
+/* 只读查看模板：模板基础信息 + 内置推荐配置方案（不在部署页直接展开参数） */
+function viewTemplate(id) {
+  const x = TEMPLATES.find((v) => v.id === id);
+  if (!x) return;
+  const m = machineById(state.machine);
+  const scene = sceneByKey(x.scene);
+  let body = '<div class="card tpl-banner" style="margin:0 0 12px"><div><strong>' + esc(x.name) + '</strong>' +
+    '<p class="muted">' + esc(x.desc) + '</p></div></div>' +
+    '<div class="rowline" style="gap:18px;flex-wrap:wrap;margin-bottom:12px">' +
+    '<span>' + esc(t('tplmgr.col.effect')) + ' ' + templateEffectTag(x.effect) + '</span>' +
+    '<span>' + esc(t('tplmgr.col.type')) + ' ' + templateTypeTag(x.type) + '</span>' +
+    '<span>' + esc(t('tplmgr.col.status')) + ' ' + templateStatusTag(x.status) + '</span>' +
+    '<span>' + esc(t('tplmgr.col.vram')) + ' <b>' + (x.vram ? x.vram + ' GB' : '—') + '</b></span>' +
+    '<span>' + esc(t('tplmgr.col.fields')) + ' <b>' + esc(x.fields) + '</b></span></div>' +
+    '<h3>' + esc(t('tpl.view.scene')) + '</h3>';
+  if (!scene) {
+    body += '<p class="note">' + esc(t('tpl.view.noscene')) + '</p>';
+  } else {
+    body += '<p class="note">' + esc(t('scene.note')) + ' · ' + esc(bi(scene.note)) + '</p>' +
+      (scene.cross ? '<p class="note" style="color:var(--orange)">' + esc(t('scene.cross')) + '</p>' : '') +
+      '<p class="note">' + esc(t('scene.rec.count', { n: scene.items.length })) + '</p>' +
+      scene.items.map((it) => recCard(m, it)).join('');
+  }
+  body += '<p class="note">' + esc(t('tpl.view.readonly')) + '</p>' +
+    '<div class="rowline" style="margin-top:14px;justify-content:flex-end">' +
+    '<button class="btn" data-modal-close="1">' + esc(t('confirm.cancel')) + '</button></div>';
+  openModal(t('tpl.view.title', { name: x.name }), body);
+}
+
+/* ── 共用：智能设置（agent 拉取当前参数 + 日志 + AI 故障分析推荐） ── */
+const AGENT_PARAM_SEED = {
+  thresh: 0.6, min_silence_ms: 450, qwen3_asr_language: 'auto',
+  init_chat_prompt: 'You are a concise voice assistant.', instructions: '',
+  qwen3_tts_speaker: 'sara', voice: 'sara', model: 'qwen3-8b',
+  vad: 'silero', sample_rate: '16000', min_speech_ms: 384,
+  qwen3_asr_model_name: 'Qwen3-ASR-1.7B', model_name: 'qwen3-8b',
+  responses_api_base_url: 'http://192.168.40.30/v1-openai', stream_batch_sentences: 1,
+  voxcpm_tts_model_name: 'voxcpm2-2b', num_pipelines: 2, diarization: false,
+};
+const AGENT_LOG_SEED = [
+  '[10:02:14] vad: speech boundary detected, silence=450ms',
+  '[10:02:16] stt: qwen3-asr partial "嗯…" dropped (min_speech_ms=384)',
+  '[10:02:19] llm: TTFA 1.26s / 43 tokens',
+  '[10:02:20] tts: chunk 1 RTF 0.41, speaker=sara',
+  '[10:02:24] warn: turn reopened twice (speculative_reopen_ms=800)',
+];
+/* 原型规则：按故障关键词给出推荐（真实系统由 AI 分析日志+参数产出） */
+const AI_RULES = [
+  { kw: ['打断','barge','插话'], rec: { thresh: 0.45, min_silence_ms: 220 }, reason: 'VAD 判停过慢导致打断不灵敏：降低阈值与句末静音时长。' },
+  { kw: ['断句','切碎','截断'], rec: { thresh: 0.72, min_silence_ms: 700 }, reason: '短停顿被误判为句末：提高阈值与静音时长。' },
+  { kw: ['吞字','短应答','嗯'], rec: { min_speech_ms: 120 }, reason: 'min_speech_ms=384 会吞掉「嗯/好」类短应答，建议下调。' },
+  { kw: ['慢','延迟','ttfa'], rec: { stream_batch_sentences: 1, num_pipelines: 2 }, reason: '首包偏慢：减小流式句子批量并保持并发路数。' },
+  { kw: ['音色','speaker','声音'], rec: { qwen3_tts_speaker: 'sara', voice: 'sara' }, reason: '音色不匹配：仅 qwen3 支持列表内 speaker 真正生效。' },
+  { kw: ['识别','转写','asr'], rec: { qwen3_asr_language: 'zh', min_speech_ms: 200 }, reason: '中文转写不准：固定转录语言并放宽短语音门槛。' },
+  { kw: ['显存','oom','溢出'], rec: { num_pipelines: 1, diarization: false }, reason: '显存紧张：降低并发路数并关闭说话人分离。' },
+];
+function smartPanel(m, mode) {
+  const st = state.smart[mode];
+  const fields = templateFor(mode === 'front' ? 'front' : 'ops');
+  const currentRows = st.fetched ? fields.map((f) => {
+    const val = AGENT_PARAM_SEED[f.key];
+    return '<tr><td class="mono">' + esc(f.key) + '</td><td class="mono">' + esc(val === undefined ? '—' : String(val)) + '</td>' +
+      '<td>' + esc(t(f.hot ? 'tpl.hot' : 'tpl.restart')) + '</td><td class="mono" style="color:var(--faint)">' + esc(f.src || '') + '</td></tr>';
+  }).join('') : '';
+  const logHtml = st.logs.length ? '<pre class="smart-log">' + esc(st.logs.join('\n')) + '</pre>' : '';
+  const resultRows = st.result ? st.result.recs.map((r) =>
+    '<div class="rec"><div class="rec-top"><span class="rname mono">' + esc(r.key) + '</span>' +
+    '<span class="mono">' + esc(String(r.from)) + ' → <b>' + esc(String(r.to)) + '</b></span>' +
+    '<button class="btn sm" data-smart-apply="' + esc(r.key) + '" data-smart-mode="' + mode + '">' + esc(t('smart.apply')) + '</button></div>' +
+    '<div class="p-risk">' + esc(r.reason) + '</div></div>').join('') : '';
+  return '<div class="card"><h3>' + esc(t('smart.title')) +
+    '<span class="hint">' + esc(t('smart.hint', { machine: m.id })) + '</span>' +
+    '<span class="tag accent">AI</span></h3>' +
+    '<div class="rowline" style="gap:10px;flex-wrap:wrap"><button class="btn sm" data-smart-fetch="' + mode + '">' + esc(t('smart.fetch')) + '</button>' +
+    '<span class="muted" style="font-size:12px">' + esc(t('smart.fetch.hint')) + '</span><span class="spacer"></span>' +
+    (st.fetched ? '<span class="tag ok">' + esc(t('smart.fetched')) + '</span>' : '') + '</div>' +
+    (st.fetched ? '<div class="tscroll" style="margin-top:10px"><table class="tbl"><thead><tr><th>' + esc(t('tpl.col.field')) +
+      '</th><th>' + esc(t('tpl.col.actual')) + '</th><th>' + esc(t('tpl.col.effect')) + '</th><th>' + esc(t('tpl.live.col.src')) +
+      '</th></tr></thead><tbody>' + currentRows + '</tbody></table></div>' + logHtml : '') +
+    '<div class="field" style="margin-top:14px"><label>' + esc(t('smart.fault')) + '</label>' +
+    '<textarea id="smart-fault-' + mode + '" class="fin" rows="2" placeholder="' + escq(t('smart.fault.ph')) + '">' + esc(st.fault) + '</textarea></div>' +
+    '<div class="rowline" style="gap:10px"><button class="btn primary sm" data-smart-analyze="' + mode + '">' + esc(t('smart.analyze')) + '</button>' +
+    (st.busy ? '<span class="muted">' + esc(t('smart.busy')) + '</span>' : '') + '</div>' +
+    (st.result ? '<div style="margin-top:12px"><p class="note">' + esc(st.result.summary) + '</p>' + resultRows + '</div>' : '') +
+    '</div>';
+}
+function smartFetch(mode) {
+  const st = state.smart[mode];
+  st.fetched = true;
+  st.logs = AGENT_LOG_SEED.slice();
+  toast(t('smart.toast.fetched'));
+  renderPage();
+}
+function smartAnalyze(mode) {
+  const st = state.smart[mode];
+  const el = document.getElementById('smart-fault-' + mode);
+  st.fault = el ? el.value.trim() : st.fault;
+  if (!st.fault) return toast(t('smart.err.fault'));
+  const hit = AI_RULES.find((r) => r.kw.some((k) => st.fault.toLowerCase().includes(k.toLowerCase())));
+  const recs = (hit ? Object.entries(hit.rec) : [['min_silence_ms', 500]]).map(([key, to]) => ({
+    key, from: AGENT_PARAM_SEED[key] !== undefined ? AGENT_PARAM_SEED[key] : '—', to,
+    reason: hit ? hit.reason : t('smart.result.generic'),
+  }));
+  st.result = { summary: hit ? hit.reason : t('smart.result.generic'), recs };
+  st.busy = false;
+  toast(t('smart.toast.analyzed'));
+  renderPage();
+}
+function smartApply(key, mode) {
+  const st = state.smart[mode];
+  const r = st.result && st.result.recs.find((x) => x.key === key);
+  if (!r) return;
+  AGENT_PARAM_SEED[key] = r.to;
+  if (mode === 'front') state.settings[key] = r.to;
+  else state.draft[state.machine] = Object.assign({}, state.draft[state.machine], { [key]: r.to });
+  toast(t('smart.toast.applied', { key }));
+  audit('smart', 'act.smart.apply', key, 'ok');
+  renderPage();
+}
+
 function recCard(m, it) {
   const e = findEntry(it.p);
   if (!e) return '';
@@ -2464,22 +3433,12 @@ function scenePanel(m) {
   const chips = [{ k: '', lab: t('scene.none') }].concat(SCENES.map((s) => ({ k: s.k, lab: t('scene.' + s.k) })))
     .map((x) => '<button class="chip' + (state.scene === x.k ? ' active' : '') + '" data-scene="' + x.k + '">' + esc(x.lab) + '</button>').join('');
   const dn = Object.keys(draftOf(m.id)).length;
-  let inner = '<p class="note">' + esc(t('scene.hint', { machine: m.id })) + '</p>';
-  if (scene) {
-    inner = '<p class="note">' + esc(t('scene.note')) + ' · ' + esc(bi(scene.note)) + '</p>' +
-      (scene.cross ? '<p class="note" style="color:var(--orange)">' + esc(t('scene.cross')) + '</p>' : '') +
-      '<p class="note">' + esc(t('scene.rec.count', { n: scene.items.length })) + ' · ' + esc(t('scene.hint', { machine: m.id })) + '</p>' +
-      scene.items.map((it) => recCard(m, it)).join('') +
-      (state.diffOn ? sceneDiff(m, scene) : '') +
-      '<div class="rowline" style="margin-top:14px"><button class="btn" data-diff="1">' + esc(t('scene.btn.diff')) + '</button>' +
-      '<button class="btn primary" data-apply="1">' + esc(t('scene.btn.apply')) + '</button>' +
-      (dn ? '<button class="btn" data-clear-draft="1">' + esc(t('scene.draft.clear')) + '</button>' : '') + '</div>' +
-      '<p class="note">' + esc(t('deploy.hot.note')) + '</p>';
-  }
+  /* 推荐配置方案已固化为模板内容，点击顶部模板只读查看，不在本页展开参数 */
   return '<div class="card"><h3>' + esc(t('scene.title')) + '<span class="hint">' + esc(t('kpi.scene')) + ': ' +
     esc(scene ? t('scene.' + scene.k) : t('scene.none')) + '</span></h3><div class="scenebar">' + chips + '</div>' +
+    '<p class="note">' + esc(t('scene.tpl.note')) + '</p>' +
     (dn ? '<div class="draftbar" style="margin-top:12px">' + esc(t('scene.draft.note', { n: dn, machine: m.id })) + '</div>' : '') +
-    inner + '</div>';
+    '</div>';
 }
 
 function applySceneDraft() {
@@ -2505,9 +3464,8 @@ function renderDeploy() {
   const stackRows = CATALOG.filter((g) => g.cur).map((g) =>
     '<tr><td>' + esc(t('grp.' + g.g)) + '</td><td class="mono">' + esc(g.cur) + '</td><td class="mono">' + groupTotal(g) + '</td></tr>').join('');
   return head('nav.deploy', 'deploy.desc') +
-    '<div class="chips">' + clusterMachines().map((x) =>
-      '<button class="chip' + (x.id === m.id ? ' active' : '') + '" data-machine-pick="' + x.id + '">' +
-      dotFor(x.state) + esc(x.id) + '</button>').join('') + '</div>' +
+    machineBar('deploy') +
+    templateSelectBar() +
     (mDrift ? '<p class="note">' + esc(t('deploy.drift.note', {
       params: mDrift + ' ' + t('kpi.drift.params'), machine: m.id, source: t('config.source.console') })) + '</p>' : '') +
     (m.state === 'bad' ? '<p class="note">' + esc(t('deploy.offline.note', { machine: m.id })) + '</p>' : '') +
@@ -2517,6 +3475,8 @@ function renderDeploy() {
     kpi(t('kpi.hot.params'), String(hotTotal()), t('deploy.hot.hint'), 'var(--cyan)') +
     kpi(t('kpi.scene'), sceneByKey(state.scene) ? t('scene.' + state.scene) : t('scene.none'), t('scene.title')) +
     '</div>' +
+    smartPanel(m, 'deploy') +
+    templatePanel(m) +
     '<div class="grid g2">' +
     '<div class="card"><h3>' + esc(t('deploy.stack')) + '</h3><dl class="kv">' +
     '<dt>' + esc(t('machine')) + '</dt><dd class="mono">' + esc(m.id) + ' · ' + esc(m.addr) + '</dd>' +
@@ -2609,7 +3569,7 @@ function renderRelease() {
 }
 
 function renderAudit() {
-  const cats = ['param', 'deploy', 'release', 'voice', 'machine', 'cluster', 'access'];
+  const cats = ['param', 'deploy', 'release', 'voice', 'machine', 'cluster', 'access', 'session', 'tool', 'setting', 'template', 'smart'];
   const chips = '<button class="chip' + (state.cat === 'all' ? ' active' : '') + '" data-cat="all">' + esc(t('all')) + '</button>' +
     cats.map((c) => '<button class="chip' + (state.cat === c ? ' active' : '') + '" data-cat="' + c + '">' +
       esc(t('audit.cat.' + c)) + '</button>').join('');
@@ -2636,34 +3596,261 @@ function renderAudit() {
     '<tbody>' + rows + '</tbody></table></div>';
 }
 
+/* ── 运维台：模板管理 ── */
+function templateList() {
+  const f = state.tpl;
+  return TEMPLATES.filter((x) =>
+    (f.effect === 'all' || x.effect === f.effect) &&
+    (f.type === 'all' || x.type === f.type) &&
+    (f.status === 'all' || x.status === f.status) &&
+    (!f.q || (x.name + ' ' + x.id + ' ' + x.desc).toLowerCase().includes(f.q.toLowerCase())));
+}
+function templateRows() {
+  const list = templateList();
+  return list.length ? list.map((x) =>
+    '<tr><td class="mono">' + esc(x.name) + '<div class="dprod">' + esc(x.id) + '</div></td>' +
+    '<td>' + templateEffectTag(x.effect) + '</td><td>' + templateTypeTag(x.type) + '</td><td>' + templateStatusTag(x.status) + '</td>' +
+    '<td>' + (x.scene ? esc(t('scene.' + x.scene)) : '—') + '</td>' +
+    '<td class="mono">' + esc(x.fields) + '</td><td class="mono">' + (x.vram ? x.vram + ' GB' : '—') + '</td>' +
+    '<td class="mono">' + esc(x.created) + '</td><td class="mono">' + esc(x.updated) + '</td>' +
+    '<td>' + esc(x.desc) + '</td>' +
+    '<td><button class="btn sm" data-tpl-view="' + esc(x.id) + '">' + esc(t('tplmgr.view')) + '</button> ' +
+    '<button class="btn sm" data-tpl-edit="' + esc(x.id) + '">' + esc(t('tplmgr.edit')) + '</button> ' +
+    '<button class="btn sm danger" data-tpl-del="' + esc(x.id) + '">' + esc(t('tplmgr.delete')) + '</button></td></tr>').join('')
+    : '<tr><td colspan="11" style="color:var(--faint)">' + esc(t('tplmgr.empty')) + '</td></tr>';
+}
+function renderTemplates() {
+  const f = state.tpl;
+  const effects = ['runtime', 'restart', 'all'];
+  const types = ['all', 'gpu', 'npu', 'amd', 'cpu'];
+  const statuses = ['all', 'published', 'draft', 'review', 'archived'];
+  const effectChips = effects.map((v) => '<button class="chip' + (f.effect === v ? ' active' : '') + '" data-tpl-effect="' + v + '">' +
+    esc(v === 'all' ? t('all') : t('tplmgr.effect.' + v)) + '</button>').join('');
+  const typeChips = types.map((v) => '<button class="chip' + (f.type === v ? ' active' : '') + '" data-tpl-type="' + v + '">' +
+    esc(v === 'all' ? t('all') : t('tpl.plat.' + v)) + '</button>').join('');
+  const statusChips = statuses.map((v) => '<button class="chip' + (f.status === v ? ' active' : '') + '" data-tpl-status="' + v + '">' +
+    esc(v === 'all' ? t('all') : t('tplmgr.status.' + v)) + '</button>').join('');
+  const rt = TEMPLATES.filter((x) => x.effect === 'runtime').length;
+  const rs = TEMPLATES.filter((x) => x.effect === 'restart').length;
+  return head('nav.templates', 'tplmgr.desc') +
+    '<div class="grid g4">' +
+    kpi(t('tplmgr.total'), String(TEMPLATES.length), t('all')) +
+    kpi(t('tplmgr.effect.runtime'), String(rt), t('tplmgr.effect.runtime.hint'), 'var(--cyan)') +
+    kpi(t('tplmgr.effect.restart'), String(rs), t('tplmgr.effect.restart.hint'), 'var(--warning)') +
+    kpi(t('tplmgr.platforms'), String(new Set(TEMPLATES.map((x) => x.type)).size), t('tpl.plat.gpu')) +
+    '</div>' +
+    '<div class="card" style="margin-top:16px"><h3>' + esc(t('nav.templates')) +
+    '<span class="spacer"></span><button class="btn primary sm" data-tpl-add="1">' + esc(t('tplmgr.add')) + '</button></h3>' +
+    '<div class="chips">' + effectChips + '</div><div class="chips">' + typeChips + '</div><div class="chips">' + statusChips + '</div>' +
+    '<div class="rowline" style="margin:10px 0"><input id="tpl-q" class="fin" style="max-width:320px" placeholder="' +
+    escq(t('tplmgr.search')) + '" value="' + escq(f.q) + '"></div>' +
+    '<div class="tscroll"><table class="tbl"><thead><tr><th>' + esc(t('tplmgr.col.name')) + '</th><th>' + esc(t('tplmgr.col.effect')) +
+    '</th><th>' + esc(t('tplmgr.col.type')) + '</th><th>' + esc(t('tplmgr.col.status')) + '</th><th>' + esc(t('tplmgr.col.scene')) +
+    '</th><th>' + esc(t('tplmgr.col.fields')) +
+    '</th><th>' + esc(t('tplmgr.col.vram')) + '</th><th>' + esc(t('tplmgr.col.created')) + '</th><th>' + esc(t('tplmgr.col.updated')) +
+    '</th><th>' + esc(t('tplmgr.col.desc')) + '</th><th>' + esc(t('tplmgr.col.actions')) + '</th></tr></thead><tbody id="tpl-tbody">' +
+    templateRows() + '</tbody></table></div></div>';
+}
+
+/* 模板表单：绑定推荐配置方案（SCENES 固定组成部分） */
+function sceneSelectHtml(selected) {
+  return '<div class="field"><label>' + esc(t('tplmgr.form.scene')) + '</label><select id="tf-scene" class="fin">' +
+    '<option value="">' + esc(t('scene.none')) + '</option>' +
+    SCENES.map((s) => '<option value="' + s.k + '"' + (s.k === (selected || '') ? ' selected' : '') + '>' + esc(t('scene.' + s.k)) + '</option>').join('') +
+    '</select></div>';
+}
+
+/* 从当前参数快照打开模板表单（前台热更 / 运维台部署 → 保存为模板） */
+function saveAsTemplate(opts) {
+  const v = opts.preset || {};
+  state._tedit = null;
+  state._tplFields = opts.fields || [];
+  state._tplSource = opts.source || '';
+  openModal(t('tplmgr.save.as'),
+    '<div class="card tpl-banner" style="margin:0 0 14px"><div><strong>' + esc(t('tplmgr.save.as.hint')) + '</strong>' +
+    '<p class="muted">' + esc(t('tplmgr.save.as.desc', { source: t(opts.sourceLabel || 'tplmgr'), n: state._tplFields.length })) + '</p></div></div>' +
+    '<div class="field"><label>' + esc(t('tplmgr.form.name')) + '</label><input id="tf-name" class="fin" value="' + escq(v.name || '') + '"></div>' +
+    '<div class="field"><label>' + esc(t('tplmgr.col.effect')) + '</label><select id="tf-effect" class="fin">' +
+    ['runtime','restart'].map((ef) => '<option value="' + ef + '"' + (ef === (v.effect || 'runtime') ? ' selected' : '') + '>' + esc(t('tplmgr.effect.' + ef)) + '</option>').join('') +
+    '</select></div>' +
+    '<div class="field"><label>' + esc(t('tplmgr.col.type')) + '</label><select id="tf-type" class="fin">' +
+    ['gpu','npu','amd','cpu'].map((p) => '<option value="' + p + '"' + (p === (v.type || 'gpu') ? ' selected' : '') + '>' + esc(t('tpl.plat.' + p)) + '</option>').join('') +
+    '</select></div>' +
+    sceneSelectHtml(v.scene) +
+    '<div class="field"><label>' + esc(t('tplmgr.col.vram')) + '</label><input id="tf-vram" type="number" min="0" class="fin" value="' + (v.vram || 0) + '"></div>' +
+    '<input type="hidden" id="tf-status" value="draft">' +
+    '<div class="field"><label>' + esc(t('tplmgr.col.desc')) + '</label><input id="tf-desc" class="fin" value="' + escq(v.desc || '') + '"></div>' +
+    '<div class="rowline" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-modal-close="1">' + esc(t('confirm.cancel')) + '</button>' +
+    '<button class="btn primary" data-tpl-save="1">' + esc(t('tplmgr.save')) + '</button></div>');
+}
+function openTemplateForm(id) {
+  const x = id ? TEMPLATES.find((v) => v.id === id) : null;
+  state._tedit = id || null;
+  state._tplFields = x ? x.fields : [];
+  state._tplSource = '';
+  const v = x || { name: '', effect: state.tpl.effect === 'restart' ? 'restart' : 'runtime', type: 'gpu', status: 'draft', vram: 24, desc: '' };
+  openModal(x ? t('tplmgr.edit') : t('tplmgr.add'),
+    '<div class="field"><label>' + esc(t('tplmgr.form.name')) + '</label><input id="tf-name" class="fin" value="' + escq(v.name) + '"></div>' +
+    '<div class="field"><label>' + esc(t('tplmgr.col.effect')) + '</label><select id="tf-effect" class="fin">' +
+    ['runtime','restart'].map((v2) => '<option value="' + v2 + '"' + (v2 === v.effect ? ' selected' : '') + '>' + esc(t('tplmgr.effect.' + v2)) + '</option>').join('') +
+    '</select><div class="fhint">' + esc(t('tplmgr.effect.hint')) + '</div></div>' +
+    '<div class="field"><label>' + esc(t('tplmgr.col.type')) + '</label><select id="tf-type" class="fin">' +
+    ['gpu','npu','amd','cpu'].map((p) => '<option value="' + p + '"' + (p === v.type ? ' selected' : '') + '>' + esc(t('tpl.plat.' + p)) + '</option>').join('') +
+    '</select></div>' +
+    sceneSelectHtml(v.scene) +
+    '<div class="field"><label>' + esc(t('tplmgr.col.status')) + '</label><select id="tf-status" class="fin">' +
+    ['draft','review','published','archived'].map((s) => '<option value="' + s + '"' + (s === v.status ? ' selected' : '') + '>' + esc(t('tplmgr.status.' + s)) + '</option>').join('') +
+    '</select></div>' +
+    '<div class="field"><label>' + esc(t('tplmgr.col.vram')) + '</label><input id="tf-vram" type="number" min="0" class="fin" value="' + v.vram + '"></div>' +
+    '<div class="field"><label>' + esc(t('tplmgr.col.desc')) + '</label><input id="tf-desc" class="fin" value="' + escq(v.desc) + '"></div>' +
+    '<div class="rowline" style="margin-top:14px;justify-content:flex-end"><button class="btn" data-modal-close="1">' + esc(t('confirm.cancel')) + '</button>' +
+    '<button class="btn primary" data-tpl-save="1">' + esc(t('tplmgr.save')) + '</button></div>');
+}
+function saveTemplateForm() {
+  const name = ($('#tf-name') || {}).value || '';
+  if (!name.trim()) return toast(t('tplmgr.err.name'));
+  const v = {
+    name: name.trim(), effect: $('#tf-effect').value, type: $('#tf-type').value, status: $('#tf-status').value,
+    scene: $('#tf-scene') ? $('#tf-scene').value : '',
+    vram: Math.max(0, Number($('#tf-vram').value) || 0), desc: $('#tf-desc').value.trim(),
+    updated: 'just now',
+  };
+  if (state._tedit) {
+    const x = TEMPLATES.find((a) => a.id === state._tedit);
+    if (x) Object.assign(x, v, { fields: state._tplFields ? state._tplFields.length : x.fields });
+  } else {
+    TEMPLATES.push(Object.assign({ id: 'tpl-' + (TEMPLATES.length + 1), created: 'just now', fields: (state._tplFields || []).length }, v));
+  }
+  state.tpl.effect = v.effect;   /* 新增后切到对应分类，避免新模板被筛选隐藏 */
+  closeModal();
+  toast(t('tplmgr.toast.saved'));
+  audit('template', 'act.tpl.save', v.name, 'ok');
+  renderPage();
+}
+async function deleteTemplate(id) {
+  const x = TEMPLATES.find((a) => a.id === id);
+  if (!x) return;
+  const ok = await askConfirm({ title: t('tplmgr.delete'), body: t('tplmgr.del.body', { name: x.name }), okLabel: t('tplmgr.delete'), danger: true });
+  if (!ok) return;
+  const i = TEMPLATES.indexOf(x);
+  if (i >= 0) TEMPLATES.splice(i, 1);
+  toast(t('tplmgr.toast.deleted'));
+  audit('template', 'act.tpl.delete', x.name, 'ok');
+  renderPage();
+}
+
 function renderConversation() {
   const inst = state.instance;
+  const cl = CLUSTERS.find((c) => c.id === state.cluster) || CLUSTERS[0];
   const routeRow = (k, v) => '<div class="v-row"><span>' + esc(t(k)) + '</span><b style="color:var(--voice-text)">' + esc(v || '—') + '</b></div>';
   const bubbles = state.step === 0 && !state.calling
     ? '<div class="bubble meta">' + esc(t('conv.hint')) + '</div>' : '';
+  const logOn = state.vtab !== 'route';
+  const total = SESSIONS.length;
   return '<div id="page-conversation">' + head('nav.conversation', 'conv.desc') +
     '<div class="voice-grid"><div class="v-card v-stage">' +
     '<div class="orb" id="orb"></div><div class="v-state"><b id="orb-state">' + esc(t('conv.state.idle')) + '</b></div>' +
     '<div class="transcript" id="transcript">' + bubbles + '</div>' +
     '<div class="v-controls"><button class="btn primary" id="call-btn" data-act="call">' + esc(t('conv.call')) + '</button></div>' +
     '</div><div class="v-card v-panel">' +
+    '<div class="v-tabs">' +
+    '<button class="v-tab' + (logOn ? ' active' : '') + '" data-vtab="log">' + esc(t('conv.tab.log')) +
+    '<span class="n" id="vtab-n">' + total + '</span></button>' +
+    '<button class="v-tab' + (logOn ? '' : ' active') + '" data-vtab="route">' + esc(t('conv.tab.route')) + '</button>' +
+    '</div>' +
+    '<div class="v-pane' + (logOn ? ' on' : '') + '" id="pane-log"><div class="v-scroll">' +
+    '<p class="sess-hint">' + esc(t('conv.log.hint')) + '</p>' +
+    '<div id="sess-list">' + sessionListHtml() + '</div>' +
+    '</div></div>' +
+    '<div class="v-pane' + (logOn ? '' : ' on') + '" id="pane-route"><div class="v-scroll">' +
     '<div class="section"><h4>' + esc(t('conv.routing.title')) + '</h4>' +
     routeRow('conv.instance', inst ? inst.id : '') +
     routeRow('conv.endpoint', inst ? inst.node + ':8765' : '') +
+    routeRow('conv.route.node', inst ? inst.node : '') +
+    routeRow('conv.route.policy', t('policy.' + cl.policy)) +
+    routeRow('conv.route.registry', cl.registry) +
+    routeRow('conv.route.rule', inst ? t('rule.default') : '') +
+    routeRow('conv.route.sticky', '300 s') +
     routeRow('conv.voice', 'sara') +
     routeRow('conv.lastttft', inst ? inst.ttft + ' ms' : '') +
     routeRow('conv.turn', 'smart-turn-v3.2') +
+    routeRow('conv.route.session', state.sessionId) +
     '</div><div class="section"><h4>' + esc(t('nav.tools')) + '</h4>' +
-    TOOLS.map((tool, i) => '<div class="v-row"><span>' + esc(t(tool.key)) + '</span><span class="switch' +
-      (tool.on ? ' on' : '') + '" data-tool="' + i + '"></span></div>').join('') +
+    TOOLS.map((tool) => '<div class="v-row"><span>' + esc(toolName(tool)) + '</span>' +
+      '<button type="button" role="switch" aria-checked="' + (tool.on ? 'true' : 'false') + '" class="switch' +
+      (tool.on ? ' on' : '') + '" data-tool="' + escq(tool.id) + '" aria-label="' +
+      esc(t('tool.toggle', { name: toolName(tool) })) + '"></button></div>').join('') +
     '</div><div class="section"><h4>' + esc(t('set.verbosity')) + '</h4>' +
     '<div class="v-row"><span>' + esc(t('set.verbosity')) + '</span><select id="verbosity">' +
     '<option>' + esc(t('set.terse')) + '</option><option selected>' + esc(t('set.balanced')) + '</option>' +
     '<option>' + esc(t('set.detailed')) + '</option></select></div></div>' +
+    '</div></div>' +
     '</div></div></div>';
 }
 
-const RENDERERS = { overview: renderOverview, lb: renderLb, machines: renderMachines, deploy: renderDeploy, voices: renderVoices, release: renderRelease, audit: renderAudit, conversation: renderConversation };
+/* ── 会话记录（右侧 Tab 1）：最新在最上方，含语音片段与 ASR / 回复文本 ── */
+const fmtClock = (s) => Math.floor(s / 60) + ':' + String(Math.round(s % 60)).padStart(2, '0');
+function waveBars(seed, n) {
+  let h = 2166136261;
+  for (let i = 0; i < String(seed).length; i++) { h ^= String(seed).charCodeAt(i); h = (h * 16777619) >>> 0; }
+  let out = '';
+  for (let i = 0; i < n; i++) {
+    h = (h * 1103515245 + 12345) >>> 0;
+    out += '<i style="height:' + (3 + (h % 9)) + 'px"></i>';
+  }
+  return out;
+}
+function clipHtml(clip, dur) {
+  return '<button class="clip" data-clip="' + escq(clip) + '" title="' + esc(t('conv.log.voice')) + '">' +
+    '<span class="bars">' + waveBars(clip, 12) + '</span><span class="dur">' + esc(fmtClock(dur)) + '</span></button>';
+}
+function sessLineHtml(l) {
+  if (l.role === 'user') {
+    return '<div class="sess-line"><span class="who">' + esc(t('conv.log.caller')) + '</span><div class="sess-body">' +
+      '<div class="sess-text"><span class="lbl">' + esc(t('conv.log.asr')) + '</span>' + esc(bi(l.asr)) + '</div>' +
+      '<div class="sess-audio">' + clipHtml(l.clip, l.dur) +
+      '<span class="sess-flag ' + l.stt + '">' + esc(t('conv.log.stt.' + l.stt)) + '</span></div>' +
+      '</div></div>';
+  }
+  return '<div class="sess-line"><span class="who">' + esc(t('conv.log.bot')) + '</span><div class="sess-body">' +
+    '<div class="sess-text"><span class="lbl">' + esc(t('conv.log.reply')) + '</span>' + esc(bi(l.text)) + '</div>' +
+    '<div class="sess-audio">' + clipHtml(l.clip, l.dur) +
+    '<span class="sess-flag ' + l.tts + '">' + esc(t('conv.log.tts.' + l.tts)) + '</span></div>' +
+    '</div></div>';
+}
+function sessionListHtml() {
+  const all = SESSIONS;
+  if (!all.length) return '<div style="color:var(--voice-faint);font-size:12.5px">' + esc(t('conv.log.empty')) + '</div>';
+  return all.map((s) => {
+    const mark = s.state === 'live' ? '<span class="dot" style="background:var(--voice-accent)"></span>' :
+      s.state === 'failed' ? '<span class="dot bad"></span>' : '<span class="dot ok"></span>';
+    return '<div class="sess' + (s.state === 'live' ? ' live' : '') + '">' +
+      '<div class="sess-top">' + mark + '<span class="mono">' + esc(s.when) + '</span>' +
+      '<span class="s-id">' + esc(s.inst) + ' · ' + esc(s.node) + '</span><span class="spacer"></span>' +
+      '<span class="tag ' + (s.state === 'live' ? 'accent' : s.state === 'failed' ? 'bad' : 'ok') + '">' +
+      esc(t('conv.log.state.' + s.state)) + '</span></div>' +
+      (s.lines || []).map(sessLineHtml).join('') +
+      '<div class="sess-foot"><span class="mono">' + esc(s.id) + '</span>' +
+      '<span>' + esc(t('conv.log.turns', { n: s.turns })) + '</span>' +
+      '<span>' + esc(t('conv.log.dur', { n: s.dur })) + '</span>' +
+      '<span class="mono">' + esc(t('conv.log.ttft', { ms: s.ttft })) + '</span></div></div>';
+  }).join('');
+}
+function refreshSessionList() {
+  const box = $('#sess-list');
+  if (box) box.innerHTML = sessionListHtml();
+  const n = $('#vtab-n');
+  if (n) n.textContent = SESSIONS.length;
+}
+function switchVTab(tab) {
+  state.vtab = tab;
+  document.querySelectorAll('#page-conversation .v-tab').forEach((b) =>
+    b.classList.toggle('active', b.dataset.vtab === tab));
+  document.querySelectorAll('#page-conversation .v-pane').forEach((p) =>
+    p.classList.toggle('on', p.id === 'pane-' + tab));
+}
+
+const RENDERERS = { overview: renderOverview, lb: renderLb, machines: renderMachines, deploy: renderDeploy, templates: renderTemplates, voices: renderVoices, release: renderRelease, audit: renderAudit, conversation: renderConversation, history: renderHistory, tools: renderTools, settings: renderSettings };
 /* ───────────────────────── chrome ───────────────────────── */
 function groupOf(page) {
   for (const g of NAV) if (g.items.some((i) => i.page === page)) return g;
@@ -2675,7 +3862,7 @@ function renderNav() {
   $('#nav').innerHTML = NAV.map((g) =>
     '<div class="nav-group"><div class="nav-title">' + esc(t('nav.group.' + g.key)) + '</div>' +
     g.items.map((i) => '<div class="nav-item' + (i.page && i.page === state.page ? ' active' : '') + '"' +
-      (i.page ? ' data-page="' + i.page + '"' : ' data-overlay="' + i.overlay + '"') + '>' + icon(i.icon) +
+      ' data-page="' + i.page + '">' + icon(i.icon) +
       '<span>' + esc(t(i.label)) + '</span></div>').join('') + '</div>').join('');
 }
 
@@ -2716,51 +3903,574 @@ function applyRoute() {
   $('#content').scrollTop = 0;
 }
 
-/* ───────────────────────── drawers ───────────────────────── */
+/* ───────────────────────── 会话历史页 ───────────────────────── */
+const HIST_SIZE = 5;
+const sessStateTag = (st) => '<span class="tag ' + (st === 'live' ? 'accent' : st === 'failed' ? 'bad' : 'ok') + '">' +
+  esc(t('conv.log.state.' + st)) + '</span>';
+const histTopTs = () => SESSIONS.reduce((a, s) => Math.max(a, s.ts || 0), 0);
+const histRangeStart = (range) => {
+  const top = histTopTs();
+  if (range === 'today') { const d = new Date(top); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); }
+  if (range === '24h') return top - 864e5;
+  if (range === '7d') return top - 7 * 864e5;
+  return -Infinity;
+};
+const histInstances = () => Array.from(new Set(SESSIONS.map((s) => s.inst))).sort();
+const histHay = (s) => (s.id + ' ' + s.inst + ' ' + s.node + ' ' +
+  s.lines.map((l) => String(bi(l.asr) || bi(l.text) || '')).join(' ')).toLowerCase();
+const histFiltered = () => {
+  const q = state.hq, kw = q.kw.trim().toLowerCase(), from = histRangeStart(q.range);
+  return SESSIONS.filter((s) => {
+    if (q.state !== 'all' && s.state !== q.state) return false;
+    if (q.inst !== 'all' && s.inst !== q.inst) return false;
+    if ((s.ts || 0) < from) return false;
+    if (kw && histHay(s).indexOf(kw) < 0) return false;
+    return true;
+  });
+};
+const histPaging = () => {
+  const all = histFiltered();
+  const total = Math.max(1, Math.ceil(all.length / HIST_SIZE));
+  const page = Math.min(Math.max(1, state.hq.page), total);
+  return { all, total, page, slice: all.slice((page - 1) * HIST_SIZE, page * HIST_SIZE) };
+};
+const histSelCount = () => Object.keys(state.hsel).filter((k) => state.hsel[k]).length;
+const histSelBarHtml = (n) => n ? '<span class="muted">' + esc(t('hist.sel.count', { n: n })) + '</span>' +
+  '<button class="btn sm danger" data-hist-del-batch="1">' + esc(t('hist.delete.selected')) + '</button>' : '';
+const histRowsHtml = () => {
+  const p = histPaging();
+  return p.slice.map((s) => {
+    const checked = state.hsel[s.id] ? ' checked' : '';
+    const sel = state.hopen === s.id ? ' class="sel"' : '';
+    const excerpt = s.lines.map((l) => String(bi(l.asr) || bi(l.text) || '')).join(' · ').slice(0, 90);
+    return '<tr' + sel + '>' +
+      '<td><input type="checkbox" class="checkbox" data-hsel="' + escq(s.id) + '"' + checked +
+      ' aria-label="' + esc(t('hist.sel', { id: s.id })) + '"></td>' +
+      '<td class="mono">' + esc(s.id) + '</td>' +
+      '<td class="mono">' + esc(s.when) + '</td>' +
+      '<td class="mono">' + esc(s.inst) + ' · ' + esc(s.node) + '</td>' +
+      '<td class="cell-clip" title="' + escq(excerpt) + '">' + esc(excerpt) + '</td>' +
+      '<td class="num">' + s.turns + '</td>' +
+      '<td class="num">' + s.lines.length + '</td>' +
+      '<td class="num">' + s.dur + '</td>' +
+      '<td class="num mono">' + s.ttft + '</td>' +
+      '<td>' + sessStateTag(s.state) + '</td>' +
+      '<td class="acts">' +
+      '<button class="btn sm" data-hist-open="' + escq(s.id) + '">' + esc(t('hist.view.messages')) + '</button>' +
+      '<button class="btn sm danger" data-hist-del="' + escq(s.id) + '">' + esc(t('delete')) + '</button>' +
+      '</td></tr>';
+  }).join('') || '<tr><td colspan="11" style="color:var(--faint)">' + esc(t('hist.empty')) + '</td></tr>';
+};
+const histPagerHtml = () => {
+  const p = histPaging();
+  return '<button class="btn sm" type="button" data-hist-page="prev"' + (p.page <= 1 ? ' disabled' : '') + '>' +
+    esc(t('hist.prev')) + '</button>' +
+    '<span>' + esc(t('hist.page.of', { n: p.page, m: p.total })) + '</span>' +
+    '<button class="btn sm" type="button" data-hist-page="next"' + (p.page >= p.total ? ' disabled' : '') + '>' +
+    esc(t('hist.next')) + '</button>';
+};
+/* 局部刷新：关键字输入时只重绘表体与分页，避免整页重绘打断输入焦点 */
+const histRefresh = () => {
+  const tb = $('#hist-tbody');
+  if (tb) tb.innerHTML = histRowsHtml();
+  const pg = $('#hist-pager');
+  if (pg) pg.innerHTML = histPagerHtml();
+  const ct = $('#hist-count');
+  if (ct) ct.textContent = t('hist.count', { n: histFiltered().length });
+};
+
 function renderHistory() {
-  $('#hist-title').textContent = t('nav.history');
-  $('#hist-body').innerHTML = '<p style="color:var(--muted);font-size:12.5px;margin:0 0 12px">' +
-    esc(t('hist.desc')) + ' · ' + esc(t('hist.filter')) + '</p>' +
-    (HISTORY.length ? HISTORY.map((h) => '<div class="hist-item"><div class="h-top"><span class="mono">' + esc(h.when) +
-      '</span><span>' + esc(h.inst) + '</span></div><div class="h-excerpt">' + esc(bi(h.excerpt)) + '</div>' +
-      '<div class="rowline" style="margin-top:8px;font-size:11.5px;color:var(--faint)"><span>' + h.turns + ' ' + esc(t('sessions')) +
-      '</span><span>' + h.dur + ' ' + esc(t('seconds')) + '</span><span class="spacer"></span>' +
-      '<button class="btn sm" data-act="replay">' + esc(t('replay')) + '</button></div></div>').join('')
-      : '<div style="color:var(--faint)">' + esc(t('hist.empty')) + '</div>');
+  const p = histPaging();
+  const selN = histSelCount();
+  const liveN = SESSIONS.filter((s) => s.state === 'live').length;
+  const failN = SESSIONS.filter((s) => s.state === 'failed').length;
+  const avg = SESSIONS.length ? Math.round(sum(SESSIONS, (s) => s.ttft || 0) / SESSIONS.length) : 0;
+  const opt = (v, label, cur) => '<option value="' + escq(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label) + '</option>';
+  const rows = histRowsHtml();
+  const filter =
+    '<search aria-label="' + esc(t('hist.filter.title')) + '">' +
+    '<form id="hist-filter" class="filter-grid">' +
+    '<div class="fbar wide"><label for="hist-kw">' + esc(t('hist.kw')) + '</label>' +
+    '<input type="search" id="hist-kw" name="kw" class="fin" value="' + escq(state.hq.kw) + '" placeholder="' +
+    escq(t('hist.kw.ph')) + '" autocomplete="off"></div>' +
+    '<div class="fbar n2"><label for="hist-state">' + esc(t('hist.filter.state')) + '</label>' +
+    '<select id="hist-state" name="state" class="fin">' +
+    opt('all', t('hist.filter.all'), state.hq.state) + opt('live', t('conv.log.state.live'), state.hq.state) +
+    opt('done', t('conv.log.state.done'), state.hq.state) + opt('failed', t('conv.log.state.failed'), state.hq.state) +
+    '</select></div>' +
+    '<div class="fbar n2"><label for="hist-inst">' + esc(t('hist.filter.inst')) + '</label>' +
+    '<select id="hist-inst" name="inst" class="fin">' + opt('all', t('hist.filter.all'), state.hq.inst) +
+    histInstances().map((i) => opt(i, i, state.hq.inst)).join('') + '</select></div>' +
+    '<div class="fbar n2"><label for="hist-range">' + esc(t('hist.filter.range')) + '</label>' +
+    '<select id="hist-range" name="range" class="fin">' +
+    opt('all', t('hist.filter.all'), state.hq.range) + opt('today', t('hist.range.today'), state.hq.range) +
+    opt('24h', t('hist.range.24h'), state.hq.range) + opt('7d', t('hist.range.7d'), state.hq.range) +
+    '</select></div>' +
+    '<div class="fbar-actions">' +
+    '<button class="btn primary" type="submit">' + esc(t('hist.query')) + '</button>' +
+    '<button class="btn" type="button" data-hist-reset="1">' + esc(t('hist.reset')) + '</button>' +
+    '<span class="spacer"></span>' +
+    '<span class="muted" id="hist-count">' + esc(t('hist.count', { n: p.all.length })) + '</span>' +
+    '<span id="hist-selbar">' + histSelBarHtml(selN) + '</span>' +
+    '</div></form></search>';
+  const openSess = SESSIONS.find((s) => s.id === state.hopen);
+  const msgPanel = openSess ? (() => {
+    const kw = state.hmsg.trim().toLowerCase();
+    const list = openSess.lines.filter((l) => !kw ||
+      (l.mid + ' ' + String(bi(l.asr) || bi(l.text) || '')).toLowerCase().indexOf(kw) >= 0);
+    const mrows = list.map((l) => {
+      const isUser = l.role === 'user';
+      const st = isUser ? (l.stt || 'ok') : (l.tts || 'ok');
+      const content = String(isUser ? bi(l.asr) : bi(l.text));
+      return '<tr>' +
+        '<td class="mono">' + esc(l.mid) + '</td>' +
+        '<td>' + esc(isUser ? t('conv.log.caller') : t('conv.log.bot')) + '</td>' +
+        '<td>' + esc(isUser ? t('conv.log.asr') : t('conv.log.reply')) + '</td>' +
+        '<td class="cell-clip" title="' + escq(content) + '">' + esc(content) + '</td>' +
+        '<td class="mono">' + esc(l.at || '') + '</td>' +
+        '<td><span class="sess-flag ' + st + '">' + esc(t((isUser ? 'conv.log.stt.' : 'conv.log.tts.') + st)) + '</span></td>' +
+        '<td class="acts"><button class="btn sm danger" data-hist-delmsg="' + escq(openSess.id + '|' + l.mid) + '">' +
+        esc(t('delete')) + '</button></td></tr>';
+    }).join('') || '<tr><td colspan="7" style="color:var(--faint)">' + esc(t('hist.msg.no.match')) + '</td></tr>';
+    return '<div class="card" style="margin-top:16px"><h3>' + esc(t('hist.msg.title')) +
+      '<span class="hint">' + esc(openSess.id) + ' · ' + esc(t('hist.msg.count', { n: openSess.lines.length })) + '</span>' +
+      '<span class="spacer"></span>' +
+      '<button class="btn sm danger" data-hist-clear="' + escq(openSess.id) + '">' + esc(t('hist.msg.clear')) + '</button></h3>' +
+      '<div class="fbar wide" style="margin-bottom:10px"><label for="hist-msgkw">' + esc(t('hist.msg.kw')) + '</label>' +
+      '<input type="search" id="hist-msgkw" class="fin" value="' + escq(state.hmsg) + '" placeholder="' + escq(t('hist.kw.ph')) + '" autocomplete="off"></div>' +
+      '<div class="tbl-scroll"><table class="tbl"><thead><tr><th>' + esc(t('hist.col.mid')) + '</th>' +
+      '<th>' + esc(t('hist.col.role')) + '</th><th>' + esc(t('hist.col.type')) + '</th>' +
+      '<th>' + esc(t('hist.col.content')) + '</th><th>' + esc(t('hist.col.at')) + '</th>' +
+      '<th>' + esc(t('status')) + '</th><th>' + esc(t('hist.col.actions')) + '</th></tr></thead><tbody id="hist-msg-tbody">' +
+      mrows + '</tbody></table></div></div>';
+  })() : '';
+  return head('nav.history', 'hist.page.desc') +
+    '<div class="grid g4">' +
+    kpi(t('hist.kpi.total'), SESSIONS.length, t('hist.kpi.sub')) +
+    kpi(t('hist.kpi.live'), liveN, t('hist.kpi.sub'), liveN ? 'var(--accent)' : '') +
+    kpi(t('hist.kpi.failed'), failN, t('hist.kpi.sub'), failN ? 'var(--danger)' : '') +
+    kpi(t('hist.kpi.ttft'), avg + ' ms', t('hist.kpi.sub')) +
+    '</div>' +
+    '<div class="card" style="margin-top:16px"><h3>' + esc(t('hist.filter.title')) + '</h3>' + filter + '</div>' +
+    '<div class="card"><h3>' + esc(t('hist.table.title')) +
+    '<span class="hint" id="hist-hint">' + esc(t('hist.count', { n: p.all.length })) + '</span></h3>' +
+    '<div class="tbl-scroll"><table class="tbl"><thead><tr>' +
+    '<th><input type="checkbox" class="checkbox" data-hsel-all="1" aria-label="' + esc(t('hist.sel.all')) + '"></th>' +
+    '<th>' + esc(t('hist.col.id')) + '</th><th>' + esc(t('hist.col.start')) + '</th><th>' + esc(t('hist.col.route')) + '</th>' +
+    '<th>' + esc(t('hist.col.excerpt')) + '</th>' +
+    '<th class="num">' + esc(t('hist.col.turns')) + '</th><th class="num">' + esc(t('hist.col.msgs')) + '</th>' +
+    '<th class="num">' + esc(t('hist.col.dur')) + '</th><th class="num">' + esc(t('hist.col.ttft')) + '</th>' +
+    '<th>' + esc(t('status')) + '</th><th>' + esc(t('hist.col.actions')) + '</th></tr></thead><tbody id="hist-tbody">' +
+    rows +
+    '</tbody></table></div>' +
+    '<div class="pager" id="hist-pager">' + histPagerHtml() + '</div></div>' + msgPanel;
 }
+
+/* ── 会话历史的删除动作：删除即从共享 store 移除，对话页记录列表同步减少 ── */
+async function histDeleteSession(id) {
+  const s = SESSIONS.find((x) => x.id === id);
+  if (!s) return;
+  const ok = await askConfirm({
+    title: t('hist.del.title'),
+    body: t('hist.del.body', { id: s.id, n: s.lines.length }),
+    okLabel: t('delete'), danger: true });
+  if (!ok) return;
+  SESSIONS.splice(SESSIONS.indexOf(s), 1);
+  if (state.hopen === id) state.hopen = '';
+  delete state.hsel[id];
+  if (state.live && state.live.id === id) state.live = null;
+  toast(t('toast.hist.deleted', { id: s.id }));
+  audit('session', 'act.session.delete', s.id, 'ok');
+  renderPage();
+}
+async function histDeleteSelected() {
+  const ids = Object.keys(state.hsel).filter((k) => state.hsel[k]);
+  if (!ids.length) return;
+  const ok = await askConfirm({
+    title: t('hist.del.batch.title'),
+    body: t('hist.del.batch.body', { n: ids.length }),
+    okLabel: t('delete'), danger: true });
+  if (!ok) return;
+  ids.forEach((id) => {
+    const i = SESSIONS.findIndex((x) => x.id === id);
+    if (i >= 0) SESSIONS.splice(i, 1);
+    if (state.hopen === id) state.hopen = '';
+    if (state.live && state.live.id === id) state.live = null;
+  });
+  state.hsel = {};
+  toast(t('toast.hist.batch.deleted', { n: ids.length }));
+  audit('session', 'act.session.delete', ids.join(', '), 'ok');
+  renderPage();
+}
+async function histDeleteMessage(sid, mid) {
+  const s = SESSIONS.find((x) => x.id === sid);
+  if (!s) return;
+  const i = s.lines.findIndex((l) => l.mid === mid);
+  if (i < 0) return;
+  const ok = await askConfirm({
+    title: t('hist.msg.del.title'),
+    body: t('hist.msg.del.body', { id: mid, sid: s.id }),
+    okLabel: t('delete'), danger: true });
+  if (!ok) return;
+  s.lines.splice(i, 1);
+  s.turns = s.lines.length;
+  s.dur = Math.round(s.lines.reduce((a, l) => a + (l.dur || 0), 0));
+  toast(t('toast.hist.msg.deleted', { id: mid }));
+  audit('session', 'act.session.msg.delete', mid, 'ok');
+  renderPage();
+}
+async function histClearMessages(sid) {
+  const s = SESSIONS.find((x) => x.id === sid);
+  if (!s) return;
+  const n = s.lines.length;
+  const ok = await askConfirm({
+    title: t('hist.msg.clear.title'),
+    body: t('hist.msg.clear.body', { n: n, id: s.id }),
+    okLabel: t('hist.msg.clear'), danger: true });
+  if (!ok) return;
+  s.lines = [];
+  s.turns = 0;
+  s.dur = 0;
+  toast(t('toast.hist.msgs.cleared', { n: n }));
+  audit('session', 'act.session.msg.clear', s.id, 'ok');
+  renderPage();
+}
+
+/* ───────────────────────── 会话工具页 ───────────────────────── */
+const TOOL_TYPES = ['web_search', 'calendar', 'weather', 'kb', 'http'];
+const TOOL_SCOPES = ['global', 'session', 'tenant'];
+const TOOL_PARAM_TYPES = ['string', 'number', 'boolean'];
+const toolName = (tool) => (tool.name && String(tool.name).trim()) ? tool.name :
+  (tool.builtin && tool.key ? t(tool.key) : tool.id);
+const toolDesc = (tool) => (tool.desc ? bi(tool.desc) : '');
+const toolParams = (tool) => (tool.params || []).map((p) => p.k + ':' + p.t + (p.req ? '!' : '')).join(' · ');
+
+const toolFiltered = () => {
+  const q = state.tq, kw = q.kw.trim().toLowerCase();
+  return TOOLS.filter((tool) => {
+    if (q.type !== 'all' && tool.type !== q.type) return false;
+    if (q.scope !== 'all' && tool.scope !== q.scope) return false;
+    if (q.on !== 'all' && String(!!tool.on) !== q.on) return false;
+    if (kw && (toolName(tool) + ' ' + toolDesc(tool) + ' ' + tool.id + ' ' + toolParams(tool)).toLowerCase().indexOf(kw) < 0) return false;
+    return true;
+  });
+};
+const toolRowsHtml = () => toolFiltered().map((tool) => {
+  const badge = tool.builtin ? '<span class="badge-builtin">' + esc(t('tool.builtin')) + '</span>' :
+    '<span class="badge-custom">' + esc(t('tool.custom')) + '</span>';
+  return '<tr>' +
+    '<td><b>' + esc(toolName(tool)) + '</b> ' + badge +
+    '<div class="mono" style="color:var(--faint);font-size:11px">' + esc(tool.id) + '</div></td>' +
+    '<td>' + esc(t('tool.type.' + tool.type)) + '</td>' +
+    '<td class="cell-clip" title="' + escq(toolDesc(tool)) + '">' + esc(toolDesc(tool) || '—') + '</td>' +
+    '<td class="mono cell-clip">' + esc(toolParams(tool) || '—') + '</td>' +
+    '<td>' + esc(t('tool.scope.' + tool.scope)) + '</td>' +
+    '<td><button type="button" role="switch" aria-checked="' + (tool.on ? 'true' : 'false') + '" class="switch' +
+    (tool.on ? ' on' : '') + '" data-tool-toggle="' + escq(tool.id) + '" aria-label="' +
+    esc(t('tool.toggle', { name: toolName(tool) })) + '"></button></td>' +
+    '<td class="mono">' + esc(tool.updated || '—') + '</td>' +
+    '<td class="acts">' +
+    '<button class="btn sm" type="button" data-tool-edit="' + escq(tool.id) + '">' + esc(t('tools.edit')) + '</button>' +
+    '<button class="btn sm" type="button" data-tool-copy="' + escq(tool.id) + '">' + esc(t('tools.copy')) + '</button>' +
+    '<button class="btn sm danger" type="button" data-tool-del="' + escq(tool.id) + '">' + esc(t('delete')) + '</button>' +
+    '</td></tr>';
+}).join('') || '<tr><td colspan="8" style="color:var(--faint)">' + esc(t('tools.empty')) + '</td></tr>';
+const toolRefresh = () => {
+  const tb = $('#tool-tbody');
+  if (tb) tb.innerHTML = toolRowsHtml();
+  const ct = $('#tool-count');
+  if (ct) ct.textContent = t('tools.count', { n: toolFiltered().length });
+};
+
 function renderTools() {
-  $('#tools-title').textContent = t('nav.tools');
-  $('#tool-body').innerHTML = '<p style="color:var(--muted);font-size:12.5px;margin:0 0 12px">' + esc(t('tools.desc')) + '</p>' +
-    TOOLS.map((tool, i) => '<div class="tool-row"><div><div class="t-name">' + esc(t(tool.key)) + '</div>' +
-      '<div class="t-desc">' + esc(t(tool.key + '.desc')) + '</div></div><span class="switch' +
-      (tool.on ? ' on' : '') + '" data-tool="' + i + '"></span></div>').join('');
+  const q = state.tq;
+  const list = toolFiltered();
+  const opt = (v, label, cur) => '<option value="' + escq(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(label) + '</option>';
+  const chips = '<button class="chip' + (q.type === 'all' ? ' active' : '') + '" data-tool-type="all">' + esc(t('hist.filter.all')) + '</button>' +
+    TOOL_TYPES.map((ty) => '<button class="chip' + (q.type === ty ? ' active' : '') + '" data-tool-type="' + ty + '">' +
+      esc(t('tool.type.' + ty)) + '</button>').join('');
+  const filter =
+    '<search aria-label="' + esc(t('tools.filter.title')) + '">' +
+    '<div class="filter-grid">' +
+    '<div class="fbar wide"><label for="tool-kw">' + esc(t('tools.kw')) + '</label>' +
+    '<input type="search" id="tool-kw" name="kw" class="fin" value="' + escq(q.kw) + '" placeholder="' +
+    escq(t('tools.kw.ph')) + '" autocomplete="off"></div>' +
+    '<div class="fbar"><label for="tool-scope">' + esc(t('tools.filter.scope')) + '</label>' +
+    '<select id="tool-scope" name="scope" class="fin">' + opt('all', t('hist.filter.all'), q.scope) +
+    TOOL_SCOPES.map((sc) => opt(sc, t('tool.scope.' + sc), q.scope)).join('') + '</select></div>' +
+    '<div class="fbar"><label for="tool-on">' + esc(t('tools.filter.on')) + '</label>' +
+    '<select id="tool-on" name="on" class="fin">' + opt('all', t('hist.filter.all'), q.on) +
+    opt('true', t('tools.on.yes'), q.on) + opt('false', t('tools.on.no'), q.on) + '</select></div>' +
+    '<div class="fbar-actions"><div class="chips" style="margin:0">' + chips + '</div></div></div></search>';
+  return head('nav.tools', 'tools.page.desc') +
+    '<div class="grid g4">' +
+    kpi(t('tools.kpi.total'), TOOLS.length, t('tools.kpi.sub')) +
+    kpi(t('tools.kpi.on'), TOOLS.filter((x) => x.on).length, t('tools.kpi.sub'), 'var(--success)') +
+    kpi(t('tools.kpi.builtin'), TOOLS.filter((x) => x.builtin).length, t('tools.kpi.sub')) +
+    kpi(t('tools.kpi.custom'), TOOLS.filter((x) => !x.builtin).length, t('tools.kpi.sub')) +
+    '</div>' +
+    '<div class="card" style="margin-top:16px"><h3>' + esc(t('tools.filter.title')) + '</h3>' + filter + '</div>' +
+    '<div class="card"><h3>' + esc(t('nav.tools')) +
+    '<span class="hint" id="tool-count">' + esc(t('tools.count', { n: list.length })) + '</span>' +
+    '<span class="spacer"></span>' +
+    '<button class="btn primary sm" type="button" data-tool-new="1">' + esc(t('tools.new')) + '</button></h3>' +
+    '<div class="tbl-scroll"><table class="tbl"><thead><tr>' +
+    '<th>' + esc(t('tools.col.name')) + '</th><th>' + esc(t('tools.col.type')) + '</th>' +
+    '<th>' + esc(t('tools.col.desc')) + '</th><th>' + esc(t('tools.col.params')) + '</th>' +
+    '<th>' + esc(t('tools.col.scope')) + '</th><th>' + esc(t('tools.col.on')) + '</th>' +
+    '<th>' + esc(t('tools.col.updated')) + '</th><th>' + esc(t('tools.col.actions')) + '</th></tr></thead>' +
+    '<tbody id="tool-tbody">' + toolRowsHtml() + '</tbody></table></div></div>';
+}
+
+/* ── 工具表单：新建与编辑共用一套字段 ── */
+const toolParamRow = (p) => '<div class="prow">' +
+  '<input class="fin" data-pk value="' + escq(p.k || '') + '" placeholder="' + escq(t('tool.f.params.name')) +
+  '" aria-label="' + esc(t('tool.f.params.name')) + '">' +
+  '<select class="fin" data-pt aria-label="' + esc(t('tool.f.params.type')) + '">' +
+  TOOL_PARAM_TYPES.map((ty) => '<option value="' + ty + '"' + (ty === (p.t || 'string') ? ' selected' : '') + '>' + ty + '</option>').join('') +
+  '</select>' +
+  '<label class="pcheck"><input type="checkbox" class="checkbox" data-preq' + (p.req ? ' checked' : '') + '> ' +
+  esc(t('tool.f.params.req')) + '</label>' +
+  '<button type="button" class="btn sm" data-toolparam-del="1" aria-label="' + esc(t('tool.f.params.remove')) + '">✕</button>' +
+  '</div>';
+const readToolParams = () => Array.from(document.querySelectorAll('#tf-params .prow')).map((row) => ({
+  k: (row.querySelector('[data-pk]').value || '').trim(),
+  t: row.querySelector('[data-pt]').value,
+  req: row.querySelector('[data-preq]').checked,
+})).filter((p) => p.k);
+
+function openToolForm(tool) {
+  const editing = !!tool;
+  const v = editing ? tool : { name: '', type: 'http', desc: '', endpoint: '', method: 'GET', scope: 'global', on: true, params: [] };
+  state._tedit = editing ? tool.id : '';
+  const opt = (val, label, cur) => '<option value="' + escq(val) + '"' + (val === cur ? ' selected' : '') + '>' + esc(label) + '</option>';
+  openModal(editing ? t('tool.form.edit', { name: toolName(tool) }) : t('tool.form.new'),
+    '<form id="tool-form" novalidate>' +
+    '<div class="field"><label for="tf-name">' + esc(t('tool.f.name')) + ' <span aria-hidden="true">*</span></label>' +
+    '<input id="tf-name" name="name" class="fin" value="' + escq(editing ? toolName(tool) : '') + '" required aria-describedby="tf-name-hint">' +
+    '<div class="fhint" id="tf-name-hint">' + esc(t('tool.f.name.hint')) + '</div></div>' +
+    '<div class="field"><label for="tf-type">' + esc(t('tool.f.type')) + '</label>' +
+    '<select id="tf-type" name="type" class="fin">' +
+    TOOL_TYPES.map((ty) => opt(ty, t('tool.type.' + ty), v.type)).join('') + '</select></div>' +
+    '<div class="field"><label for="tf-desc">' + esc(t('tool.f.desc')) + '</label>' +
+    '<textarea id="tf-desc" name="desc" class="fin" rows="3">' + esc(editing ? toolDesc(tool) : '') + '</textarea></div>' +
+    '<div class="field"><label for="tf-endpoint">' + esc(t('tool.f.endpoint')) + '</label>' +
+    '<input id="tf-endpoint" name="endpoint" class="fin" value="' + escq(v.endpoint || '') + '" placeholder="https://…"></div>' +
+    '<div class="field"><label for="tf-method">' + esc(t('tool.f.method')) + '</label>' +
+    '<select id="tf-method" name="method" class="fin">' +
+    ['GET', 'POST'].map((mm) => opt(mm, mm, v.method || 'GET')).join('') + '</select></div>' +
+    '<div class="field"><label for="tf-scope">' + esc(t('tool.f.scope')) + '</label>' +
+    '<select id="tf-scope" name="scope" class="fin">' +
+    TOOL_SCOPES.map((sc) => opt(sc, t('tool.scope.' + sc), v.scope)).join('') + '</select></div>' +
+    '<div class="field"><span class="f-lbl" id="tf-on-lbl">' + esc(t('tool.f.on')) + '</span>' +
+    '<button type="button" id="tf-on" role="switch" aria-checked="' + (v.on ? 'true' : 'false') + '" aria-labelledby="tf-on-lbl"' +
+    ' class="switch' + (v.on ? ' on' : '') + '" data-toolform-toggle="on"></button></div>' +
+    '<fieldset class="tparams"><legend>' + esc(t('tool.f.params')) + '</legend>' +
+    '<div id="tf-params">' + (v.params || []).map(toolParamRow).join('') + '</div>' +
+    '<button type="button" class="btn sm" data-toolparam-add="1">' + esc(t('tool.f.params.add')) + '</button></fieldset>' +
+    '<div class="ferr" id="tf-err" role="alert"></div>' +
+    '<div class="rowline" style="margin-top:16px">' +
+    '<button class="btn" type="button" data-modal-close="1">' + esc(t('close')) + '</button>' +
+    '<button class="btn primary" type="button" data-toolsave="1">' + esc(t('tool.f.save')) + '</button></div>' +
+    '</form>');
+}
+async function saveTool() {
+  const editingId = state._tedit || '';
+  const name = $('#tf-name').value.trim();
+  const type = $('#tf-type').value;
+  const endpoint = $('#tf-endpoint').value.trim();
+  const method = $('#tf-method').value;
+  const scope = $('#tf-scope').value;
+  const desc = $('#tf-desc').value.trim();
+  const on = $('#tf-on').getAttribute('aria-checked') === 'true';
+  const params = readToolParams();
+  const err = $('#tf-err');
+  const fail = (msg) => { err.textContent = msg; err.classList.add('show'); $('#tf-name').focus(); };
+  err.classList.remove('show');
+  if (!name) return fail(t('tool.err.name'));
+  if (TOOLS.some((x) => x.id !== editingId && x.name === name)) return fail(t('tool.err.dup'));
+  if (type === 'http' && !endpoint) return fail(t('tool.err.endpoint'));
+  const seen = {};
+  for (const p of params) {
+    if (seen[p.k]) return fail(t('tool.err.param.dup', { name: p.k }));
+    seen[p.k] = 1;
+  }
+  const stamp = sessStamp();
+  if (editingId) {
+    const tool = TOOLS.find((x) => x.id === editingId);
+    if (!tool) return;
+    if (tool.builtin) {
+      const ok = await askConfirm({
+        title: t('tool.builtin.warn.title'),
+        body: t('tool.builtin.warn.body', { name: toolName(tool) }),
+        okLabel: t('tool.f.save'), danger: true });
+      if (!ok) { toast(t('toast.tool.cancelled')); return; }   /* 取消警告 = 不保存，仍停留在编辑表单 */
+    }
+    Object.assign(tool, { name, type, endpoint, method, scope, desc, on, params, updated: stamp });
+    toast(t('toast.tool.saved', { name }));
+    audit('tool', 'act.tool.update', name, 'ok');
+  } else {
+    TOOLS.push({ id: 'tool-' + Math.random().toString(16).slice(2, 8), name, type, endpoint, method, scope,
+      desc, on, params, builtin: false, updated: stamp });
+    toast(t('toast.tool.created', { name }));
+    audit('tool', 'act.tool.create', name, 'ok');
+  }
+  state._tedit = '';
+  closeModal();
+  renderPage();
+}
+async function deleteTool(id) {
+  const tool = TOOLS.find((x) => x.id === id);
+  if (!tool) return;
+  const name = toolName(tool);
+  const ok = await askConfirm({
+    title: tool.builtin ? t('tool.builtin.del.title') : t('tool.delete.title'),
+    body: tool.builtin ? t('tool.builtin.del.body', { name }) : t('tool.delete.body', { name }),
+    okLabel: t('delete'), danger: true });
+  if (!ok) return;
+  TOOLS.splice(TOOLS.indexOf(tool), 1);
+  toast(t('toast.tool.deleted', { name }));
+  audit('tool', 'act.tool.delete', name, 'ok');
+  renderPage();
+}
+function copyTool(id) {
+  const src = TOOLS.find((x) => x.id === id);
+  if (!src) return;
+  const copy = JSON.parse(JSON.stringify(src));
+  copy.id = 'tool-' + Math.random().toString(16).slice(2, 8);
+  copy.name = toolName(src) + ' · ' + t('tool.copy.suffix');
+  copy.builtin = false;
+  copy.on = false;
+  copy.updated = sessStamp();
+  TOOLS.push(copy);
+  toast(t('toast.tool.copied', { name: copy.name }));
+  audit('tool', 'act.tool.create', copy.name, 'ok');
+  renderPage();
+}
+
+/* ───────────────────────── 设置页 ───────────────────────── */
+function renderSettingField(f, v) {
+  const id = 'set-' + f.key;
+  const src = f.src ? '<span class="tpl-src">' + esc(f.src) + '</span>' : '';
+  const hint = f.hint ? '<div class="fhint" id="' + id + '-hint">' + esc(t(f.hint)) + src + '</div>' : src;
+  const desc = f.hint ? ' aria-describedby="' + id + '-hint"' : '';
+  if (f.type === 'switch') {
+    return '<div class="sfield sw"><span class="f-lbl" id="' + id + '-lbl">' + esc(t(f.label)) + '</span>' +
+      '<button type="button" role="switch" aria-checked="' + (v ? 'true' : 'false') + '" aria-labelledby="' + id + '-lbl"' +
+      ' class="switch' + (v ? ' on' : '') + '" data-set-toggle="' + f.key + '"></button>' + hint + '</div>';
+  }
+  const label = '<label for="' + id + '">' + esc(t(f.label)) + '</label>';
+  let ctrl = '';
+  if (f.type === 'textarea') {
+    ctrl = '<textarea id="' + id + '" name="' + f.key + '" class="fin" rows="' + (f.rows || 4) + '"' + desc + '>' +
+      esc(v == null ? '' : v) + '</textarea>' +
+      '<div class="counter" data-counter="' + id + '">' + String(v == null ? '' : v).length + '</div>';
+  } else if (f.type === 'select') {
+    const opts = f.opts === 'voices' ? VOICES.filter((x) => x.status === 'ready').map((x) => x.id) : f.opts;
+    ctrl = '<select id="' + id + '" name="' + f.key + '" class="fin"' + desc + '>' +
+      opts.map((o) => '<option value="' + escq(o) + '"' + (o === v ? ' selected' : '') + '>' +
+        esc(o.indexOf('.') > 0 ? t(o) : o) + '</option>').join('') + '</select>';
+  } else if (f.type === 'number') {
+    ctrl = '<input type="number" id="' + id + '" name="' + f.key + '" class="fin" value="' + esc(String(v)) + '"' +
+      (f.min !== undefined ? ' min="' + f.min + '"' : '') + (f.max !== undefined ? ' max="' + f.max + '"' : '') +
+      (f.step !== undefined ? ' step="' + f.step + '"' : '') + desc + '>';
+  } else {
+    ctrl = '<input type="text" id="' + id + '" name="' + f.key + '" class="fin" value="' + escq(v == null ? '' : v) + '"' +
+      (f.readonly ? ' readonly' : '') + desc + '>';
+  }
+  return '<div class="sfield' + (f.type === 'textarea' ? ' ta-wrap' : '') + '">' + label + ctrl + hint + '</div>';
 }
 function renderSettings() {
-  $('#settings-title').textContent = t('nav.settings');
-  $('#set-body').innerHTML =
-    '<div class="set-row"><div><div>' + esc(t('set.lang')) + '</div><div class="s-sub">' + esc(t('set.lang.sub')) + '</div></div>' +
-    '<select id="set-lang"><option value="en"' + (lang === 'en' ? ' selected' : '') + '>English</option>' +
-    '<option value="zh"' + (lang === 'zh' ? ' selected' : '') + '>中文</option></select></div>' +
-    '<div class="set-row"><div><div>' + esc(t('set.voice')) + '</div><div class="s-sub">' + esc(t('set.voice.sub')) + '</div></div>' +
-    '<select id="set-voice">' + VOICES.filter((v) => v.status === 'ready').map((v) =>
-      '<option' + (v.id === 'sara' ? ' selected' : '') + '>' + esc(v.id) + '</option>').join('') + '</select></div>' +
-    '<div class="set-row"><div>' + esc(t('set.verbosity')) + '</div><select>' +
-    '<option>' + esc(t('set.terse')) + '</option><option selected>' + esc(t('set.balanced')) + '</option>' +
-    '<option>' + esc(t('set.detailed')) + '</option></select></div>' +
-    '<div class="set-row"><div>' + esc(t('set.wake')) + '</div><span class="switch" data-static="1"></span></div>' +
-    '<div class="set-row"><div>' + esc(t('set.denoise')) + '</div><span class="switch on" data-static="1"></span></div>' +
-    '<div class="set-row"><div>' + esc(t('set.reconnect')) + '</div><span class="switch on" data-static="1"></span></div>';
+  const m = machineById(state.machine) || { id: state.machine };
+  const s = Object.assign({}, state.settings, state.smart.front.fetched ? AGENT_PARAM_SEED : {});
+  const fields = templateFor('front').filter((f) =>
+    !f.platform || f.platform.includes(m.platform || 'gpu'));   /* 按选中机器的平台过滤设置项 */
+  const hotFields = fields.filter((f) => f.hot);
+  const coldFields = fields.filter((f) => !f.hot);
+  /* 对话态热更模块：配置 + 当前生效值 + session.update patch 路径 */
+  const liveRows = hotFields.map((f) => {
+    const val = s[f.key];
+    const shown = typeof val === 'object' ? JSON.stringify(val) : String(val == null ? '—' : val);
+    return '<tr><td class="mono">' + esc(f.key) + '</td><td class="mono">' + esc(shown.length > 42 ? shown.slice(0, 42) + '…' : shown) + '</td>' +
+      '<td class="mono" style="color:var(--muted)">' + esc(f.patch || '—') + '</td>' +
+      '<td class="mono" style="color:var(--faint)">' + esc(f.src || '') + '</td></tr>';
+  }).join('');
+  const liveCard = '<div class="card"><h3>' + esc(t('tpl.live.title')) +
+    '<span class="hint">' + esc(t('tpl.live.hint', { n: hotFields.length })) + '</span>' +
+    '<span class="tag ok">' + esc(t('tpl.effect.runtime')) + '</span></h3>' +
+    '<div class="tscroll"><table class="tbl"><thead><tr><th>' + esc(t('tpl.live.col.field')) + '</th><th>' +
+    esc(t('tpl.live.col.value')) + '</th><th>' + esc(t('tpl.live.col.patch')) + '</th><th>' + esc(t('tpl.live.col.src')) +
+    '</th></tr></thead><tbody>' + liveRows + '</tbody></table></div>' +
+    '<p class="note">' + esc(t('tpl.live.note')) + '</p></div>';
+  const groups = [...new Set(coldFields.map((f) => f.group))];
+  const cards = groups.map((key) => {
+    const gf = coldFields.filter((f) => f.group === key);
+    return '<div class="card"><h3>' + esc(t('set.group.' + key) !== 'set.group.' + key ? t('set.group.' + key) : t('grp.' + key)) +
+      '<span class="hint">' + esc(t('tpl.group.hint', { hot: 0, cold: gf.length })) + '</span></h3>' +
+      '<div class="set-grid">' + gf.map((f) => '<div class="sfield tpl-cold">' + renderSettingField(f, s[f.key]) +
+        '<div class="tpl-cold-note">' + esc(t('tpl.cold.note')) +
+        ' <a href="#/deploy" data-tpl-ops="' + esc(f.key) + '">' + esc(t('tpl.cold.link')) + '</a></div></div>').join('') + '</div></div>';
+  }).join('');
+  return head('nav.settings', 'set.page.desc') +
+    machineBar('settings') +
+    '<div class="card tpl-banner"><div><strong>' + esc(t('tpl.title')) + '</strong><p class="muted">' + esc(t('tpl.desc')) + '</p></div>' +
+    '<span class="tag ok">' + esc(t('tpl.source')) + '</span></div>' +
+    smartPanel(m, 'front') +
+    liveCard +
+    '<div class="card"><h3>' + esc(t('tpl.live.edit')) + '<span class="hint">' + esc(t('tpl.live.edit.hint')) + '</span></h3>' +
+    '<div class="set-grid">' + hotFields.map((f) => renderSettingField(f, s[f.key])).join('') + '</div></div>' +
+    cards +
+    '<div class="card set-actions"><span class="muted">' + esc(t('tpl.save.hint')) + '</span><span class="spacer"></span>' +
+    '<button class="btn" type="button" data-set-reset="1">' + esc(t('set.reset')) + '</button>' +
+    '<button class="btn" type="button" data-save-as-tpl="front">' + esc(t('tpl.save.as')) + '</button>' +
+    '<button class="btn primary" type="button" data-set-save="1">' + esc(t('tpl.save')) + '</button></div>';
 }
-function openOverlay(kind) {
-  state.overlay = kind;
-  ({ history: renderHistory, tools: renderTools, settings: renderSettings })[kind]();
-  $('#overlay').classList.add('open');
-  $('#drawer-' + kind).classList.add('open');
+const collectSettings = () => {
+  const out = {};
+  templateFor('front').forEach((f) => {
+    if (f.type === 'switch') {
+      const btn = document.querySelector('[data-set-toggle="' + f.key + '"]');
+      out[f.key] = !!btn && btn.getAttribute('aria-checked') === 'true';
+      return;
+    }
+    const el = document.getElementById('set-' + f.key);
+    if (!el) { out[f.key] = state.settings[f.key]; return; }
+    out[f.key] = f.type === 'number' ? Number(el.value) : el.value;
+  });
+  return out;
+};
+function saveSettings() {
+  const vals = collectSettings();
+  if (String(vals.instructions || '').length > 2000) return toast(t('set.err.prompt'));
+  /* 热更字段 → session.update patch（路径来自 §7.5，与 backend WHITELIST 对齐）*/
+  const patch = {};
+  PARAM_TEMPLATES.filter((f) => f.hot && f.patch && vals[f.key] !== undefined).forEach((f) => {
+    const parts = f.patch.split('.');
+    let node = patch;
+    parts.forEach((part, i) => {
+      if (i === parts.length - 1) node[part] = vals[f.key];
+      else node = (node[part] = node[part] || {});
+    });
+  });
+  state.settings = Object.assign({}, state.settings, vals);
+  storeSettings(state.settings);
+  state.lastHotPatch = patch;
+  toast(t('toast.tpl.hot', { n: Object.keys(patch).length }));
+  audit('setting', 'act.tpl.hot', JSON.stringify(patch), 'ok');
+  renderPage();
 }
-function closeOverlay() {
-  state.overlay = null;
-  $('#overlay').classList.remove('open');
-  ['history', 'tools', 'settings'].forEach((k) => $('#drawer-' + k).classList.remove('open'));
+async function resetSettings() {
+  const ok = await askConfirm({
+    title: t('set.reset'),
+    body: t('set.reset.body'),
+    okLabel: t('set.reset'), danger: true });
+  if (!ok) return;
+  state.settings = settingsDefaults();
+  storeSettings(state.settings);
+  toast(t('toast.set.reset'));
+  audit('setting', 'act.set.update', 'settings (reset)', 'ok');
+  if (state.settings.lang !== lang) return setLang(state.settings.lang);
+  renderPage();
 }
 
 /* ───────────────────────── toast ───────────────────────── */
@@ -2800,6 +4510,7 @@ function stepTalk() {
   if (state.step >= SCRIPT_LINES.length) {
     state.calling = false;
     state.orbClass = ''; state.orbKey = 'conv.state.idle';
+    closeLiveSession();
     addBubble('meta', t('conv.stopped'));
     paintCall();
     return;
@@ -2807,19 +4518,51 @@ function stepTalk() {
   const line = SCRIPT_LINES[state.step];
   if (line.role === 'user') {
     state.orbClass = 'state-listening'; state.orbKey = 'conv.state.listening'; paintCall();
-    setTimeout(() => { addBubble('user', bi(line.text)); state.step++; stepTalk(); }, 900);
+    state.timer = setTimeout(() => {
+      addBubble('user', bi(line.text));
+      pushLiveLine({ role: 'user', clip: 'live-u-' + state.step, dur: 3.4 + (state.step % 3) * 0.6, stt: 'ok', asr: line.text });
+      state.step++; stepTalk();
+    }, 900);
   } else {
     state.orbClass = 'state-thinking'; state.orbKey = 'conv.state.thinking'; paintCall();
-    setTimeout(() => {
+    state.timer = setTimeout(() => {
       state.orbClass = 'state-speaking'; state.orbKey = 'conv.state.speaking'; paintCall();
-      setTimeout(() => { addBubble('assistant', bi(line.text)); state.step++; stepTalk(); }, 1100);
+      state.timer = setTimeout(() => {
+        addBubble('assistant', bi(line.text));
+        pushLiveLine({ role: 'assistant', clip: 'live-a-' + state.step, dur: 5.6 + (state.step % 2) * 1.1, tts: 'ok', text: line.text });
+        state.step++; stepTalk();
+      }, 1100);
     }, 600);
   }
+}
+/* 实时会话写入右侧“会话记录”列表（新记录置顶） */
+const sessStamp = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0');
+  return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); };
+function pushLiveLine(l) {
+  const s = state.live;
+  if (!s) return;
+  /* 与 mock 记录同构：补齐消息 ID / 发生时间 / 时间戳，历史页才能按消息粒度查询与删除 */
+  l.mid = 'm-live-' + (s.lines.length + 1);
+  l.ts = Date.now();
+  l.at = stampOf(l.ts);
+  s.lines.push(l);
+  s.turns = s.lines.length;
+  s.dur = Math.round(s.lines.reduce((a, x) => a + (x.dur || 0), 0));
+  refreshSessionList();
+}
+function closeLiveSession() {
+  const s = state.live;
+  if (!s) return;
+  s.state = 'done';
+  s.dur = Math.round(s.lines.reduce((a, x) => a + (x.dur || 0), 0));
+  state.live = null;
+  refreshSessionList();
 }
 function toggleCall() {
   if (state.calling) {
     clearTimeout(state.timer); state.calling = false; state.step = 0;
     state.orbClass = ''; state.orbKey = 'conv.state.idle';
+    closeLiveSession();
     addBubble('meta', t('conv.stopped'));
     paintCall();
     toast(t('toast.call.end'));
@@ -2829,6 +4572,10 @@ function toggleCall() {
   if (!state.instance) { toast(t('toast.no.instance')); return; }
   state.calling = true; state.step = 0;
   state.orbClass = 'state-listening'; state.orbKey = 'conv.state.connecting';
+  state.sessionId = 'sess-' + Math.random().toString(16).slice(2, 8);
+  state.live = { id: state.sessionId, when: sessStamp(), ts: Date.now(), inst: state.instance.id, node: state.instance.node,
+    state: 'live', turns: 0, dur: 0, ttft: state.instance.ttft, lines: [] };
+  SESSIONS.unshift(state.live);           /* 实时会话进入共享 store，历史页同步可见 */
   renderPage();
   addBubble('meta', t('conv.meta', { node: state.instance.node }));
   addBubble('meta', t('conv.session.started'));
@@ -2842,16 +4589,43 @@ let modalTimers = [];
 let pendingAdd = null;
 function mTimer(fn, ms) { modalTimers.push(setTimeout(fn, ms)); }
 function openModal(title, bodyHtml) {
+  const dlg = $('#modal');
   $('#modal-title').textContent = title;
   $('#modal-body').innerHTML = bodyHtml;
-  $('#modal-overlay').classList.add('open');
-  $('#modal').classList.add('open');
+  if (!dlg.open) dlg.showModal();          /* 原生 dialog：焦点收敛 + Esc 关闭 + top layer */
 }
 function closeModal() {
   modalTimers.forEach(clearTimeout);
   modalTimers = [];
-  $('#modal-overlay').classList.remove('open');
-  $('#modal').classList.remove('open');
+  const dlg = $('#modal');
+  if (dlg.open) dlg.close();
+}
+
+/* ── 通用确认框：破坏性操作统一走这里（原生 dialog，Esc = 取消） ── */
+let confirmResolve = null;
+/* 点击原生 dialog 的 ::backdrop 区域时事件目标是 dialog 本身，用坐标判断是否点在框外 */
+function onBackdrop(e, dlg) {
+  const r = dlg.getBoundingClientRect();
+  return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+}
+function askConfirm(opts) {
+  const dlg = $('#confirm-dialog');
+  $('#confirm-title').textContent = opts.title;
+  $('#confirm-body').innerHTML = opts.body || '';
+  const ok = $('#confirm-ok'), cancel = $('#confirm-cancel');
+  ok.textContent = opts.okLabel || t('confirm.ok');
+  cancel.textContent = opts.cancelLabel || t('confirm.cancel');
+  ok.className = 'btn primary' + (opts.danger ? ' danger' : '');
+  ok.focus();
+  if (!dlg.open) dlg.showModal();
+  return new Promise((res) => { confirmResolve = res; });
+}
+function closeConfirm(answer) {
+  const dlg = $('#confirm-dialog');
+  if (dlg.open) dlg.close();
+  const res = confirmResolve;
+  confirmResolve = null;
+  if (res) res(answer);
 }
 
 /* ── cluster CRUD：一个负载均衡注册中心 = 一个集群 ── */
@@ -3523,7 +5297,7 @@ function handleAct(act, id) {
 function setLang(next) {
   lang = next === 'zh' ? 'zh' : 'en';
   localStorage.setItem(LS_KEY, lang);
-  closeOverlay();
+  if (state.settings) state.settings.lang = lang;   /* 与设置页的界面语言保持同步 */
   applyRoute();
   toast(t('toast.lang'));
 }
@@ -3532,15 +5306,22 @@ function setLang(next) {
 document.addEventListener('click', (e) => {
   const el = e.target;
   if (el.closest('#lang-btn')) return setLang(lang === 'en' ? 'zh' : 'en');
-  if (el.closest('#overlay') || el.closest('[data-close]')) return closeOverlay();
   const nav = el.closest('[data-page]');
   if (nav) { location.hash = '#/' + nav.dataset.page; return; }
-  const ov = el.closest('[data-overlay]');
-  if (ov) return openOverlay(ov.dataset.overlay);
   const topo = el.closest('[data-machine]');
   if (topo) { state.machine = topo.dataset.machine; location.hash = '#/deploy'; return; }
   const pick = el.closest('[data-machine-pick]');
   if (pick) { state.machine = pick.dataset.machinePick; renderPage(); return; }
+  const pickPage = el.closest('[data-machine-pick-page]');
+  if (pickPage) { state.machine = pickPage.dataset.machinePickPage; renderPage(); return; }
+  const sFetch = el.closest('[data-smart-fetch]');
+  if (sFetch) return smartFetch(sFetch.dataset.smartFetch);
+  const sAnalyze = el.closest('[data-smart-analyze]');
+  if (sAnalyze) return smartAnalyze(sAnalyze.dataset.smartAnalyze);
+  const sApply = el.closest('[data-smart-apply]');
+  if (sApply) return smartApply(sApply.dataset.smartApply, sApply.dataset.smartMode);
+  const tplView = el.closest('[data-tpl-view]');
+  if (tplView) return viewTemplate(tplView.dataset.tplView);
   const scene = el.closest('[data-scene]');
   if (scene) { state.scene = scene.dataset.scene; state.diffOn = false; renderPage(); return; }
   const ops = el.closest('[data-ops]');
@@ -3558,7 +5339,44 @@ document.addEventListener('click', (e) => {
   if (grp) { state.group = grp.dataset.group; renderPage(); return; }
   const cat = el.closest('[data-cat]');
   if (cat) { state.cat = cat.dataset.cat; renderPage(); return; }
-  if (el.id === 'modal-overlay' || el.closest('[data-modal-close]')) return closeModal();
+  const tplEffect = el.closest('[data-tpl-effect]');
+  if (tplEffect) { state.tpl.effect = tplEffect.dataset.tplEffect; renderPage(); return; }
+  const tplType = el.closest('[data-tpl-type]');
+  if (tplType) { state.tpl.type = tplType.dataset.tplType; renderPage(); return; }
+  const tplStatus = el.closest('[data-tpl-status]');
+  if (tplStatus) { state.tpl.status = tplStatus.dataset.tplStatus; renderPage(); return; }
+  const saveAs = el.closest('[data-save-as-tpl]');
+  if (saveAs) {
+    const src = saveAs.dataset.saveAsTpl;
+    if (src === 'front') {
+      const fs = PARAM_TEMPLATES.filter((f) => f.hot && state.settings[f.key] !== undefined);
+      return saveAsTemplate({
+        source: src, sourceLabel: 'tpl.source.front',
+        preset: { name: 'Conversation hot profile', effect: 'runtime', type: (MACHINES.find((x) => x.id === state.machine) || {}).platform || 'gpu', vram: 0,
+                  desc: 'saved from front-office live settings: ' + fs.map((f) => f.key).join(' / ') },
+        fields: fs.map((f) => ({ key: f.key, value: state.settings[f.key], patch: f.patch })),
+      });
+    }
+    const m = machineById(state.machine) || {};
+    const os = templateFor('ops');
+    return saveAsTemplate({
+      source: src, sourceLabel: 'tpl.source.ops',
+      preset: { name: (m.id || 'machine') + ' deployment template', effect: 'restart', type: m.platform || 'gpu', vram: m.vramGb || 0,
+                desc: 'saved from deployed params on ' + (m.id || '') + ' · ' + (m.driver || '') },
+      fields: os.map((f) => ({ key: f.key, value: f.def, source: f.src })),
+    });
+  }
+  if (el.closest('[data-tpl-add]')) return openTemplateForm(null);
+  const tplEdit = el.closest('[data-tpl-edit]');
+  if (tplEdit) return openTemplateForm(tplEdit.dataset.tplEdit);
+  const tplDel = el.closest('[data-tpl-del]');
+  if (tplDel) return deleteTemplate(tplDel.dataset.tplDel);
+  if (el.closest('[data-tpl-save]')) return saveTemplateForm();
+  if (el.closest('[data-modal-close]')) return closeModal();
+  if (el.id === 'modal' && onBackdrop(e, el)) return closeModal();
+  if (el.id === 'confirm-dialog' && onBackdrop(e, el)) return closeConfirm(false);
+  if (el.closest('#confirm-ok')) return closeConfirm(true);
+  if (el.closest('#confirm-cancel')) return closeConfirm(false);
   const csw = el.closest('[data-cluster-switch]');
   if (csw) return switchCluster(csw.dataset.clusterSwitch);
   if (el.closest('[data-cluster-add]')) return openClusterForm(null);
@@ -3606,12 +5424,116 @@ document.addEventListener('click', (e) => {
   if (dep && !el.closest('[data-act]')) { state.machine = dep.dataset.gotoDeploy; location.hash = '#/deploy'; return; }
   const tool = el.closest('[data-tool]');
   if (tool) {
-    const t0 = TOOLS[+tool.dataset.tool];
+    const t0 = TOOLS.find((x) => x.id === tool.dataset.tool);
+    if (!t0) return;
     t0.on = !t0.on;
     tool.classList.toggle('on', t0.on);
-    toast(t('toast.tool', { name: t(t0.key), state: t(t0.on ? 'on' : 'off') }));
+    tool.setAttribute('aria-checked', String(t0.on));
+    toast(t('toast.tool', { name: toolName(t0), state: t(t0.on ? 'on' : 'off') }));
     return;
   }
+  /* ── 会话历史页 ── */
+  const hsel = el.closest('[data-hsel]');
+  if (hsel) {
+    state.hsel[hsel.dataset.hsel] = hsel.checked;
+    const bar = $('#hist-selbar');
+    if (bar) bar.innerHTML = histSelBarHtml(histSelCount());
+    return;
+  }
+  const hselAll = el.closest('[data-hsel-all]');
+  if (hselAll) {
+    histPaging().slice.forEach((s) => { state.hsel[s.id] = hselAll.checked; });
+    renderPage();
+    return;
+  }
+  const hOpen = el.closest('[data-hist-open]');
+  if (hOpen) {
+    state.hopen = state.hopen === hOpen.dataset.histOpen ? '' : hOpen.dataset.histOpen;
+    state.hmsg = '';
+    renderPage();
+    return;
+  }
+  const hDel = el.closest('[data-hist-del]');
+  if (hDel) return histDeleteSession(hDel.dataset.histDel);
+  const hDelBatch = el.closest('[data-hist-del-batch]');
+  if (hDelBatch) return histDeleteSelected();
+  const hDelMsg = el.closest('[data-hist-delmsg]');
+  if (hDelMsg) {
+    const parts = hDelMsg.dataset.histDelmsg.split('|');
+    return histDeleteMessage(parts[0], parts[1]);
+  }
+  const hClear = el.closest('[data-hist-clear]');
+  if (hClear) return histClearMessages(hClear.dataset.histClear);
+  const hReset = el.closest('[data-hist-reset]');
+  if (hReset) {
+    state.hq = { kw: '', state: 'all', inst: 'all', range: 'all', page: 1 };
+    state.hsel = {};
+    state.hopen = '';
+    state.hmsg = '';
+    renderPage();
+    return;
+  }
+  const hPage = el.closest('[data-hist-page]');
+  if (hPage) {
+    const p = histPaging();
+    state.hq.page = hPage.dataset.histPage === 'prev' ? Math.max(1, p.page - 1) : Math.min(p.total, p.page + 1);
+    renderPage();
+    return;
+  }
+  /* ── 会话工具页 ── */
+  const tType = el.closest('[data-tool-type]');
+  if (tType) { state.tq.type = tType.dataset.toolType; renderPage(); return; }
+  const tToggle = el.closest('[data-tool-toggle]');
+  if (tToggle) {
+    const t0 = TOOLS.find((x) => x.id === tToggle.dataset.toolToggle);
+    if (!t0) return;
+    t0.on = !t0.on;
+    tToggle.classList.toggle('on', t0.on);
+    tToggle.setAttribute('aria-checked', String(t0.on));
+    toast(t('toast.tool.toggled', { name: toolName(t0), state: t(t0.on ? 'on' : 'off') }));
+    return;
+  }
+  if (el.closest('[data-tool-new]')) return openToolForm(null);
+  const tEdit = el.closest('[data-tool-edit]');
+  if (tEdit) return openToolForm(TOOLS.find((x) => x.id === tEdit.dataset.toolEdit));
+  const tCopy = el.closest('[data-tool-copy]');
+  if (tCopy) return copyTool(tCopy.dataset.toolCopy);
+  const tDel = el.closest('[data-tool-del]');
+  if (tDel) return deleteTool(tDel.dataset.toolDel);
+  if (el.closest('[data-toolsave]')) return saveTool();
+  const tParamAdd = el.closest('[data-toolparam-add]');
+  if (tParamAdd) {
+    const box = $('#tf-params');
+    if (box) box.insertAdjacentHTML('beforeend', toolParamRow({ k: '', t: 'string', req: false }));
+    return;
+  }
+  const tParamDel = el.closest('[data-toolparam-del]');
+  if (tParamDel) {
+    const row = tParamDel.closest('.prow');
+    if (row) row.remove();
+    return;
+  }
+  const tFormToggle = el.closest('[data-toolform-toggle]');
+  if (tFormToggle) {
+    const on = tFormToggle.getAttribute('aria-checked') !== 'true';
+    tFormToggle.setAttribute('aria-checked', String(on));
+    tFormToggle.classList.toggle('on', on);
+    return;
+  }
+  /* ── 设置页 ── */
+  if (el.closest('[data-set-save]')) return saveSettings();
+  if (el.closest('[data-set-reset]')) return resetSettings();
+  const sToggle = el.closest('[data-set-toggle]');
+  if (sToggle) {
+    const on = sToggle.getAttribute('aria-checked') !== 'true';
+    sToggle.setAttribute('aria-checked', String(on));
+    sToggle.classList.toggle('on', on);
+    return;
+  }
+  const vtab = el.closest('[data-vtab]');
+  if (vtab) return switchVTab(vtab.dataset.vtab);
+  const clip = el.closest('[data-clip]');
+  if (clip) return toast(t('toast.clip'));
   const act = el.closest('[data-act]');
   if (act) {
     if (act.dataset.act === 'call') return toggleCall();
@@ -3620,7 +5542,6 @@ document.addEventListener('click', (e) => {
 });
 
 document.addEventListener('change', (e) => {
-  if (e.target.id === 'set-lang') return setLang(e.target.value);
   const cb = e.target.closest && e.target.closest('.svc-on');
   if (cb) {
     const grp = document.getElementById(cb.getAttribute('data-svc-fields'));
@@ -3631,16 +5552,88 @@ document.addEventListener('change', (e) => {
     switchCluster(e.target.value);
     return;
   }
+  /* 会话历史页的筛选下拉：立即生效 */
+  if (e.target.id === 'hist-state') { state.hq.state = e.target.value; state.hq.page = 1; return renderPage(); }
+  if (e.target.id === 'hist-inst') { state.hq.inst = e.target.value; state.hq.page = 1; return renderPage(); }
+  if (e.target.id === 'hist-range') { state.hq.range = e.target.value; state.hq.page = 1; return renderPage(); }
+  /* 会话工具页的筛选下拉：立即生效 */
+  if (e.target.id === 'tool-scope') { state.tq.scope = e.target.value; return renderPage(); }
+  if (e.target.id === 'tool-on') { state.tq.on = e.target.value; return renderPage(); }
+  /* 设置页的界面语言：立即切换并写入本地记忆 */
+  if (e.target.id === 'set-lang') { state.settings.lang = e.target.value; return setLang(e.target.value); }
   const pv = e.target.closest && e.target.closest('.pv');
   if (pv) { pv.value = pv.dataset.orig; return toast(t('toast.param.mock', { p: pv.dataset.p })); }
 });
 
 document.addEventListener('input', (e) => {
+  if (e.target.id === 'tpl-q') {
+    state.tpl.q = e.target.value;
+    const tb = $('#tpl-tbody');
+    if (tb) tb.innerHTML = templateRows();
+    return;
+  }
   if (e.target.id === 'm-search') {
     state.mq = e.target.value;
     const tb = $('#m-tbody');
     if (tb) tb.innerHTML = machineRows();
+    return;
   }
+  /* 会话历史页关键字：只重绘表体与分页，输入焦点不丢 */
+  if (e.target.id === 'hist-kw') {
+    state.hq.kw = e.target.value;
+    state.hq.page = 1;
+    histRefresh();
+    return;
+  }
+  if (e.target.id === 'hist-msgkw') {
+    state.hmsg = e.target.value;
+    const openSess = SESSIONS.find((s) => s.id === state.hopen);
+    const tb = $('#hist-msg-tbody');
+    if (tb && openSess) {
+      const kw = state.hmsg.trim().toLowerCase();
+      const list = openSess.lines.filter((l) => !kw ||
+        (l.mid + ' ' + String(bi(l.asr) || bi(l.text) || '')).toLowerCase().indexOf(kw) >= 0);
+      tb.innerHTML = list.map((l) => {
+        const isUser = l.role === 'user';
+        const st = isUser ? (l.stt || 'ok') : (l.tts || 'ok');
+        const content = String(isUser ? bi(l.asr) : bi(l.text));
+        return '<tr><td class="mono">' + esc(l.mid) + '</td>' +
+          '<td>' + esc(isUser ? t('conv.log.caller') : t('conv.log.bot')) + '</td>' +
+          '<td>' + esc(isUser ? t('conv.log.asr') : t('conv.log.reply')) + '</td>' +
+          '<td class="cell-clip" title="' + escq(content) + '">' + esc(content) + '</td>' +
+          '<td class="mono">' + esc(l.at || '') + '</td>' +
+          '<td><span class="sess-flag ' + st + '">' + esc(t((isUser ? 'conv.log.stt.' : 'conv.log.tts.') + st)) + '</span></td>' +
+          '<td class="acts"><button class="btn sm danger" data-hist-delmsg="' + escq(openSess.id + '|' + l.mid) + '">' +
+          esc(t('delete')) + '</button></td></tr>';
+      }).join('') || '<tr><td colspan="7" style="color:var(--faint)">' + esc(t('hist.msg.no.match')) + '</td></tr>';
+    }
+    return;
+  }
+  /* 会话工具页关键字 */
+  if (e.target.id === 'tool-kw') {
+    state.tq.kw = e.target.value;
+    toolRefresh();
+    return;
+  }
+  /* 设置页文本域字数统计 */
+  if (e.target.matches && e.target.matches('textarea[data-counter], textarea.fin')) {
+    const c = document.querySelector('[data-counter="' + e.target.id + '"]');
+    if (c) c.textContent = String(e.target.value || '').length;
+  }
+});
+
+/* 查询表单的显式提交动作 */
+document.addEventListener('submit', (e) => {
+  const form = e.target.closest('#hist-filter');
+  if (!form) return;
+  e.preventDefault();
+  state.hq.kw = ($('#hist-kw') || {}).value || '';
+  state.hq.state = ($('#hist-state') || {}).value || 'all';
+  state.hq.inst = ($('#hist-inst') || {}).value || 'all';
+  state.hq.range = ($('#hist-range') || {}).value || 'all';
+  state.hq.page = 1;
+  renderPage();
+  toast(t('toast.hist.query', { n: histFiltered().length }));
 });
 
 window.addEventListener('hashchange', applyRoute);

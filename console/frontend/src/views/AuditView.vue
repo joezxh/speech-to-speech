@@ -23,6 +23,9 @@ const actor = ref('')
 const action = ref('')
 const result = ref('')
 const field = ref('')
+// 原型审计页的分类 chips（audit.cat.*）：点选即按 action 前缀过滤。
+const CATEGORIES = ['', 'machine', 'lb', 'deploy', 'release', 'voice', 'cluster', 'template', 'smart']
+const category = ref('')
 
 async function load(): Promise<void> {
   loading.value = true
@@ -33,6 +36,7 @@ async function load(): Promise<void> {
       action: action.value || undefined,
       result: result.value || undefined,
       field: field.value || undefined,
+      category: category.value || undefined,
       page: page.value,
       pageSize: pageSize.value
     })
@@ -51,6 +55,17 @@ watch([() => consoleStore.profile, page, pageSize], () => void load(), { immedia
 
 <template>
   <div class="audit">
+    <div class="audit__cats">
+      <button
+        v-for="item in CATEGORIES"
+        :key="item"
+        class="audit__cat"
+        :class="{ active: category === item }"
+        @click="category = item; page = 1; void load()"
+      >
+        {{ item ? t(`audit.cat.${item}`) : t('audit.cat.all') }}
+      </button>
+    </div>
     <form class="audit__filters" @submit.prevent="page = 1; void load()">
       <a-input v-model:value="actor" :placeholder="t('audit.filters.actor')" allow-clear />
       <a-input v-model:value="action" :placeholder="t('audit.filters.actionPlaceholder')" allow-clear />
@@ -85,6 +100,23 @@ watch([() => consoleStore.profile, page, pageSize], () => void load(), { immedia
   flex-direction: column;
   gap: 12px;
 
+  &__cats {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  &__cat {
+    border: 1px solid var(--border);
+    background: transparent;
+    border-radius: 999px;
+    padding: 3px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    &.active {
+      background: var(--accent);
+      color: var(--surface);
+    }
+  }
   &__filters {
     display: flex;
     gap: 8px;

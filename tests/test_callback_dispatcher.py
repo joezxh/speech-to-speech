@@ -300,3 +300,157 @@ def test_env_fallback_java_target(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_mask_token() -> None:
     assert mask_token("secret-token-value") == "secr***alue"
     assert mask_token("") == "***"
+
+
+# ── HTTP 配置源（2026-11-27：console 下发接口，三级优先 DB > HTTP > env）──────
+
+
+def _config_payload(**overrides) -> dict:
+    item = dict(
+        id=1, name="meeting-java", targetType="java", baseUrl="http://ai-from-console",
+        authType="header_token", authHeaderName="X-Internal-Token", authToken="console-tok",
+        extraHeaders={"tenant-id": "1"}, timeoutMs=100, retryMaxAttempts=2,
+        retryBackoffMs=0, events=["transcript"], filters=None, enabled=True,
+    )
+    item.update(overrides)
+    return item
+
+
+def _http_dispatcher(fetch_result, monkeypatch: pytest.MonkeyPatch, ttl_seconds: float = 0):
+    """构造 HTTP 模式 dispatcher：fetch_result 为响应 dict 或异常实例。"""
+    calls: list[str] = []
+
+    def fetch():
+        calls.append("fetch")
+        if isinstance(fetch_result, Exception):
+            raise fetch_result
+        return fetch_result
+
+    posted: list[dict] = []
+    monkeypatch.setattr(
+        "speech_to_speech.callback.dispatcher.requests.post",
+        lambda url, **kwargs: posted.append({"url": url, **kwargs}) or _Resp(200))
+    dispatcher = CallbackDispatcher(session_factory=None, ttl_seconds=ttl_seconds, http_fetcher=fetch)
+    return dispatcher, calls, posted
+
+
+def test_http_source_targets_are_delivered(monkeypatch: pytest.MonkeyPatch) -> None:
+    from speech_to_speech.callback.dispatcher import _payload_to_config
+
+    targets = [_payload_to_config(_config_payload())]
+    dispatcher, calls, posted = _http_dispatcher(targets, monkeypatch)
+    dispatcher.dispatch(_event())
+    dispatcher.flush_pending()
+    assert calls == ["fetch"]
+    assert posted[0]["url"] == "http://ai-from-console/admin-api/ai/meeting/internal/transcript"
+    assert posted[0]["headers"]["X-Internal-Token"] == "console-tok"
+
+
+def test_http_empty_list_suppresses_env_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    # HTTP 成功但空列表 = 明确不投递；即使 env 兜底键齐备也不发（与 DB 空列表语义一致）。
+    monkeypatch.setenv("JAVA_CALLBACK_BASE", "http://ai-fallback")
+    monkeypatch.setenv("MEETING_INTERNAL_TOKEN", "tok")
+    dispatcher, calls, posted = _http_dispatcher([], monkeypatch)
+    dispatcher.dispatch(_event())
+    dispatcher.flush_pending()
+    assert calls == ["fetch"]
+    assert posted == []
+
+
+def test_http_failure_keeps_last_known_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 先成功一次拿到配置，其后拉取持续失败：stale-while-error，旧配置继续投递。
+    from speech_to_speech.callback.dispatcher import _payload_to_config
+
+    state = {"n": 0}
+
+    def fetch():
+        state["n"] += 1
+        if state["n"] == 1:
+            return [_payload_to_config(_config_payload())]
+        raise ConnectionError("console down")
+
+    posted: list[dict] = []
+    monkeypatch.setattr(
+        "speech_to_speech.callback.dispatcher.requests.post",
+        lambda url, **kwargs: posted.append({"url": url, **kwargs}) or _Resp(200))
+    dispatcher = CallbackDispatcher(session_factory=None, ttl_seconds=0, http_fetcher=fetch)
+    dispatcher.dispatch(_event())
+    dispatcher.flush_pending()
+    assert len(posted) == 1          # 第一次：成功拉取并投递
+    dispatcher.dispatch(_event())    # 第二次：拉取失败 → 保留旧配置
+    dispatcher.flush_pending()
+    assert state["n"] == 2
+    assert len(posted) == 2
+    assert posted[1]["headers"]["X-Internal-Token"] == "console-tok"
+
+
+def test_http_failure_without_cache_falls_to_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("JAVA_CALLBACK_BASE", "http://ai-fallback")
+    monkeypatch.setenv("MEETING_INTERNAL_TOKEN", "tok")
+    dispatcher, calls, posted = _http_dispatcher(ConnectionError("console down"), monkeypatch)
+    dispatcher.dispatch(_event())
+    dispatcher.flush_pending()
+    assert calls == ["fetch"]
+    assert posted[0]["url"] == "http://ai-fallback/admin-api/ai/meeting/internal/transcript"
+
+
+def test_http_failure_throttled_within_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 失败且从未成功过：默认 TTL 内的后续 dispatch 不再发请求（避免每次阻塞 2s），
+    # 直接 env 兜底；TTL 过后自动重试拉取。
+    monkeypatch.setenv("JAVA_CALLBACK_BASE", "http://ai-fallback")
+    monkeypatch.setenv("MEETING_INTERNAL_TOKEN", "tok")
+    posted: list[dict] = []
+    monkeypatch.setattr(
+        "speech_to_speech.callback.dispatcher.requests.post",
+        lambda url, **kwargs: posted.append({"url": url, **kwargs}) or _Resp(200))
+    fetch_calls: list[int] = []
+
+    def fetch():
+        fetch_calls.append(1)
+        raise ConnectionError("console down")
+
+    dispatcher = CallbackDispatcher(session_factory=None, ttl_seconds=60, http_fetcher=fetch)
+    dispatcher.dispatch(_event())
+    dispatcher.flush_pending()
+    dispatcher.dispatch(_event())   # TTL 内：不再拉取，直接 env 兜底
+    dispatcher.flush_pending()
+    assert len(fetch_calls) == 1    # 关键：失败节拍压制生效
+    assert len(posted) == 2         # 两次投递都走了 env 兜底目标
+    assert posted[1]["url"] == "http://ai-fallback/admin-api/ai/meeting/internal/transcript"
+
+
+def test_get_dispatcher_builds_http_mode_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    from speech_to_speech.callback import dispatcher as mod
+
+    monkeypatch.delenv("CONSOLE_CALLBACK_CONFIG_URL", raising=False)
+    monkeypatch.setenv("S2S_AGENT_CONSOLE_URL", "http://s2s-console:8000")
+    monkeypatch.setenv("S2S_ADMIN_TOKEN", "admintok")
+    mod.reset_dispatcher()
+    try:
+        d = mod.get_dispatcher()
+        assert d._session_factory is None  # noqa: SLF001
+        assert d._http_fetcher is not None  # noqa: SLF001
+        # 拉取器应指向派生的下发接口地址并携带内部令牌
+        captured: dict = {}
+
+        class _FakeResp:
+            status_code = 200
+            text = ""
+
+            def raise_for_status(self) -> None:
+                return None
+
+            def json(self) -> dict:
+                return {"data": {"revision": "x", "targets": [_config_payload()]}}
+
+        def fake_get(url, headers=None, timeout=None):
+            captured.update({"url": url, "headers": headers or {}, "timeout": timeout})
+            return _FakeResp()
+
+        monkeypatch.setattr("speech_to_speech.callback.dispatcher.requests.get", fake_get)
+        targets = d._effective_targets()
+        assert captured["url"] == "http://s2s-console:8000/api/v1/callbacks/targets/dispatch-config"
+        assert captured["headers"]["X-Internal-Token"] == "admintok"
+        assert [t.name for t in targets] == ["meeting-java"]
+    finally:
+        mod.reset_dispatcher()

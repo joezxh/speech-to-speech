@@ -132,6 +132,15 @@ class LiveKitWorkerRuntime:
                 port=HEALTH_PORT,
                 agent_name=AGENT_NAME,
                 load_threshold=LOAD_THRESHOLD,
+                # livekit-agents 0.12.x 的 WorkerOptions.ws_url 默认值是
+                # "ws://localhost:7880"（非空），而 SDK 只在 ws_url 为 falsy 时才
+                # 回落到 LIVEKIT_URL 环境变量（worker.py: `opts.ws_url = opts.ws_url or
+                # os.environ.get("LIVEKIT_URL") or ""`）—— 不显式传入，worker 就会永远
+                # 连 localhost，配置里的 LIVEKIT_URL 被默认值静默覆盖。
+                # 同理显式传 api_key / api_secret，避免默认值抢先。
+                ws_url=os.environ.get("LIVEKIT_URL", ""),
+                api_key=os.environ.get("LIVEKIT_API_KEY", ""),
+                api_secret=os.environ.get("LIVEKIT_API_SECRET", ""),
             ),
             devmode=False,
             loop=asyncio.get_running_loop(),

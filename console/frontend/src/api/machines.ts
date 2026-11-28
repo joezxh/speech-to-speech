@@ -30,6 +30,8 @@ export const createMachine = (payload: {
   role?: string
   gpu?: string
   gpuTotalGb?: number | null
+  platform?: string
+  driver?: string
   clusterId?: string
   profile?: string | null
 }): Promise<{ machine: Record<string, unknown>; registerCode: string }> =>
@@ -43,9 +45,10 @@ export const deleteMachine = (id: string): Promise<void> => api.delete(`/machine
 export const issueMachineCommand = (
   machineId: string,
   kind: string,
-  serviceId = ''
+  serviceId = '',
+  payload?: Record<string, unknown>
 ): Promise<MachineCommandView> =>
-  api.post<MachineCommandView>(`/machines/${machineId}/commands`, { kind, serviceId })
+  api.post<MachineCommandView>(`/machines/${machineId}/commands`, { kind, serviceId, payload })
 
 export const listMachineCommands = (machineId: string): Promise<MachineCommandView[]> =>
   api.get<MachineCommandView[]>(`/machines/${machineId}/commands`)

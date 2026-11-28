@@ -56,3 +56,16 @@ class Qwen3ASRSTTHandlerArguments:
         default=256,
         metadata={"help": "The maximum number of tokens to generate per turn. Default is 256."},
     )
+    # Beam search 生成参数：>1 时对每次转写启用 beam search，可在同音/近音词之间
+    # 择优，提升转写准确率；代价是解码延迟与显存占用随 beam 数近似线性增长，
+    # 实时语音场景请谨慎调高。默认 1 = 不启用 beam，与不设置时的行为完全一致。
+    qwen3_asr_gen_num_beams: int = field(
+        default=1,
+        metadata={
+            "help": (
+                "Number of beams for beam search decoding (>1 enables it). "
+                "Higher values can disambiguate homophones and improve accuracy, "
+                "but increase latency roughly linearly. Default is 1 (no beam search)."
+            )
+        },
+    )

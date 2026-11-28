@@ -11,11 +11,18 @@
 # Build:  docker build -f Dockerfile.console -t s2s-console:local .
 
 ARG BASE_IMAGE=python:3.12-slim
+# 前端构建阶段的 node 镜像与 npm registry 一并 ARG 化：受限网络下 Docker Hub
+# 直连不通、npmjs 源慢，可分别用
+#   --build-arg NODE_IMAGE=docker.m.daocloud.io/library/node:20-alpine
+#   --build-arg NPM_REGISTRY=https://registry.npmmirror.com
+# 覆盖，默认行为与之前完全一致。
+ARG NODE_IMAGE=node:20-alpine
+ARG NPM_REGISTRY=https://registry.npmjs.org
 
-FROM node:20-alpine AS frontend-build
+FROM ${NODE_IMAGE} AS frontend-build
 WORKDIR /build
 COPY console/frontend/package.json console/frontend/package-lock.json ./
-RUN npm ci
+RUN npm config set registry ${NPM_REGISTRY} && npm ci
 COPY console/frontend/ ./
 RUN npm run build
 

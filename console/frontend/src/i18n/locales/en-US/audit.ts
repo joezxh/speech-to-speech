@@ -7,6 +7,17 @@ export default {
     fieldPlaceholder: 'Field name (e.g. vad.min_silence_ms)',
     search: 'Query'
   },
+  cat: {
+    all: 'All',
+    machine: 'Machines',
+    lb: 'Load balancing',
+    deploy: 'Deploy',
+    release: 'Release',
+    voice: 'Voices',
+    cluster: 'Clusters',
+    template: 'Templates',
+    smart: 'Smart settings'
+  },
   columns: {
     time: 'Time',
     actor: 'Actor',

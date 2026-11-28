@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -23,15 +23,24 @@ _LINE_TS = re.compile(
 MAX_LINES_PER_TICK = 2000
 
 
+BACKEND_KINDS = ("stt", "llm", "tts")
+BACKEND_METRICS = ("calls", "errors", "ms_sum")
+
+
 @dataclass
 class Usage:
-    """`/v1/usage` 的累计值快照（agent 差分的输入）。"""
+    """`/v1/usage` 的累计值快照（agent 差分的输入）。
+
+    ``backends`` 是 per-backend 调用计数（stt/llm/tts × calls/errors/ms_sum），
+    与标量字段同为累计语义；旧版 pipeline 不带该段时按全零处理。
+    """
 
     input_tokens: int = 0
     output_tokens: int = 0
     responses: int = 0
     audio_duration_s: float = 0.0
     window_s: int = 0
+    backends: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -43,6 +52,7 @@ class UsageDelta:
     responses: int = 0
     audio_duration_s: float = 0.0
     window_s: int = 0
+    backends: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 def _delta(prev_value: float | int | None, cur_value: float | int) -> float | int:
@@ -52,6 +62,19 @@ def _delta(prev_value: float | int | None, cur_value: float | int) -> float | in
     return cur_value - prev_value
 
 
+def _backends_diff(prev: dict | None, cur: dict) -> dict[str, dict[str, int]]:
+    """per-backend 逐叶子差分；缺键/旧版 pipeline 按零处理，重置语义同标量。"""
+    result: dict[str, dict[str, int]] = {}
+    for kind in BACKEND_KINDS:
+        prev_kind = (prev or {}).get(kind) or {}
+        cur_kind = cur.get(kind) or {}
+        result[kind] = {
+            metric: int(_delta(prev_kind.get(metric), cur_kind.get(metric) or 0))
+            for metric in BACKEND_METRICS
+        }
+    return result
+
+
 def usage_diff(prev: Usage | None, cur: Usage) -> UsageDelta:
     return UsageDelta(
         input_tokens=int(_delta(prev.input_tokens if prev else None, cur.input_tokens)),
@@ -59,6 +82,7 @@ def usage_diff(prev: Usage | None, cur: Usage) -> UsageDelta:
         responses=int(_delta(prev.responses if prev else None, cur.responses)),
         audio_duration_s=float(_delta(prev.audio_duration_s if prev else None, cur.audio_duration_s)),
         window_s=cur.window_s,
+        backends=_backends_diff(getattr(prev, "backends", None), getattr(cur, "backends", None) or {}),
     )
 
 
@@ -158,7 +182,22 @@ def read_usage(settings=None) -> Usage:
         responses=int(payload.get("responses") or payload.get("responses_completed") or 0),
         audio_duration_s=float(payload.get("audio_duration_s") or 0.0),
         window_s=int(payload.get("window_s") or 0),
+        # per-backend 调用计数；旧版 pipeline 无该段 → 全零（差分安全）。
+        backends=_parse_backends(payload.get("backends")),
     )
+
+
+def _parse_backends(raw: object) -> dict[str, dict[str, int]]:
+    """`/v1/usage` 的 backends{} 段 → Usage.backends；坏形状按零处理。"""
+    source = raw if isinstance(raw, dict) else {}
+    result: dict[str, dict[str, int]] = {}
+    for kind in BACKEND_KINDS:
+        kind_payload = source.get(kind) if isinstance(source.get(kind), dict) else {}
+        result[kind] = {
+            metric: int(kind_payload.get(metric) or 0)
+            for metric in BACKEND_METRICS
+        }
+    return result
 
 
 def collect_workloads(settings=None, *, pipeline_vram_gb=None) -> list[dict]:

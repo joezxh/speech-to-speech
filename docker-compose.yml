@@ -52,7 +52,7 @@ services:
     # environment 下，会以更高优先级覆盖它（Compose: environment > env_file），
     # 平台就再也改不动那个值了。
     env_file:
-      - ./config/prod.env
+      - config/prod.env
     ports:
       # 唯一对外入口是 console :8000（spec 2026-11-16 §8）：8765 已取消 publish，
       # ASR / TTS / 声纹 / 情感由 console 的 /v1/audio/* 反代，实时链路走同源

@@ -8,7 +8,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterator
 from queue import Empty, Full, Queue
-from threading import BoundedSemaphore, Lock, Thread, current_thread
+from threading import BoundedSemaphore, Lock, RLock, Thread, current_thread
 from threading import Event as ThreadingEvent
 from time import perf_counter
 from typing import Any, Literal, Optional
@@ -312,6 +312,29 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         )
 
         self.user_role = user_role
+        # 保存连接参数供模型重载时受锁重建客户端（D8）；不含凭据日志。
+        self._connection_kwargs = {
+            "model_name": model_name,
+            "device": device,
+            "gen_kwargs": dict(gen_kwargs),
+            "base_url": base_url,
+            "api_key": api_key,
+            "stream": stream,
+            "user_role": user_role,
+            "cancel_scope": cancel_scope,
+            "speculative_turns": speculative_turns,
+            "disable_thinking": disable_thinking,
+            "reasoning_effort": reasoning_effort,
+            "request_timeout_s": request_timeout_s,
+            "stream_batch_sentences": stream_batch_sentences,
+            "enable_lang_prompt": enable_lang_prompt,
+            "compact_history": compact_history,
+            "audio_max_tokens": audio_max_tokens,
+            "audio_temperature": audio_temperature,
+            "audio_content_type": audio_content_type,
+            "audio_history_turns": audio_history_turns,
+            "provider_unavailable_message": provider_unavailable_message,
+        }
         if (
             api_key is None
             and not os.environ.get("OPENAI_API_KEY")
@@ -332,6 +355,49 @@ class BaseOpenAICompatibleHandler(BaseHandler[LLMIn, LLMOut], ABC):
         self._prefetch_workers: set[Thread] = set()
         self.compactor = build_compactor(self._build_compaction_generate_fn()) if compact_history else None
         self.warmup()
+
+    def connection_kwargs(self) -> dict[str, Any]:
+        """返回保存的连接参数的副本（模型重载复用，不暴露内部字典）。"""
+        return dict(getattr(self, "_connection_kwargs", {}))
+
+    def reconfigure(self, **overrides: Any) -> None:
+        """受锁重建远程客户端：替换 client，清空异步客户端/运行器与派生状态。
+
+        历史对话保留（不重置 chat）：重载模型不应丢失当前会话上下文。
+        """
+        lock = getattr(self, "_reconfigure_lock", None)
+        if lock is None:
+            lock = RLock()
+            self._reconfigure_lock = lock
+        with lock:
+            kwargs = self.connection_kwargs()
+            kwargs.update(overrides)
+            self._connection_kwargs = dict(kwargs)
+            old_client = getattr(self, "client", None)
+            close = getattr(old_client, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:  # noqa: BLE001 - 旧客户端关闭失败不影响重建
+                    pass
+            self.client = self._make_sync_client(**kwargs)
+            self._async_client = None
+            self._async_runner = None
+            self._extra_body = self._build_extra_body(
+                kwargs.get("base_url"),
+                kwargs.get("disable_thinking", True),
+                kwargs.get("reasoning_effort"),
+            )
+
+    def _make_sync_client(self, **kwargs: Any) -> Any:
+        """构造同步 OpenAI 客户端；与 setup 使用同一参数。"""
+        from openai import OpenAI
+
+        return OpenAI(
+            api_key=kwargs.get("api_key"),
+            base_url=kwargs.get("base_url"),
+            http_client=DefaultHttpx2Client(limits=_connection_limits()),
+        )
 
     @staticmethod
     def _is_official_openai(base_url: Optional[str]) -> bool:

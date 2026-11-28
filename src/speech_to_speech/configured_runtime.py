@@ -358,6 +358,12 @@ def build_configured_server(
         args = next(iter(arguments.values()))
         event = result._events[0]
         pool = next(iter(result.pools.values()))
+        # 内置情感端点需要一个 SenseVoice handler：STT 不是 SenseVoice（qwen3-asr /
+        # whisper / …）时池里没有，内嵌运行时在独立线程里加载一个（崩溃隔离：加载失败
+        # 只让情感端点不可用，转写链路不受影响）。池里已有 SenseVoice 时它自己不上。
+        from speech_to_speech.embedded_ser import start_embedded_ser
+
+        start_embedded_ser(pool)
         # The embedded agent shares the pipeline event: ConfiguredRuntime.stop()
         # sets it, so the agent never keeps the shutdown waiting.
         agent = None
@@ -367,10 +373,14 @@ def build_configured_server(
                 pool_usage_provider,
             )
 
+            from speech_to_speech.api.openai_realtime.reload_assembly import build_reload_provider
+
+            reload_provider, _coordinator = build_reload_provider(pool)
             agent = build_embedded_agent(
                 agent_options,
                 stop_event=event,
                 usage_provider=pool_usage_provider(pool),
+                reload_provider=reload_provider,
             )
         result.server = RealtimeServer(
             stop_event=event,

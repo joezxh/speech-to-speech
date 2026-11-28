@@ -29,6 +29,6 @@ console/frontend/dist
 !console/frontend/dist
 !console/frontend/dist/**
 
-# Development-only console config: contains Windows paths and a dev PostgreSQL URL.
+# Development-only console config.local: contains Windows paths and a dev PostgreSQL URL.
 # Must never be baked into the all-in-one / console images.
 console/backend/.env

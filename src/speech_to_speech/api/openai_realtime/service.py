@@ -222,6 +222,55 @@ class UsageMetrics(BaseModel):
             setattr(self, field, info.default)
 
 
+class BackendCallMetrics(BaseModel):
+    """Additive per-backend call counters (STT / LLM / TTS).
+
+    ``ms_sum`` is the sum of per-call latencies so any window average can be
+    derived downstream as ``ms_sum / calls`` without losing the distribution.
+    Numeric leaves merge leaf-wise in usage._merge, so the pool aggregation
+    sums these across pipeline units for free.
+    """
+
+    calls: int = 0
+    errors: int = 0
+    ms_sum: int = 0
+
+    def record(self, seconds: float | None = None, *, error: bool = False) -> None:
+        """Count one call; ``seconds`` is the measured latency (None = unknown)."""
+        self.calls += 1
+        if error:
+            self.errors += 1
+        if seconds is not None and seconds >= 0:
+            self.ms_sum += int(seconds * 1000)
+
+
+class BackendUsageMetrics(BaseModel):
+    stt: BackendCallMetrics = Field(default_factory=BackendCallMetrics)
+    llm: BackendCallMetrics = Field(default_factory=BackendCallMetrics)
+    tts: BackendCallMetrics = Field(default_factory=BackendCallMetrics)
+
+    def record_turn(
+        self,
+        *,
+        stt_s: float | None = None,
+        llm_s: float | None = None,
+        tts_s: float | None = None,
+        error: bool = False,
+    ) -> None:
+        """Accumulate one finalized turn across the backends.
+
+        A backend is only charged when its latency was measured: None means
+        the backend was not invoked (text turn → no STT) or never reached
+        (cancelled before audio), so charging it would dilute ms_sum/calls.
+        """
+        if stt_s is not None:
+            self.stt.record(stt_s, error=error)
+        if llm_s is not None:
+            self.llm.record(llm_s, error=error)
+        if tts_s is not None:
+            self.tts.record(tts_s, error=error)
+
+
 class GlobalUsageMetrics(UsageMetrics):
     """Server-wide metrics that extend per-response counters with
     connection and error tracking."""
@@ -230,6 +279,9 @@ class GlobalUsageMetrics(UsageMetrics):
     # connection duration in seconds.
     # latency tts, llm, vad, stt (mean, max, p90)
     errors_by_type: dict[str, int] = Field(default_factory=dict)
+    # per-backend call counters (window deltas upstream); not part of the
+    # per-response UsageMetrics rollup, they only move via record_turn().
+    backends: BackendUsageMetrics = Field(default_factory=BackendUsageMetrics)
 
     def record_error(self, error_type: str) -> None:
         self.errors_by_type[error_type] = self.errors_by_type.get(error_type, 0) + 1

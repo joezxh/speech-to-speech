@@ -8,6 +8,41 @@
 #   - sox + nltk data baked in (offline, avoid nltk.org SSRF hang)
 #   - console/backend/.env excluded via .dockerignore and removed defensively
 #
+# Included runtime capabilities (aligned with config/prod.yaml and
+# config.split.2/prod.yaml — the latter is the container-path variant):
+#   - STT  : qwen3-asr 1.7B (Qwen3-ASR-1.7B, transformers, cuda). No extra pip
+#            package; weights must be mounted at S2S_ASR_MODEL_DIR.
+#   - SER  : embedded SenseVoiceSmall via funasr (EmbeddedSerRuntime), so
+#            /recognize + /v1/audio/emotion stay available even though
+#            qwen3-asr has no native emotion labels. Weights at
+#            S2S_SENSEVOICE_MODEL_DIR. Shared by the pipeline and the livekit
+#            worker's HttpSerProvider.
+#   - TTS  : voxCPM2-2B (voxcpm backend, 48 kHz -> 16 kHz via soxr, streaming).
+#            Weights at S2S_TTS_MODEL_DIR.
+#   - VAD  : silero (mounted at /opt/silero-vad by compose).
+#   - Diarization: Nemotron-3-Diarization streaming (transformers +
+#            AutoModelForAudioFrameClassification, already in default deps).
+#            Enabled by pipelines.prod.options.diarization in YAML; weights
+#            mounted under /root/.cache/nemotron3-diarization. The livekit
+#            worker's separate HTTP path (DIARIZATION_BASE_URL) is optional.
+#   - LiveKit room transcription: embedded worker thread (livekit-agents
+#            0.12.x + livekit-plugins-silero + av 12.x); enabled by
+#            runtime.livekit_worker.enabled: true.
+#   - Visemes (STV): wav2vec2-ljspeech-gruut via transformers, weights at
+#            S2S_STV_MODEL_DIR; soft-fail if absent.
+#   - Voiceprint embeddings: in-process /v1/audio/embeddings* (source module,
+#            speaker encoder weights at VOICEPRINT_ENCODER_DIR).
+#   - Callback dispatcher + external SER/ASR providers: requests.
+#   - Console backend deps + built SPA + offline nltk data + sox +
+#     qwen_tts rope_theta compat patch.
+#
+# Weight directories are NEVER baked in — compose must bind-mount ./cache to
+# /root/.cache/ (or a named volume s2s-model-cache preloaded with the same
+# layout). Mount config.split.2 (or config/prod.yaml) at /app/config for the
+# qwen3-asr + voxcpm + diarization + livekit feature set; config.container/prod.yaml
+# (the current docker-compose.allinone.yml default) is the older sense-voice +
+# qwen3-tts profile.
+#
 # Build:  docker build -f Dockerfile.allinone -t s2s-allinone:local .
 
 ARG BASE_IMAGE=ccr.ccs.tencentyun.com/llm-basic/python-torch:cu130
@@ -31,6 +66,14 @@ ENV PYTHONUNBUFFERED=1
 ENV S2S_AGENT_TARGET_YAML=/app/config/prod.yaml \
     S2S_AGENT_DECLARATION=/app/config/agent.yaml \
     S2S_AGENT_DEPLOYMENT_MANIFEST=/app/config/deployment-manifest.json
+
+# 权重路径默认值（与 config.split.2/prod.env 一致）。compose 的 env_file / environment
+# 会覆盖这里的值；prod.yaml 的 {env: NAME} 解析因此不会因为缺 key 在启动期硬失败。
+# 仅路径，无密钥：LIVEKIT_API_KEY/SECRET、VOICEPRINT_API_KEY 等必须由 env_file 注入。
+ENV S2S_ASR_MODEL_DIR=/root/.cache/qwen3-asr-model-hf \
+    S2S_TTS_MODEL_DIR=/root/.cache/voxcpm2-2b \
+    S2S_SENSEVOICE_MODEL_DIR=/root/.cache/sensevoice-small \
+    S2S_STV_MODEL_DIR=/root/.cache/wav2vec2-ljspeech-gruut
 
 # cu130 PyTorch index (NOT cu128) — mirrors Dockerfile.cu130:32 exactly.
 ENV UV_INDEX="https://download.pytorch.org/whl/cu130 https://pypi.tuna.tsinghua.edu.cn/simple https://mirrors.aliyun.com/pypi/simple"
@@ -80,10 +123,27 @@ RUN --mount=type=cache,target=/root/.cache/uv echo "[build] upgrading packaging/
     UV_TIMEOUT=120 uv pip install --index-strategy unsafe-best-match --python /usr/src/app/.venv/bin/python --upgrade "packaging>=24.2" "setuptools>=77.0.3" "wheel"
 RUN --mount=type=cache,target=/root/.cache/uv echo "[build] installing project (editable, no-deps, no-build-isolation)" && \
     uv pip install -e . --python /usr/src/app/.venv/bin/python --no-deps --no-build-isolation
-# prod.yaml selects the sense-voice STT backend, which needs funasr.
-RUN --mount=type=cache,target=/root/.cache/uv echo "[build] installing sensevoice extra" && \
+# 运行期可选组件，对齐 config.split.2/prod.yaml + prod.env 的实际组合：
+#   - funasr                  : embedded SER 加载 SenseVoiceSmall（STT=qwen3-asr 时
+#                               补齐情感端点）；旧 sense-voice STT 后端同样依赖它。
+#   - voxcpm                  : TTS backend=voxcpm（VoxCPM2-2B），权重运行时挂载。
+#   - livekit-agents 0.12.x   : runtime.livekit_worker.enabled=true 的嵌入式房间转写。
+#   - livekit-plugins-silero  : worker VAD（0.12.21 已无 [silero] extra，插件单独装）。
+#   - av>=12.3,<13            : livekit extra 的钉版；venv 无 aiortc（仅 dev 依赖要求
+#                               av>=14），voxcpm 也不碰 av，无冲突。
+#   - requests                : worker 的 ASR/SER/分离 provider 与 CallbackDispatcher。
+# qwen3-asr 与 Nemotron diarization 无专属 extra：default 依赖的 transformers>=5.18
+# 已覆盖，权重全部走卷挂载。这些包不进 uv sync 的全图解析（上方已删 extras 保可解），
+# 与本地 PyCharm 部署同款事后补装。
+RUN --mount=type=cache,target=/root/.cache/uv echo "[build] installing runtime extras (funasr / voxcpm / livekit)" && \
     UV_TIMEOUT=180 UV_CONNECT_TIMEOUT=60 UV_RETRIES=8 \
-    uv pip install --index-strategy unsafe-best-match --python /usr/src/app/.venv/bin/python "funasr>=1.1.6"
+    uv pip install --index-strategy unsafe-best-match --python /usr/src/app/.venv/bin/python \
+        "funasr>=1.1.6" \
+        "voxcpm" \
+        "livekit-agents>=0.12,<0.13" \
+        "livekit-plugins-silero>=0.7,<0.8" \
+        "av>=12.3.0,<13" \
+        "requests>=2.31"
 
 # Console app + built SPA. The dev .env is excluded by .dockerignore; remove defensively.
 COPY console/backend /app/console
@@ -95,15 +155,54 @@ ENV PYTHONPATH=/app/console
 COPY cache/nltk_data /root/nltk_data
 RUN chmod -R 755 /root/nltk_data && chown -R root:root /root/nltk_data
 
-# faster-qwen3-tts transformers-5.x compat: MimiConfig has no rope_theta.
-RUN sed -i 's/^    base = config\.rope_theta$/    base = getattr(config, "rope_theta", 10000.0)/' \
-    /usr/src/app/.venv/lib/python3.12/site-packages/qwen_tts/_transformers_compat.py
+# faster-qwen3-tts 的 transformers-5.x 兼容补丁：MimiConfig 无 rope_theta。
+# TTS 默认已走 voxcpm，但 faster-qwen3-tts 仍在 default 依赖里，保留补丁以免切回
+# qwen3-tts 时 AttributeError；文件缺失则跳过，避免上游目录调整导致构建硬失败。
+RUN if [ -f /usr/src/app/.venv/lib/python3.12/site-packages/qwen_tts/_transformers_compat.py ]; then \
+        sed -i 's/^    base = config\.rope_theta$/    base = getattr(config, "rope_theta", 10000.0)/' \
+            /usr/src/app/.venv/lib/python3.12/site-packages/qwen_tts/_transformers_compat.py; \
+    else \
+        echo "[build] qwen_tts compat file absent, skip rope_theta patch"; \
+    fi
+
+# 构建期依赖自检：新增能力缺包在 build 阶段暴露，不留到运行期才 ImportError。
+# find_spec 只定位模块、不加载模型/权重，保持构建快速且离线安全。
+RUN /usr/src/app/.venv/bin/python - <<'PY'
+import importlib.util
+
+REQUIRED = {
+    "transformers": "qwen3-asr ASR / Nemotron-3 diarization / STV visemes",
+    "funasr": "embedded SenseVoiceSmall SER",
+    "voxcpm": "VoxCPM2-2B TTS backend",
+    "livekit.agents": "embedded LiveKit room worker",
+    "livekit.plugins.silero": "worker VAD",
+    "requests": "worker providers / callback dispatcher",
+}
+
+
+def present(name: str) -> bool:
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError, ModuleNotFoundError):
+        return False
+
+
+missing = [f"{name} ({why})" for name, why in REQUIRED.items() if not present(name)]
+if missing:
+    raise SystemExit("[build] missing runtime dependencies: " + "; ".join(missing))
+print("[build] runtime dependencies verified: " + ", ".join(REQUIRED))
+PY
 
 RUN rm -rf /root/.cache/uv && \
     find /usr/src/app/.venv -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null; \
     true
 
-EXPOSE 8765
+# 8765  : realtime WS + console UI/API + ASR/TTS/SER/voiceprint REST endpoints
+# 18081 : embedded LiveKit worker health probe (LIVEKIT_WORKER_HEALTH_PORT)
+EXPOSE 8765 18081
 
 # No supervisord: compose supplies `serve ... --with-agent --with-console`.
+# livekit worker / diarization / embedded SER are switched on by the mounted
+# YAML (runtime.livekit_worker.enabled, pipelines.prod.options.diarization)
+# and the matching env vars, not by extra CLI flags here.
 ENTRYPOINT ["speech-to-speech"]

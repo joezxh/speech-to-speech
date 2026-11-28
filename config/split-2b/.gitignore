@@ -1,0 +1,7 @@
+# config.local.split.0.6b.2/prod.env 含真实凭据（GPUStack key、声纹 key、JWT 密钥），不入库。
+# 可提交的占位版是 prod.env.example。
+prod.env
+prod.env.tmp
+prod.env.bak.*
+# 本地部署口径的 env（同样含真实凭据）。
+prod.env.local

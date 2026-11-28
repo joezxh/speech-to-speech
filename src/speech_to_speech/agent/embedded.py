@@ -16,6 +16,7 @@ from __future__ import annotations
 import threading
 import time
 from collections.abc import Callable
+from typing import Protocol
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -59,6 +60,14 @@ AGENT_ACTIONS = (
 )
 
 
+class ModelReloader(Protocol):
+    """模型重载回调：由 pipeline 构造时注入，agent 不依赖 pool 全局。"""
+
+    def __call__(self, request: dict, on_progress: Callable[[dict], None]) -> str:
+        """投递重载任务到独立工作线程；立即返回任务 id。"""
+        ...
+
+
 class AgentBusyError(RuntimeError):
     """另一个 agent 动作正在执行；调用方应稍后重试。"""
 
@@ -90,6 +99,7 @@ class EmbeddedAgent:
         client: AgentClient | None = None,
         embedded: bool = True,
         usage_provider: Callable[[], Usage] | None = None,
+        reload_provider: ModelReloader | None = None,
     ) -> None:
         self.settings = settings
         self.embedded = embedded
@@ -98,6 +108,7 @@ class EmbeddedAgent:
         self.stop_event = stop_event if stop_event is not None else threading.Event()
         self._client = client
         self._usage_provider = usage_provider
+        self._reload_provider = reload_provider
         # 单步动作的 single-flight 锁：命令「领到即被 console 标记 dispatched」，
         # 重复执行有副作用（重启、排空），所以并发触发直接拒绝而不是排队。
         self._lock = threading.Lock()
@@ -274,7 +285,7 @@ class EmbeddedAgent:
 
         receipts = self._poll_commands(token)
         logs = self._maybe_upload_logs(token)
-        latency_rows = self._tail_latency()
+        latency_rows = self._tail_latency(token)
 
         with self._state_lock:
             self._ticks += 1
@@ -291,7 +302,11 @@ class EmbeddedAgent:
     def _poll_commands(self, token: str) -> list[dict]:
         try:
             return command_executor.poll_and_run_detailed(
-                self.client, token, self.settings, allow_restart=not self.embedded
+                self.client,
+                token,
+                self.settings,
+                allow_restart=not self.embedded,
+                reload_provider=self._reload_provider,
             )
         except Exception as exc:  # noqa: BLE001 - 命令失败不影响后续采集
             logger.warning("agent command poll failed: {}", exc)
@@ -312,8 +327,12 @@ class EmbeddedAgent:
             logger.warning("agent log upload failed: {}", exc)
             return 0
 
-    def _tail_latency(self) -> int:
-        """断点续读本机 pipeline 日志里的时延行；只推进游标，暂不上报。"""
+    def _tail_latency(self, token: str) -> int:
+        """断点续读本机 pipeline 日志里的时延行并上报 console（A5）。
+
+        上报成功才推进游标：失败时下一轮整批重读，console 按
+        response_key+turn_revision 幂等去重，不会重复入库。
+        """
 
         try:
             offset, rows = collectors.tail_turn_latency(
@@ -321,6 +340,14 @@ class EmbeddedAgent:
             )
         except Exception:  # noqa: BLE001 - 采集失败不影响心跳
             return 0
+        if not rows:
+            self._turn_offset = offset
+            return 0
+        try:
+            self.client.report_turn_latency(token, rows)
+        except Exception as exc:  # noqa: BLE001 - 上报失败下一轮重试，游标不动
+            logger.warning("agent turn-latency upload failed: {}", exc)
+            return len(rows)
         self._turn_offset = offset
         return len(rows)
 
@@ -425,6 +452,7 @@ class EmbeddedAgent:
                 self.settings,
                 limit=limit,
                 allow_restart=not self.embedded,
+                reload_provider=self._reload_provider,
             )
             with self._state_lock:
                 self._last_command_at = time.monotonic()
@@ -444,6 +472,7 @@ class EmbeddedAgent:
                 self.client,
                 token,
                 not self.embedded,
+                self._reload_provider,
             )
             with self._state_lock:
                 self._last_command_at = time.monotonic()
@@ -516,7 +545,10 @@ class EmbeddedAgent:
             "agent_version": pipeline_inspect.package_version(),
             "protocol_version": 1,
             "capabilities": list(AGENT_CAPABILITIES),
-            "actions": list(AGENT_ACTIONS),
+            "actions": [
+                *AGENT_ACTIONS,
+                *({"model_reload"} if self._reload_provider is not None else []),
+            ],
             "embedded": self.embedded,
             # 内嵌形态下 pipeline 就是当前进程，从进程内部重启自己不可行。
             "restart_supported": not self.embedded,
@@ -565,6 +597,7 @@ class EmbeddedAgent:
             "responses": usage.responses,
             "audio_duration_s": usage.audio_duration_s,
             "window_s": usage.window_s,
+            "backends": usage.backends,
         }
 
     def _pipeline_reachable(self) -> bool:

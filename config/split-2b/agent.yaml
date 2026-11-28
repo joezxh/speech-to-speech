@@ -1,0 +1,5 @@
+# s2s-agent 容器内负载声明（S2S_AGENT_DECLARATION 指向本文件）。
+# pipeline 负载由探测 GET /v1/pool 自动补全，这里只声明 pipeline 之外的负载。
+pipeline_port: 8765
+
+workloads: []

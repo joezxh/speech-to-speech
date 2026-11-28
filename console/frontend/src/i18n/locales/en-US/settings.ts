@@ -1,0 +1,20 @@
+export default {
+  title: 'Settings',
+  desc: 'Conversation-level hot settings and machine-scoped preferences. Voice & audio device preferences stay in the settings overlay of the Voice page.',
+  machine: { title: 'Pick a machine', hint: 'Parameters below are filtered by the selected machine' },
+  hotTitle: 'Conversation hot settings',
+  hotHint: 'Current params from {machine}; whitelist edits land live via session.update',
+  hotNote: 'Greyed params (voice/model…) are outside the hot whitelist: they land with the next template save or publish.',
+  hotCol: { param: 'Parameter', current: 'Machine current', value: 'New value', patch: 'session.update path', source: 'Effect' },
+  hotLive: 'Live hot-update',
+  hotCold: 'Not whitelisted',
+  hotApply: 'Apply hot update',
+  hotApplying: 'Applying…',
+  hotNothingToApply: 'Nothing whitelisted to apply.',
+  hotApplied: 'Sent to {accepted}/{total} sessions',
+  hotFailed: '{n} failed',
+  hotRejected: 'Not sent (outside whitelist): {names}',
+  pickMachine: 'Pick a machine above first.',
+  smartTitle: 'Smart settings',
+  smartApplyNote: 'AI recommendations land in the table above; press "Apply hot update" to send them.'
+}

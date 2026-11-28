@@ -3,6 +3,7 @@ from app.db.base import Base
 from .backend_metric import ParamBackendMetric
 from .callbacks import CallbackDeliveryLog, CallbackTarget
 from .comments import apply_comments
+from .front_setting import ParamFrontSetting
 from .lb import ParamLbAffinity, ParamLbRouteLog, ParamLbRule
 from .machine import ParamMachine, ParamMachineWorkload
 from .machine_command import ParamMachineCommand
@@ -21,6 +22,7 @@ from .param_version import ParamVersion
 from .release import ParamRelease
 from .session_record import ParamSessionClip, ParamSessionMessage, ParamSessionRecord
 from .template import ParamTemplate
+from .tool import CalendarEvent, ConsoleTool
 from .token_metric import ParamTokenMetric
 from .turn_latency import TurnLatencyRow
 from .voice import Voice
@@ -28,6 +30,8 @@ from .voice import Voice
 __all__ = [
     "CallbackDeliveryLog",
     "CallbackTarget",
+    "CalendarEvent",
+    "ConsoleTool",
     "ParamAgentConfigVersion",
     "ParamAllocatorLease",
     "ParamBackendMetric",
@@ -35,6 +39,7 @@ __all__ = [
     "ParamCluster",
     "ParamConfig",
     "ParamDraft",
+    "ParamFrontSetting",
     "ParamInstance",
     "ParamInstanceMetric",
     "ParamInstanceRuntime",

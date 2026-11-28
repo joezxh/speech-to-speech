@@ -16,6 +16,7 @@ import ErrorBanner from '@/components/ErrorBanner.vue'
 import { AppError } from '@/api/client'
 import { issueMachineCommand, listMachineCommands } from '@/api/machines'
 import type { MachineCommandView, MachineRow, CommandKind, WorkloadRow } from '@/views/machines.viewmodel'
+import { buildReloadPayload, RELOAD_MODULES, type ReloadModule } from '@/views/machines.viewmodel'
 import { useLogsStore } from '@/stores/logs'
 import { useMachineStore } from '@/stores/machine'
 import {
@@ -52,6 +53,7 @@ const formOpen = ref(false)
 const formMode = ref<'create' | 'edit'>('create')
 const formTarget = ref<MachineRow | null>(null)
 const testTarget = ref<MachineRow | null>(null)
+const reloadModules = ref<ReloadModule[]>([...RELOAD_MODULES])
 
 const DOT_STATE: Record<string, 'ok' | 'warn' | 'draining' | 'bad'> = {
   ok: 'ok',
@@ -75,6 +77,8 @@ const columns: PColumn[] = [
   { key: 'machineId', label: t('machines.admin.columns.machine'), width: 190, sticky: 'start', cls: 'mono' },
   { key: 'role', label: t('machines.admin.columns.role'), width: 80 },
   { key: 'gpu', label: t('machines.admin.columns.gpu'), width: 110 },
+  { key: 'platform', label: t('machines.admin.columns.platform'), width: 90 },
+  { key: 'driver', label: t('machines.admin.columns.driver'), width: 100, cls: 'mono' },
   { key: 'state', label: t('machines.admin.columns.state'), width: 130 },
   { key: 'registryMode', label: t('machines.admin.columns.registry'), width: 80 },
   { key: 'agentVersion', label: t('machines.admin.columns.agentVersion'), width: 110, cls: 'mono' },
@@ -119,13 +123,14 @@ const activeKinds = (machineId: string): string[] =>
   (commands.value[machineId] ?? [])
     .filter((command) => command.status === 'pending' || command.status === 'dispatched')
     .map((command) => command.kind)
-const actionsFor = (machine: MachineRow) => commandActions(machine.state, activeKinds(machine.machineId))
+const actionsFor = (machine: MachineRow) => commandActions(machine.state, activeKinds(machine.machineId), true)
 
 async function issue(machine: MachineRow, kind: CommandKind, serviceId = ''): Promise<void> {
   error.value = ''
   notice.value = ''
   try {
-    await issueMachineCommand(machine.machineId, kind, serviceId)
+    const payload = kind === 'model_reload' ? buildReloadPayload(reloadModules.value) : undefined
+    await issueMachineCommand(machine.machineId, kind, serviceId, payload)
     notice.value = t('machines.action.issued', { kind: t(`machines.action.${kind}`), id: machine.machineId })
     commands.value[machine.machineId] = await listMachineCommands(machine.machineId)
   } catch (caught) {
@@ -215,6 +220,10 @@ onBeforeUnmount(() => clearInterval(pollTimer))
               <td>{{ row.role }}</td>
               <td>{{ row.gpu || '—' }}</td>
               <td>
+                <PBadge kind="equal" :text="t(`templates.platform.${row.platform || 'gpu'}`)" />
+              </td>
+              <td>{{ row.driver || '—' }}</td>
+              <td>
                 <PBadge kind="equal" :text="t(`machines.status.${row.state}`)" />
               </td>
               <td>{{ t(`machines.admin.registry.${row.registryMode === 'auto' ? 'auto' : 'manual'}`) }}</td>
@@ -270,6 +279,12 @@ onBeforeUnmount(() => clearInterval(pollTimer))
                   <span v-for="metric in nodeMetricSummary(row)" :key="metric.key">
                     {{ t(`machines.admin.nodeMetric.${metric.key}`) }}: {{ metric.value }}
                   </span>
+                </div>
+                <div class="svc-sum">
+                  <strong>{{ t('machines.action.model_reload') }}</strong>
+                  <label v-for="module in RELOAD_MODULES" :key="module">
+                    <input v-model="reloadModules" type="checkbox" :value="module" /> {{ t(`machines.action.reloadModule.${module}`) }}
+                  </label>
                 </div>
                 <div class="svc-sum">
                   <strong>{{ t('machines.admin.deploySummary') }}</strong>

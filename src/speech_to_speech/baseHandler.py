@@ -50,6 +50,7 @@ class BaseHandler(Generic[InT, OutT]):
         self.stop_event = stop_event
         self.queue_in = queue_in
         self.queue_out = queue_out
+        self.retired = False
         self.pipeline_index: int | None = None
         # Shared monitor used by model handlers (TTS / STT / LLM) to record
         # per-call latency, resource usage and input/output payloads.
@@ -123,6 +124,14 @@ class BaseHandler(Generic[InT, OutT]):
         """Forward ordered events, allowing downstream stages to flush audio first."""
         yield event
 
+    def retire(self) -> None:
+        """退役标记：线程退出但不向 queue_out 写 PIPELINE_END。
+
+        模型重载时单个 handler 被替换；若写哨兵会级联停掉下游与发送循环。
+        """
+        self.retired = True
+        self.stop_event.set()
+
     def run(self) -> None:
         try:
             self._run_loop()
@@ -130,7 +139,8 @@ class BaseHandler(Generic[InT, OutT]):
             try:
                 self.cleanup()
             finally:
-                self.queue_out.put(PIPELINE_END)
+                if not getattr(self, "retired", False):
+                    self.queue_out.put(PIPELINE_END)
 
     def _run_loop(self) -> None:
         if self.pipeline_index is not None:

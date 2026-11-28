@@ -25,7 +25,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       PIPELINE_BASE_URL: http://s2s-pipeline:8765
     volumes:
-      - ./config.split:/app/config
+      - ./config.split.0.6b:/app/config
       - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -58,8 +58,8 @@ services:
       - s2s-model-cache:/root/.cache/
       - ./silero-vad:/opt/silero-vad:ro
       # 与 console 挂同一个 config 目录：prod.yaml 的 num_pipelines 等参数
-      # 必须两个容器读到同一份，否则 pipeline 仍按 config.container 的旧值启动。
-      - ./config.split:/app/config
+      # 必须两个容器读到同一份，否则 pipeline 仍按 config.container.0.6b 的旧值启动。
+      - ./config.split.0.6b:/app/config
       - ./data:/app/data
     depends_on:
       s2s-console:

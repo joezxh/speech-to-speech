@@ -46,6 +46,8 @@ export const useMachineStore = defineStore('machine', {
       role?: string
       gpu?: string
       gpuTotalGb?: number | null
+      platform?: string
+      driver?: string
       clusterId?: string
       profile?: string | null
     }): Promise<string> {

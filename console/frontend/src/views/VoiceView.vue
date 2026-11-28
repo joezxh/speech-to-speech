@@ -29,9 +29,12 @@ import { useShellStore } from '@/stores/shell'
 import { decidePostSave, toSavePayload, usableEntriesOf, useSessionRecordsStore } from '@/stores/sessionRecords'
 import { useVoiceStore } from '@/stores/voice'
 import type { VoiceStatus } from '@/stores/voice'
+import { useToolsStore } from '@/stores/tools'
+import { buildVoiceToolDefs, describeToolCall, serializeToolResult } from './voiceTools.viewmodel'
 import { useToast } from '@/composables/useToast'
 
 const store = useVoiceStore()
+const toolsStore = useToolsStore()
 const shell = useShellStore()
 const records = useSessionRecordsStore()
 const toast = useToast()
@@ -142,8 +145,6 @@ const CONNECT_ERRORS: Record<string, string> = {
   aborted: ''
 }
 
-const serverKey = computed(() => store.config.search)
-const searchAvailable = computed(() => serverKey.value || Boolean(searchKey.value))
 /**
  * 设置里展示的其实不是“用户输入的地址”，而是本次会话真正 dial 的那一刻（demo 也把
  * 这个字段做成只读）。直连模式列出 ws 地址，LB 模式列出授权接口，二者都不是猜的。
@@ -178,26 +179,9 @@ const subCaption = computed(() =>
 )
 const captionTone = computed<'info' | 'error'>(() => (micError.value || notice.value || store.state === 'error' ? 'error' : 'info'))
 
-const tools = computed<ToolDef[]>(() => {
-  const list: ToolDef[] = []
-  if (store.settings.tools.web && searchAvailable.value) {
-    list.push({
-      type: 'function',
-      name: 'web_search',
-      description: 'Search the web for current or factual information. Returns results with titles, snippets and URLs.',
-      parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] }
-    })
-  }
-  if (store.settings.tools.camera) {
-    list.push({
-      type: 'function',
-      name: 'camera_snapshot',
-      description: "Capture a frame from the user's webcam when they refer to something visual.",
-      parameters: { type: 'object', properties: {}, required: [] }
-    })
-  }
-  return list
-})
+const tools = computed<ToolDef[]>(() =>
+  buildVoiceToolDefs(toolsStore.enabledTools, store.settings.tools.camera)
+)
 
 const limitCopy = computed(() => {
   const paid = store.me.tier === 'pro' || store.me.tier === 'org'
@@ -235,6 +219,11 @@ const {
 } = useBubbles()
 
 async function runTool(call: ToolCall) {
+  if (call.name !== 'camera_snapshot' && toolsStore.rows.some((row) => row.id === call.name)) {
+    const args = JSON.parse(call.arguments || '{}') as Record<string, unknown>
+    const result = await toolsStore.invoke(call.name, args)
+    return { output: serializeToolResult(result) }
+  }
   if (call.name === 'web_search') {
     const args = JSON.parse(call.arguments || '{}') as { query?: string }
     return { output: await search(args.query ?? '', searchKey.value, store.grant?.sessionId ?? '') }
@@ -251,16 +240,7 @@ async function runTool(call: ToolCall) {
 
 /** 气泡只搬一句话；完整 Input/Output 由 `store.applyToolCall/Result` 落进历史条目。 */
 function describeTool(call: ToolCallRecord): string {
-  if (call.name === 'web_search') {
-    try {
-      const args = JSON.parse(call.arguments || '{}') as { query?: string }
-      return `Searching for “${args.query ?? ''}”`
-    } catch {
-      return 'Searching the web'
-    }
-  }
-  if (call.name === 'camera_snapshot') return 'Capturing a camera frame'
-  return `Running ${call.name}`
+  return describeToolCall(call as ToolCall, toolsStore.rows)
 }
 
 async function connect(): Promise<void> {
@@ -634,8 +614,13 @@ function onToolsChange(): void {
   else stopCamera()
 }
 
-/** 右栏路由 tab 的工具开关：与 SettingsDialog 走同一条 onToolsChange 链路。 */
-function onPanelToolChange(key: 'web' | 'camera', value: boolean): void {
+/** 右栏路由 tab 的工具开关：web 交给工具注册表，camera 仍是浏览器本地能力。 */
+async function onPanelToolChange(key: 'web' | 'camera', value: boolean): Promise<void> {
+  if (key === 'web') {
+    await toolsStore.toggle('tool-search', value)
+    onToolsChange()
+    return
+  }
   store.settings.tools[key] = value
   onToolsChange()
 }
@@ -647,6 +632,10 @@ async function refreshMe(): Promise<void> {
 onMounted(async () => {
   store.config = await getDemoConfig()
   store.loadSettings()
+  await toolsStore.load()
+  // 旧版本的 web 开关只存在 localStorage；首次升级时把关闭状态同步到工具注册表。
+  if (!store.settings.tools.web) await toolsStore.toggle('tool-search', false)
+  onToolsChange()
   void refreshMe()
   void refreshDevices()
 })
@@ -745,14 +734,9 @@ onBeforeUnmount(() => {
     <ToolsDialog
       v-if="toolsOpen"
       v-model:open="toolsOpen"
-      :search-available="searchAvailable"
-      :server-key="serverKey"
-      :web-search="store.settings.tools.web"
       :camera="store.settings.tools.camera"
-      :search-key="searchKey"
-      @update:web-search="(value: boolean) => { store.settings.tools.web = value; onToolsChange() }"
       @update:camera="(value: boolean) => { store.settings.tools.camera = value; onToolsChange() }"
-      @update:search-key="(value: string) => { searchKey = value; onToolsChange() }"
+      @tools-changed="onToolsChange"
     />
 
     <LimitDialog v-if="limitOpen" v-model:open="limitOpen" v-bind="limitCopy" />

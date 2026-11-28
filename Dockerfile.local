@@ -1,0 +1,10 @@
+# 本地增量镜像：只覆盖源码层，复用已装好全部运行期依赖的 s2s-agent:local。
+#
+# 为什么不用 Dockerfile.agent 全量重建：那条链路的 uv sync 会按 constraints 重新
+# 解析 torch/triton/nvidia 栈，在弱带宽下要下 ~2GB；而 s2s-agent:local 里
+# torch 2.15.0 + triton 3.9.0 + nvidia-cu13 13.4.1.3 + cudnn 9.26 已是自洽的一套，
+# 直接增量覆盖 src 即可（几分钟）。
+#
+# 用法：docker build -f Dockerfile.local -t s2s-agent:local2 .
+FROM s2s-agent:local
+COPY src /usr/src/app/src

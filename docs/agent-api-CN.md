@@ -448,6 +448,85 @@ curl http://localhost:8765/v1/agent/logs \
   -H "Authorization: Bearer $S2S_ADMIN_TOKEN"
 ```
 
+### 6.6 模型重载命令 `model_reload`
+
+console 向机器下发 `model_reload`，agent 收到后在 **pipeline 进程内**重建
+ASR / LLM / TTS 中的单模块或任意组合，不重启进程、不阻塞心跳。
+首期严格复用**当前内存配置**（用途：恢复卡死/损坏模型、换权重文件后不重启），
+不应用新配置；若需变更模型参数或后端类型，仍走 `config_restart`。
+
+#### 6.6.1 命令与参数
+
+```json
+{
+  "kind": "model_reload",
+  "payload": {
+    "modules": ["asr", "llm"],
+    "scope": "all",
+    "unitIndex": null,
+    "drain": true,
+    "drainTimeoutMs": 5000,
+    "configVersion": "v12",
+    "reason": "console"
+  }
+}
+```
+
+- `modules`：白名单 `asr`/`llm`/`tts`；非空、去重、按 `asr→llm→tts` 规范化。
+- `scope`：`all`（全部实例）或 `unit`（`unitIndex` 必填）。
+- `drain`：默认 `true`，标记维护态并等待在途会话排空；超时即失败，不杀会话。
+- `drainTimeoutMs`：排空超时，默认 5000ms。
+- `configVersion`：仅信息性标注；`reason`：审计标注。
+
+console API 用 camelCase（与现有 `serviceId` 一致），agent 内部统一 snake_case；
+命令队列表的 `payload` JSON 列原样持久化，本期无需新迁移。
+该命令使用独立长 TTL（600s，可通过 `TTL_BY_KIND` 配置），避免重建耗时被 120s 默认 TTL 误判 expired。
+
+#### 6.6.2 回执语义（accepted + progress + 终态）
+
+`execute` 同步返回 accepted，重建在独立工作线程进行，进度与终态持续 `report_command`：
+
+```json
+{"status": "accepted", "stage": "queued"}
+{"status": "progress", "progress": {"stage": "rebuild_asr", "elapsedMs": 1840}}
+{"status": "succeeded", "reloadedModules": ["asr", "llm"], "targetUnits": [0], "ready": true}
+{"status": "failed", "failedStage": "rebuild_tts", "failedModule": "tts", "ready": false}
+```
+
+阶段序列：`maintenance_set` → `drain` → `cleanup_*` → `rebuild_*` → `ready`。
+`drain` 阶段失败（会话未排空）解除维护态恢复可用；`rebuild` 阶段失败 **fail-closed**，
+目标实例保持维护态，不允许半重建实例继续接会话。
+全局单飞锁保证同一时刻仅一个重载任务；单实例重建时目标实例置维护态，
+`/v1/pool` 以 `state=maintenance` 展示并计入 `in_use`，分配器不会再派会话。
+
+#### 6.6.3 单模块与组合逻辑
+
+- `asr`：退役旧 STT（**不发 `PIPELINE_END` 哨兵**，避免级联停链），复用内存 `BackendSelection` 重建，
+  并重接 `vad.streaming_stt_sink`、`window_partials_enabled`、LiveKit `SttHandlerAdapter`、内嵌 SenseVoice 引用。
+- `llm`：远程 OpenAI 兼容后端受锁 `reconfigure()`，替换 client / `_async_client` / `_async_runner` /
+  `_extra_body` / compactor 并关闭旧客户端，保留对话历史；本地后端走 handler 重建。
+- `tts`：原位替换 TTS handler（列表索引不变），保持下游处理链。
+- 组合与 `scope=all`：统一排空 → 统一清理 → 按 `asr→llm→tts` 逐个重建；
+  任一阶段失败即停止后续模块并按上述 fail-closed 规则处理。
+
+独立进程 agent（无 pool，能力未声明 `model_reload`）收到该命令降级为 `config_restart`；
+内嵌 agent 但协调器缺失时明确失败，不静默成功。
+
+#### 6.6.4 自检
+
+```bash
+# 1) 能力声明（内嵌 agent 且协调器就绪时应含 model_reload）
+curl http://localhost:8765/v1/agent/capability -H "Authorization: Bearer $S2S_ADMIN_TOKEN"
+
+# 2) 触发单模块重载
+curl -X POST http://localhost:8765/v1/agent/commands \
+  -H "Authorization: Bearer $S2S_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"kind":"model_reload","payload":{"modules":["asr"],"scope":"all"}}'
+
+# 3) 观察目标实例状态与回执
+curl http://localhost:8765/v1/pool
+```
+
 ---
 
 ## 7. 状态机与失败语义

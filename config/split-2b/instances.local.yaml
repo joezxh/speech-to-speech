@@ -1,0 +1,18 @@
+# 本地部署的实例注册表 seed（console/backend/app/services/instance_seed.py）。
+#
+# 与 config.split.0.6b.2/instances.yaml（40.30 口径）的差异：
+#   id   : pipeline-local（不能与 40.30 的 pipeline-3030 同 id，否则 seed 会按 id
+#          幂等 upsert 到同一条记录，把 40.30 的实例地址改成本机的）。
+#   host : 127.0.0.1（控制台标签，仅用于实例页展示与排障）。
+#   base_url 与 40.30 同为 compose 服务名：split 形态下 pipeline 是独立容器，
+#          console 容器内 127.0.0.1:8765 没有监听，必须走服务名。
+#
+# seed 只在 console 启动时应用一次（幂等 upsert，不覆盖 enabled / drain_requested）。
+instances:
+  - id: pipeline-local
+    base_url: http://s2s-pipeline:8765
+    weight: 1
+    labels:
+      role: local
+      compose: docker-compose.local.yml
+      host: 127.0.0.1

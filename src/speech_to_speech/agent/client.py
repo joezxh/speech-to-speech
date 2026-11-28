@@ -110,6 +110,17 @@ class AgentClient:
         response.raise_for_status()
         return response.json()["data"]
 
+    def report_turn_latency(self, token: str, rows: list[dict]) -> dict:
+        """A5：逐轮 TURN_LATENCY 行上报（response_key+turn_revision 幂等去重）。"""
+        response = httpx.post(
+            f"{self.base_url}/api/v1/agent/turn-latency",
+            json={"rows": rows},
+            headers=self._headers(token),
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()["data"]
+
     def probe_instances(self, token: str) -> dict:
         response = httpx.post(
             f"{self.base_url}/api/v1/agent/instances/probe",

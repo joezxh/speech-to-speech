@@ -3,7 +3,6 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { describe, expect, it } from 'vitest'
 
 import { routes } from '@/router/index'
-import { frontOverlays } from '@/router/nav'
 import en from './locales/en-US'
 import zh from './locales/zh-CN'
 
@@ -28,11 +27,10 @@ describe('i18n parity', () => {
     }
   })
 
-  it('every navKey from routes and frontOverlays resolves in both locales', () => {
+  it('every navKey from routes resolves in both locales', () => {
     const router = createRouter({ history: createMemoryHistory(), routes })
     const keys = [
-      ...router.getRoutes().map((r) => (r.meta as { navKey?: string }).navKey),
-      ...frontOverlays.map((o) => o.navKey)
+      ...router.getRoutes().map((r) => (r.meta as { navKey?: string }).navKey)
     ].filter((k): k is string => Boolean(k))
     expect(keys.length).toBeGreaterThanOrEqual(12)
     for (const key of keys) {

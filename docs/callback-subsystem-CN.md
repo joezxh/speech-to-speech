@@ -254,3 +254,223 @@ java 分支把统一事件降维成源工程 Java 侧 `TranscriptSegmentVO` 兼�
 - **顺序语义**：异步投递按段并发，同房间 transcript 的到达顺序为 best-effort；需要严格保序的场景由目标端按 `startTs` 排序。
 - **退出/测试冲刷**：`flush_pending(timeout=10)` 等待在途投递完成，`timeout` 是总预算（多个在途任务按剩余时间分配，耗尽抛 `TimeoutError`）；`pending_count()` 查询在途数。
 - **token 脱敏 `mask_token`**（dispatcher 与 console service 同规则）：长度 ≥ 10 时输出 `前4位***后4位`（如 `real***oken`），长度 < 10 或空输出 `***`。作用点在 **API 输出侧**：所有读接口返回的 `authToken` 恒为脱敏串；投递日志只存截断后的请求体 JSON 与响应片段，**不含鉴权头**，天然不落 token 明文。
+
+## 7. 部署配置手册（2026-11-27 实测）
+
+### 7.0 前置：迁移
+
+回调子系统依赖 `0015_callback_subsystem`（两张表）与 `0016_agent_config_hash_len`。
+**console 容器启动命令自带 `alembic upgrade head`**（`docker-compose.split.yml` console 服务），
+新库/升级库随 console 重启自动完成；手动执行：
+
+```bash
+cd console/backend && PYTHONPATH=. python -m alembic upgrade head
+# 验证
+psql ... -c "SELECT version_num FROM alembic_version"   # → 0016_agent_config_hash_len
+psql ... -c "SELECT to_regclass('public.callback_target'), to_regclass('public.callback_delivery_log')"
+```
+
+### 7.1 本地调试（已全链路实测 ✅）
+
+**① 起本地 webhook 接收器**（模拟业务方，`scripts/callback_receiver.py`）：
+
+```bash
+python scripts/callback_receiver.py --port 9101 --token local-dev-callback-token
+# 可选 --fail-first 2：前 2 次返回 500，验证 dispatcher 重试与日志三态
+curl http://127.0.0.1:9101/health   # {"ok":true,"received":{},"attempts":0}
+```
+
+**② console 配置 python 目标**（页面「回调管理」或 API）：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/callbacks/targets \
+  -H "Authorization: Bearer <JWT>" -H "Content-Type: application/json" -d '{
+    "name": "local-receiver", "targetType": "python",
+    "baseUrl": "http://127.0.0.1:9101/hook",
+    "authType": "header_token", "authHeaderName": "X-Callback-Token",
+    "authToken": "local-dev-callback-token",
+    "timeoutMs": 3000, "retryMaxAttempts": 3, "retryBackoffMs": 500,
+    "events": ["transcript"], "filters": {"min_text_len": 1}, "enabled": true }'
+```
+
+> `filters.min_text_len` 建议设 1：否则短句（"嗯"、"好"）被过滤，容易误判为"回调不工作"。
+
+**③ 连接测试**：`POST /api/v1/callbacks/targets/{id}/test` → `{"ok":true,"httpStatus":200,"durationMs":10}`。
+实测 token 脱敏正确（`loca***oken`）。
+
+**④ 分发器级端到端**（真实 `CallbackDispatcher` + DB 目标 + 日志落库，实测输出）：
+
+```python
+from app.db.database import SessionLocal                      # console/backend 在 sys.path
+from speech_to_speech.callback.dispatcher import get_dispatcher
+from speech_to_speech.livekit_worker.events import TranscriptEvent
+
+d = get_dispatcher()
+assert d._session_factory is not None     # None = env 兜底模式，不落库
+d.dispatch(TranscriptEvent(event_type="transcript", room_sid="e2e-local-test",
+    identity="user-a", text="...", start_ts=..., end_ts=..., audio_level=-12,
+    timestamp_ms=...))
+d.flush_pending(timeout=15)
+```
+
+接收器 `--fail-first 2` 时的实测 `callback_delivery_log`（三态完整）：
+
+| attempt | http | status | 耗时 | 说明 |
+|---|---|---|---|---|
+| 1 | 500 | `retrying` | 25ms | 第一次失败 |
+| 2 | 500 | `retrying` | 5ms | 退避 500ms 后重试 |
+| 3 | 200 | `success` | 6ms | 退避 1000ms 后成功 |
+
+日志查询：
+
+```sql
+SELECT attempt, http_status, status, duration_ms, error, response_snippet
+FROM callback_delivery_log WHERE request_url LIKE '%9101%' ORDER BY id;
+```
+
+### 7.2 容器发布（40.30 分裂部署）
+
+**镜像包含性（无需重建）**：`Dockerfile.agent` 全量 `COPY src`（含 `speech_to_speech/callback/`）、
+`Dockerfile.console` 全量 `COPY console/backend`（含 `routers/callbacks.py`）。
+40.30 现役镜像的增量层构建于 2026-11-26 17:33，晚于 callback 代码入库（09:43）→ 已包含。
+
+**关键约束：pipeline 容器内 dispatcher 的两条路径**（`dispatcher.py get_dispatcher`）：
+
+| 路径 | 前提 | 投递日志 |
+|---|---|---|
+| **DB 配置** | `app.db.database.SessionLocal` 可导入 → 需要 `--with-console` 且 `CONSOLE_HOME` 存在。**`s2s-agent` 镜像不含 `console/backend`**，直接 `--with-console` 会因 `CONSOLE_HOME` 缺省路径不存在而失败 | 落 `callback_delivery_log`，console 页面可查 |
+| **env 兜底** | `JAVA_CALLBACK_BASE` + `MEETING_INTERNAL_TOKEN` 同时非空（`session_factory=None` 时） | 仅 stdout（`callback(env) ...`），不落库 |
+
+**模式 A：env 兜底（零镜像改动，推荐先打通）**：
+
+> **worker 启用方式（file 模式）**：`serve -f` 拒绝 `--with-livekitworker` flag
+> （`cli.py:355-359`），正确做法是 YAML `runtime.livekit_worker.enabled: true`
+> （40.30 的 `config.split.2/prod.yaml:153-154` **已配置**）。仅 agent 模式才用 flag。
+
+```yaml
+# config.split.0.6b.2/prod.yaml
+runtime:
+  livekit_worker:
+    enabled: true
+```
+
+```bash
+# prod.env 追加（config.split.0.6b.2/prod.env，与 java 会议侧约定一致；值惰性读取，改后重建容器）：
+JAVA_CALLBACK_BASE=http://ai-server:8086     # java ai-server 基址
+MEETING_INTERNAL_TOKEN=<与 java 侧 meeting.internal-transcript-token 严格一致>
+MEETING_TENANT_ID=1                          # 缺省即 1，可省
+```
+
+env 兜底目标与源工程 `worker.py push()` 行为一致（java 协议、仅 transcript、
+固定路径 `/admin-api/ai/meeting/internal/transcript?roomSid=…`、重试 3 次/退避 500ms）。
+
+**模式 B：DB 配置（完整管理面）**——增量层补 console 目录（hotfix，秒级）：
+
+```dockerfile
+FROM s2s-agent:4030-3
+COPY console/backend /app/console
+```
+
+compose 追加：
+
+```yaml
+s2s-pipeline:
+  command: serve ... --with-livekitworker --with-console
+  environment:
+    CONSOLE_HOME: /app/console          # console 后端代码目录
+    CONSOLE_STATIC_DIR: /app/console-static   # 无前端产物时可指向空目录
+```
+
+> 内嵌 console 与独立 `s2s-console`（8010）**同库并存**：回调目标由 8010 的「回调管理」页配置，
+> pipeline 进程内 dispatcher 经 5s TTL 读同一张表——改配置零重启。内嵌实例只在 8765 端口内可见，
+> 不对外映射即可。
+>
+> 注意共享库迁移状态：40.30 console（`s2s-console:4030-1`）启动自动 `upgrade head`，
+> 但该镜像构建早于 `0016`，共享库可能停在 0015（回调表已具备，0016 是 agent config 列宽，不影响回调）。
+
+**验证（40.30 侧）**：
+
+```bash
+# 1. 容器内有 callback 模块
+docker exec s2s-split-s2s-pipeline-1 ls /usr/src/app/src/speech_to_speech/callback/
+# 2. worker 起来了（日志有 livekit worker 连接 ws://…:7880）
+docker logs s2s-split-s2s-pipeline-1 2>&1 | grep -i "livekit\|callback"
+# 3. 有真实转写后：模式 A 看 stdout 的 callback(env) 行；模式 B 查共享库 delivery_log
+docker exec <console-db容器> psql -U <user> -d s2s_db -c \
+  "SELECT attempt,http_status,status,duration_ms FROM callback_delivery_log ORDER BY id DESC LIMIT 10;"
+# 4. 页面连接测试（console:8010 → 回调管理 → 测试）
+```
+
+**回滚**：compose command 去掉 `--with-livekitworker`（或 env `LIVEKIT_WORKER_AUTOSTART=false`）
++ 移除 env 兜底键，`up -d --force-recreate`；DB 目标行删除即回滚（日志保留，`target_id` 置 NULL）。
+
+### 7.3 排查口径
+
+| 现象 | 先看什么 |
+|---|---|
+| 完全没有投递 | worker 是否启动（`--with-livekitworker` / `LIVEKIT_WORKER_AUTOSTART`）；`emit_segments` 是否被调用 |
+| 有投递但目标没收到 | `callback_delivery_log`（模式 A 只有 stdout）：`http_status` 与 `response_snippet`；401/403 → 鉴权头与 token；502 → 目标服务 |
+| DB 配置不生效 | pipeline 进程是否真拿到 `SessionLocal`（模式 B 的 `CONSOLE_HOME`）；DB 查询失败会退 env 兜底并打 warning |
+| 改了配置没反应 | TTL 5s；等一个 TTL 再试，无需重启 |
+| 日志三态含义 | `retrying`=还有下次尝试；`failed`=尝试耗尽（无死信、不重投）；`http_status` NULL=网络异常 |
+
+## 8. HTTP 配置源（2026-11-27，40.30 生产落地）
+
+> **解决什么问题**：§7.2 的模式 A/B 都要求 pipeline 能直连 DB 或内嵌 console，
+> 而 40.30 的 `s2s-agent` 镜像缺 console 依赖且禁止联网装包 → **console 页面配置原先不生效**。
+> 本节方案由 console 暴露内部下发接口，pipeline 侧 dispatcher 轮询该接口取目标：
+> **页面改配置 ≤5s 自动生效、零重启**，无需数据库迁移、无需给 agent 补依赖。
+
+### 8.1 目标来源三级优先（`dispatcher.py`）
+
+| 优先级 | 来源 | 条件 | 特征 |
+|---|---|---|---|
+| 1 | 进程内 `SessionLocal` 直连 DB | console 后端可导入（`--with-console`） | 投递日志落 `callback_delivery_log` |
+| 2 | **console HTTP 下发接口** | `CONSOLE_CALLBACK_CONFIG_URL` 或 `S2S_AGENT_CONSOLE_URL` + `S2S_ADMIN_TOKEN` | 日志走 stdout；**成功（含空列表）即压制 env 兜底** |
+| 3 | env 兜底 | 前两者不可用；`JAVA_CALLBACK_BASE` + `MEETING_INTERNAL_TOKEN` 齐备 | 源工程零配置行为；日志 stdout |
+
+**stale-while-error**：HTTP 拉取失败 → 保留最近一次成功配置继续投递（每 TTL 最多重试一次）；
+从未成功过才回落 env 兜底。HTTP 拉取在锁外执行（2s 超时不阻塞其它 dispatch 线程），
+并发后来者用旧缓存（stale-while-revalidate）。
+
+### 8.2 内部端点契约
+
+`GET /api/v1/callbacks/targets/dispatch-config`，头 `X-Internal-Token: <S2S_ADMIN_TOKEN>`：
+
+- **fail-closed**：console 未配置 `S2S_ADMIN_TOKEN` → 503 `internal_disabled`；令牌不匹配 → 401（常量时间比较 `hmac.compare_digest`）
+- **仅 enabled 目标**；`authToken` **明文**下发（投递硬需求，与管理面 `_to_out` 的脱敏隔离），只允许内网访问
+- `revision` = `max(updated_at)` + 行数派生（观测用， dispatcher 暂不消费，为条件缓存留口）
+- 字段与 `CallbackTargetConfig` 一一对应（camelCase），java/python 协议适配不变
+
+### 8.3 部署与验证（40.30 实测）
+
+镜像：`s2s-console:4030-3`（FROM 4030-2 + `COPY app`）、`s2s-agent:4030-4`
+（FROM 4030-3 + `COPY callback`，仅 dispatcher.py 改动）；两端均在 40.30 离线 hotfix 构建，秒级。
+env 复用 `S2S_AGENT_CONSOLE_URL=http://s2s-console:8000`（纯基址，自动派生下发路径）
+与 `S2S_ADMIN_TOKEN`（两容器共用 env_file）；compose 备份 `docker-compose.split.yml.bak-20261127-httpcfg`。
+
+验证记录：
+
+| 阶段 | 结果 |
+|---|---|
+| 本地端到端 | HTTP 拉取→投递 ✓；console 禁用→≤5s 停投 ✓；恢复→投递 ✓；停 console→stale 继续投 ✓ |
+| 单测 | dispatcher **19 passed**、callbacks API **11 passed**、console 全量 **647 passed**；task-reviewer Approved |
+| 40.30 生产 | pipeline 日志 `HTTP_FETCHER True SESSION_FACTORY False`；页面建目标后按配置地址发起投递 ✓；页面禁用后 7s 内零投递尝试 ✓ |
+
+### 8.4 运维与回滚
+
+- **日常运维**：回调目标**全部在 console（8010）「回调管理」页维护**，页面改完 ≤5s 生效，无需重建/重启容器。
+- **投递日志**：生产 pipeline 无 DB 会话 → 日志仅在容器 stdout（`docker logs --since ... s2s-split-s2s-pipeline-1 | grep callback`）；
+  "日志上报 console" 属二期增强（需新增上报接口），不在本期。
+- **安全**：明文 token 仅在内网 HTTP 下发，端点由 `S2S_ADMIN_TOKEN` 保护且不写访问日志；
+  不要把下发端点暴露到公网/网关。
+- **回滚**：compose image tag 回退到 `s2s-console:4030-2` / `s2s-agent:4030-3` 并
+  `up -d --force-recreate`；回滚后页面配置不生效，由 `JAVA_CALLBACK_BASE` + `MEETING_INTERNAL_TOKEN`
+  env 兜底继续工作（两键已在 `config.split.2/prod.env`）。
+- **java 侧 token 与投递闭环（2026-11-27 已闭环）**：token = `meeting.internal-transcript-token`
+  （`application.yaml:505`，java 侧 `.env` 未覆盖 → 默认值 `change-me-internal-token`）。
+  console 目标已配为 `meeting-java` / java 协议 / `baseUrl=http://192.168.110.167:8086` /
+  `X-Internal-Token` / `tenant-id=1`，生产 dispatch 实测 2xx 到达 java 业务层。
+  注意：直接用编造 roomSid 探测会得到业务 `code:500`——`MeetingTranscriptServiceImpl.ingest:90-93`
+  要求 `meeting_room` 表存在该 `roomSid`，真实会议由 java 创建房间后回推必然命中。
+

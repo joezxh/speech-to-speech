@@ -29,6 +29,7 @@ export interface AuditQuery {
   action?: string
   result?: string
   field?: string
+  category?: string
   from?: string
   to?: string
   page?: number

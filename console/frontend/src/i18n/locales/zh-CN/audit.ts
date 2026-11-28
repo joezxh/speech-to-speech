@@ -7,6 +7,17 @@ export default {
     fieldPlaceholder: '字段名（如 vad.min_silence_ms）',
     search: '查询'
   },
+  cat: {
+    all: '全部',
+    machine: '机器',
+    lb: '负载均衡',
+    deploy: '部署',
+    release: '发布',
+    voice: '音色',
+    cluster: '集群',
+    template: '模板',
+    smart: '智能设置'
+  },
   columns: {
     time: '时间',
     actor: '操作人',

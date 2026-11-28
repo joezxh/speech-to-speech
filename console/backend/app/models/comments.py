@@ -26,6 +26,7 @@ TABLE_COMMENTS: dict[str, str] = {
     "param_allocator_lease": "选台占位租约明细：预留待连接的租约与已建立会话的占用都占槽位",
     "param_proxy_metric": "数据面代理采样：按实例与服务记录成功数与失败原因，成功数为窗口增量",
     "param_config": "控制台配置项登记表：库中的值优先于环境变量，改完数秒内生效",
+    "param_front_setting": "前台设置：对话态热更参数的账号级取值，全局一份，不按机器分列",
     "param_machine": "机器实体：agent 注册与心跳的落点，实例挂载与机器状态的单一来源",
     "param_machine_command": "机器命令队列：用户下发、机器端 agent 拉取并回执，不主动连接机器",
     "param_machine_workload": "机器负载声明：心跳清单全量覆盖，按机器与负载类型对齐",
@@ -47,6 +48,8 @@ TABLE_COMMENTS: dict[str, str] = {
     "voices": "音色上传记录，音频与特征路径相对音色数据卷保存",
     "callback_target": "回调目标配置：java 与 python 两类协议的地址、鉴权、超时与重试",
     "callback_delivery_log": "回调投递日志：每次尝试一行，目标删除后日志按软关联保留",
+    "ai_console_tool": "会话工具注册表：内置与自定义工具的声明、启停与作用域",
+    "ai_console_calendar_event": "日历工具本地事件库：无外部账号授权时的可操作日程，按拥有者隔离",
 }
 
 #: 列级注释。键必须与 Base.metadata 中对应表的列名一一对应。
@@ -175,6 +178,14 @@ COLUMN_COMMENTS: dict[str, dict[str, str]] = {
         "version": "写入版本号，单调递增",
         "updated_by": "最近修改人",
         "created_at": "创建时间（UTC）",
+        "updated_at": "最近修改时间（UTC）",
+    },
+    "param_front_setting": {
+        "id": "主键标识",
+        "config_key": "设置项键，全局唯一；取值来自字段目录中的参数名",
+        "value": "设置项值，按字符串存，配合 value_type 解释",
+        "value_type": "值类型：str、int、float 或 bool",
+        "updated_by": "最近修改人",
         "updated_at": "最近修改时间（UTC）",
     },
     "param_machine": {
@@ -486,6 +497,33 @@ COLUMN_COMMENTS: dict[str, dict[str, str]] = {
         "duration_ms": "本次尝试耗时（毫秒）",
         "status": "尝试结果：success、retrying 或 failed",
         "error": "失败原因摘要，成功时为空",
+    },
+    "ai_console_tool": {
+        "id": "工具稳定标识，对话页与语音工具声明按此引用",
+        "name": "工具名称，全局唯一",
+        "type": "工具类型：联网搜索、日历、天气、知识库或自定义 HTTP",
+        "description": "工具描述，作为模型选择工具时的提示",
+        "endpoint": "自定义 HTTP 工具的接口地址",
+        "method": "自定义 HTTP 工具的请求方法",
+        "scope": "作用域：全局、会话或租户",
+        "enabled": "工具是否启用",
+        "builtin": "是否内置工具，内置工具对所有登录用户可见",
+        "owner": "自定义工具的拥有者用户名，内置工具为空",
+        "params": "参数声明数组，元素包含名称、类型与是否必填",
+        "config": "执行期配置，例如搜索 provider 优先级",
+        "created_by": "创建人用户名",
+        "updated_by": "最近修改人用户名",
+        "created_at": "创建时间（UTC）",
+        "updated_at": "最近修改时间（UTC）",
+    },
+    "ai_console_calendar_event": {
+        "id": "主键标识",
+        "owner": "事件拥有者用户名，按此隔离",
+        "title": "事件标题",
+        "start_at": "开始时间，采用调用方传入的字符串",
+        "end_at": "结束时间，采用调用方传入的字符串",
+        "description": "事件说明",
+        "created_at": "创建时间（UTC）",
     },
 }
 

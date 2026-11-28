@@ -7,6 +7,7 @@ export default {
   settings: '设置',
   machines: '机器管理',
   deploy: '机器实际部署与参数',
+  templates: '模板管理',
   sessionUpdate: '会话热更新',
   voices: '音色库',
   release: '发布与版本管理',

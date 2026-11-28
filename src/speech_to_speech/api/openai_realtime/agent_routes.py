@@ -54,6 +54,7 @@ COMMAND_KINDS = (
     "config_restart",
     "recover",
     "health_check",
+    "model_reload",
 )
 
 _AGENT_PATHS = (
@@ -271,7 +272,7 @@ _COMMANDS_POLL_DESCRIPTION = """
 立刻从 console 拉取本机待办的机器命令并逐条执行、回执，返回每条命令的
 `command_id`、`kind`、`ok`、`result` 与 `error`。
 
-* 命令类型白名单：`drain`、`resume`、`reboot`、`config_restart`、`recover`、`health_check`。
+* 命令类型白名单：`drain`、`resume`、`reboot`、`config_restart`、`recover`、`health_check`、`model_reload`。
 * 命令「领到即被 console 标记 dispatched」，因此不会重复执行同一条。
 * 同一时刻只允许一个动作在跑；并发触发返回 409 `agent_busy`。
 * 需要 `Authorization: Bearer <S2S_ADMIN_TOKEN>`；未配置令牌时返回 503 `admin_disabled`。
@@ -295,6 +296,7 @@ _COMMANDS_DESCRIPTION = """
 | `config_restart` | 先同步配置再重启 pipeline | 无（内嵌形态不支持） |
 | `recover` | 恢复调度并巡检实例 | 无 |
 | `health_check` | 真探测某个服务的健康端点 | `service_id`（必填） |
+| `model_reload` | 进程内重建 ASR/LLM/TTS 单模块或组合 | `modules`（`asr`/`llm`/`tts`）、`scope`、`unitIndex` 等 |
 
 * 未知 `kind` 返回 400 `invalid_request_error`。
 * 需要 `Authorization: Bearer <S2S_ADMIN_TOKEN>`；未配置令牌时返回 503 `admin_disabled`。

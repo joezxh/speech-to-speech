@@ -7,5 +7,10 @@ export default {
   statusActive: 'Active',
   statusStuck: 'Stuck',
   cancel: 'Cancel',
-  confirm: 'Confirm'
+  confirm: 'Confirm',
+  edit: 'Edit',
+  save: 'Save',
+  delete: 'Delete',
+  search: 'Search',
+  refresh: 'Refresh'
 }

@@ -94,7 +94,12 @@ def mount_audio_services(app: FastAPI, pool: Iterable[Any]) -> None:
                 name = type(handler).__name__
                 if stt is None and name == "Qwen3ASRSTTHandler":
                     stt = handler
-                if tts is None and name == "Qwen3TTSHandler":
+                # TTS 后端可插拔（qwen3-tts / voxcpm / supertonic / pocket / …），
+                # 类名统一以 TTSHandler 结尾；STT handler 类名以 STTHandler 结尾，
+                # 不会误匹配。这里原先硬编码 "Qwen3TTSHandler"，换成 voxcpm 后端后
+                # 独立 TTS 端点（POST /v1/audio/speech）恒返回 503
+                # {"detail":"TTS handler unavailable"}。
+                if tts is None and name.endswith("TTSHandler"):
                     tts = handler
         return stt, tts
 
@@ -238,7 +243,10 @@ def mount_audio_services(app: FastAPI, pool: Iterable[Any]) -> None:
         if tts is None:
             raise HTTPException(status_code=503, detail="TTS handler unavailable")
         if "application/json" in request.headers.get("content-type", ""):
-            payload = await request.json()
+            try:
+                payload = await request.json()
+            except Exception as exc:  # malformed JSON body is a client error, not a 500
+                raise HTTPException(status_code=400, detail="invalid json body") from exc
             text = str(payload.get("input") or payload.get("text") or "")
             voice = str(payload.get("voice") or payload.get("speaker") or "Aiden")
             language = str(payload.get("language") or "Auto")
@@ -283,7 +291,7 @@ def mount_audio_services(app: FastAPI, pool: Iterable[Any]) -> None:
                     return collected, rate
 
                 chunks, sample_rate = await asyncio.to_thread(collect_clone)
-            else:
+            elif hasattr(getattr(tts, "model", None), "generate_custom_voice"):
                 audio_arrays, sample_rate = await asyncio.to_thread(
                     tts.model.generate_custom_voice,
                     text=text,
@@ -294,6 +302,21 @@ def mount_audio_services(app: FastAPI, pool: Iterable[Any]) -> None:
                 for chunk in audio_arrays:
                     array = chunk[0] if isinstance(chunk, tuple) else chunk
                     chunks.append(np.asarray(array).flatten())
+            else:
+                # 后端无关路径：走 handler 自己的合成迭代器（如 VoxCPM 的 _synthesize_chunks）。
+                # `model.generate_custom_voice` 只是 qwen3-tts 的 model API，换成 voxcpm 后端后
+                # 直调它会抛 "'VoxCPM' object has no attribute 'generate_custom_voice'" → 500。
+                def collect_generic():
+                    collected: list[np.ndarray] = []
+                    rate = int(getattr(tts, "sample_rate", 24000) or 24000)
+                    for chunk in tts._synthesize_chunks(text):
+                        array = chunk[0] if isinstance(chunk, tuple) else chunk
+                        flat = np.asarray(array, dtype="float32").flatten()
+                        if flat.size:
+                            collected.append(flat)
+                    return collected, rate
+
+                chunks, sample_rate = await asyncio.to_thread(collect_generic)
             waveform = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
             if waveform.size == 0:
                 raise ValueError("tts produced empty audio")

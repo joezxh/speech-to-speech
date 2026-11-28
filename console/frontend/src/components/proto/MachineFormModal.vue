@@ -18,6 +18,20 @@
       <input v-model.number="draft.gpuTotalGb" class="fin" type="number" min="0" />
     </div>
     <div class="field">
+      <label>{{ t('machines.form.platform') }}</label>
+      <!-- 平台类型（模板硬件校验用）；留空 = 按 gpu 描述在后端推断 -->
+      <select v-model="draft.platform" class="fin">
+        <option value="">{{ t('machines.form.platformAuto') }}</option>
+        <option v-for="platform in ['gpu', 'npu', 'amd', 'cpu']" :key="platform" :value="platform">
+          {{ t(`templates.platform.${platform}`) }}
+        </option>
+      </select>
+    </div>
+    <div class="field">
+      <label>{{ t('machines.form.driver') }}</label>
+      <input v-model="draft.driver" class="fin" :placeholder="t('machines.form.driverHint')" />
+    </div>
+    <div class="field">
       <label>{{ t('machines.form.clusterId') }}</label>
       <!-- Task 12 增量：集群来自集群表（param_cluster），下拉选择；旧值不在表时兜底显示。 -->
       <select v-model="draft.clusterId" class="fin">
@@ -87,6 +101,8 @@ const draft = reactive({
   addr: '',
   gpu: '',
   gpuTotalGb: null as number | null,
+  platform: '' as string,
+  driver: '',
   clusterId: 'default',
   workloads: [] as WorkloadRow[]
 })
@@ -121,6 +137,8 @@ watch(
       draft.addr = props.machine.addr
       draft.gpu = props.machine.gpu
       draft.gpuTotalGb = props.machine.gpuTotalGb ?? null
+      draft.platform = props.machine.platform || ''
+      draft.driver = props.machine.driver || ''
       draft.clusterId = props.machine.clusterId
       draft.workloads = props.machine.workloads.filter((w) => w.kind !== 'pipeline')
     } else {
@@ -128,6 +146,8 @@ watch(
       draft.addr = ''
       draft.gpu = ''
       draft.gpuTotalGb = null
+      draft.platform = ''
+      draft.driver = ''
       draft.clusterId = 'default'
       draft.workloads = []
     }
@@ -158,6 +178,8 @@ async function submit(): Promise<void> {
         addr: draft.addr,
         gpu: draft.gpu,
         gpuTotalGb: draft.gpuTotalGb,
+        platform: draft.platform || undefined,
+        driver: draft.driver || undefined,
         clusterId: draft.clusterId
       })
       // 负载声明（pipeline 之外的手工声明）在建档后补写。
@@ -170,6 +192,8 @@ async function submit(): Promise<void> {
         addr: draft.addr,
         gpu: draft.gpu,
         gpuTotalGb: draft.gpuTotalGb,
+        platform: draft.platform || undefined,
+        driver: draft.driver || undefined,
         clusterId: draft.clusterId
       })
       await store.saveWorkloads(props.machine.machineId, [

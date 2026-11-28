@@ -2,11 +2,14 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  buildReloadPayload,
   clusterOptions,
   commandActions,
+  commandStatusView,
   filterMachines,
   healthState,
   latestHealth,
+  normalizeReloadModules,
   nodeMetricSummary,
   serviceIdOf,
   testStepsToView,
@@ -27,6 +30,8 @@ const machine = (over: Partial<MachineRow>): MachineRow => ({
   clusterId: 'default',
   profile: null,
   gpuTotalGb: null,
+  platform: 'gpu',
+  driver: '',
   version: '',
   registryMode: 'manual',
   agentVersion: '',
@@ -166,6 +171,35 @@ describe('commandActions (prototype machine row actions)', () => {
       { kind: 'config_restart', labelKey: 'machines.action.config_restart', disabled: false }
     ])
     expect(commandActions('draining', ['resume'])[0].disabled).toBe(true)
+  })
+})
+
+describe('model_reload command (phase 1)', () => {
+  it('normalizes modules in canonical order and drops unknown values', () => {
+    expect(normalizeReloadModules(['tts', 'asr', 'tts', 'gpu'])).toEqual(['asr', 'tts'])
+  })
+
+  it('builds a camelCase payload with defaults', () => {
+    expect(buildReloadPayload(['llm', 'asr'])).toEqual({
+      modules: ['asr', 'llm'],
+      scope: 'all',
+      unitIndex: null,
+      drain: true,
+      drainTimeoutMs: 5000
+    })
+  })
+
+  it('maps progress and expired command states', () => {
+    expect(commandStatusView('dispatched')).toBe('running')
+    expect(commandStatusView('progress')).toBe('running')
+    expect(commandStatusView('expired')).toBe('expired')
+    expect(commandStatusView('failed')).toBe('failed')
+  })
+
+  it('offers the reload action only when the agent declares the capability', () => {
+    expect(commandActions('ok', [], false).map((a) => a.kind)).not.toContain('model_reload')
+    expect(commandActions('ok', [], true).map((a) => a.kind)).toContain('model_reload')
+    expect(commandActions('ok', ['model_reload'], true).find((a) => a.kind === 'model_reload')?.disabled).toBe(true)
   })
 })
 

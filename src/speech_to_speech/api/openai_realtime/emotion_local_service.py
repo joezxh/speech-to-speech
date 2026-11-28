@@ -88,12 +88,19 @@ def _route_exists(app: FastAPI, path: str) -> bool:
 
 
 def find_ser_handler(pool: Iterable[Any]):
-    """Find the SenseVoice handler in the pipeline pool (monkeypatchable in tests)."""
+    """Find the SenseVoice handler in the pipeline pool (monkeypatchable in tests).
+
+    STT 后端不是 SenseVoice（qwen3-asr / whisper / …）时池里没有情绪来源，此时回落到
+    内嵌情感服务（``speech_to_speech.embedded_ser``）单独加载的 SenseVoiceSmall ——
+    两条路径对外是同一套路由与门限。
+    """
     for unit in pool:
         for handler in getattr(unit, "handlers", None) or []:
             if type(handler).__name__ == "SenseVoiceSTTHandler":
                 return handler
-    return None
+    from speech_to_speech.embedded_ser import current_ser_handler
+
+    return current_ser_handler()
 
 
 def _decode(data: bytes) -> np.ndarray:

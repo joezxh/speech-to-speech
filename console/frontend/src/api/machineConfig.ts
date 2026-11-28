@@ -10,6 +10,16 @@ export interface MachineParamRow {
   exposure: string
   risk: string
   anchor: string
+  // 目录元数据（config_view 补齐，供部署页参数表与模板面板/智能设置共用）。
+  default?: unknown
+  what?: string
+  type?: string
+  choices?: string[]
+  scope?: string
+  impact?: string
+  changeCost?: string
+  sourceRef?: string
+  draft?: string | null
 }
 
 export const machineConfigApi = {

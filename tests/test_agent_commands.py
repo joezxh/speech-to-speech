@@ -147,3 +147,178 @@ def test_config_restart_reports_failed_stage(settings, monkeypatch):
     assert "config stage failed" in error
     assert "config pull failed" in error
     assert restarted == []
+
+
+def test_model_reload_normalizes_modules_and_reports_accepted(settings):
+    submitted = []
+
+    def provider(request, on_progress):
+        submitted.append(request)
+        return "task-1"
+
+    command = {
+        "command_id": "c-reload",
+        "kind": "model_reload",
+        "payload": {
+            "modules": ["tts", "asr", "tts"],
+            "scope": "all",
+            "drain": False,
+            "reason": "console",
+        },
+    }
+    ok, result, error = commands.execute(
+        command, settings, FakeClient(), "token", reload_provider=provider
+    )
+
+    assert (ok, error) == (True, "")
+    assert result["status"] == "accepted"
+    assert result["stage"] == "queued"
+    assert result["taskId"] == "task-1"
+    assert submitted == [
+        {
+            "modules": ["asr", "tts"],
+            "scope": "all",
+            "unit_index": None,
+            "drain": False,
+            "drain_timeout_ms": 5000,
+            "config_version": "",
+            "reason": "console",
+        }
+    ]
+
+
+@pytest.mark.parametrize(
+    "modules",
+    [
+        [],
+        ["gpu"],
+        ["asr", "bogus"],
+        "asr",
+        None,
+    ],
+)
+def test_model_reload_rejects_invalid_modules_without_calling_provider(settings, modules):
+    calls = []
+    command = {"kind": "model_reload", "payload": {"modules": modules}}
+
+    ok, result, error = commands.execute(
+        command,
+        settings,
+        FakeClient(),
+        "token",
+        reload_provider=lambda request, on_progress: calls.append(request),
+    )
+
+    assert ok is False
+    assert result["stage"] == "validation"
+    assert "modules" in error
+    assert calls == []
+
+
+def test_model_reload_uses_normalized_unit_index_without_drain(settings):
+    seen = []
+    command = {
+        "kind": "model_reload",
+        "payload": {
+            "modules": ["llm"],
+            "scope": "unit",
+            "unit_index": 2,
+            "drain_timeout_ms": 1500,
+        },
+    }
+
+    ok, _, error = commands.execute(
+        command,
+        settings,
+        FakeClient(),
+        "token",
+        reload_provider=lambda request, on_progress: seen.append(request),
+    )
+
+    assert (ok, error) == (True, "")
+    assert seen[0]["unit_index"] == 2
+    assert seen[0]["drain_timeout_ms"] == 1500
+
+
+def test_model_reload_without_provider_degrades_to_config_restart(settings, monkeypatch):
+    steps = []
+    monkeypatch.setattr(
+        commands.config_sync, "sync_config", lambda client, token, cfg: steps.append("sync") or {}
+    )
+    monkeypatch.setattr(
+        commands.config_sync, "restart_pipeline", lambda cfg: steps.append("restart")
+    )
+
+    ok, result, error = commands.execute(
+        {"kind": "model_reload", "payload": {"modules": ["asr"]}},
+        settings,
+        FakeClient(),
+        "token",
+    )
+
+    assert (ok, error) == (True, "")
+    assert steps == ["sync", "restart"]
+    assert result["degraded"] == "config_restart"
+
+
+def test_model_reload_progress_is_reported_back_to_console(settings):
+    captured = {}
+
+    def provider(request, on_progress):
+        captured["on_progress"] = on_progress
+        return "task-p"
+
+    client = FakeClient()
+    ok, _, error = commands.execute(
+        {
+            "command_id": "c-p",
+            "kind": "model_reload",
+            "payload": {"modules": ["asr"], "scope": "all"},
+        },
+        settings,
+        client,
+        "token",
+        reload_provider=provider,
+    )
+
+    assert (ok, error) == (True, "")
+    captured["on_progress"](
+        {"status": "succeeded", "reloadedModules": ["asr"], "targetUnits": [0], "ready": True}
+    )
+    assert ("report", "c-p", True, {"status": "succeeded", "reloadedModules": ["asr"], "targetUnits": [0], "ready": True}, "") in client.calls
+
+
+def test_model_reload_without_provider_in_embedded_mode_is_rejected(settings):
+    ok, result, error = commands.execute(
+        {"kind": "model_reload", "payload": {"modules": ["tts"]}},
+        settings,
+        FakeClient(),
+        "token",
+        allow_restart=False,
+    )
+
+    assert ok is False
+    assert result["reason"] == "not_supported_in_embedded_mode"
+    assert "coordinator" in error
+
+
+def test_poll_and_run_keeps_reporting_after_a_report_failure(settings, monkeypatch):
+    monkeypatch.setattr(commands, "execute", lambda *args: (True, {"status": "accepted"}, ""))
+
+    class FlakyClient(FakeClient):
+        def report_command(self, token, command_id, *, ok, result, error=""):
+            self.calls.append(("report", command_id, ok, result, error))
+            if command_id == "c1":
+                raise RuntimeError("console down")
+
+    client = FlakyClient(
+        pulled=[
+            {"command_id": "c1", "kind": "reboot", "payload": {}},
+            {"command_id": "c2", "kind": "reboot", "payload": {}},
+        ]
+    )
+
+    receipts = commands.poll_and_run_detailed(client, "token", settings)
+
+    assert len(receipts) == 2
+    assert [call[1] for call in client.calls if call[0] == "report"] == ["c1", "c2"]

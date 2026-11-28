@@ -43,6 +43,11 @@ def test_registry_contains_the_registered_codes():
         # 会话记录（对话页「会话记录」面板 + 历史页）
         "console:session:query",
         "console:session:write",
+        # 会话工具（原型「工具」页）
+        "console:tool:query",
+        "console:tool:create",
+        "console:tool:update",
+        "console:tool:delete",
     }
     assert PERMISSION_ROLES["console:cluster:switch"] == frozenset({"admin", "operator"})
     assert PERMISSION_ROLES["console:cluster:create"] == frozenset({"admin"})

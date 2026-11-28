@@ -7,5 +7,10 @@ export default {
   statusActive: '活跃',
   statusStuck: '卡住',
   cancel: '取消',
-  confirm: '确认'
+  confirm: '确认',
+  edit: '编辑',
+  save: '保存',
+  delete: '删除',
+  search: '查询',
+  refresh: '刷新'
 }

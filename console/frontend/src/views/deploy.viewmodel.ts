@@ -10,7 +10,13 @@ export interface ParamRow {
   exposure: string
   risk: string
   anchor: string
-  draft?: string
+  // config_view 现在带目录元数据与草稿值（draft 为 null 表示无草稿）。
+  draft?: string | null
+  what?: string
+  scope?: string
+  impact?: string
+  changeCost?: string
+  sourceRef?: string
 }
 
 export interface Scene {

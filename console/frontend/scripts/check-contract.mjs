@@ -37,12 +37,12 @@ async function json(path, init) {
 
 // B10 — the demo surface must keep its own shape: no ApiResponse envelope.
 {
-  const { status, body } = await json('/api/config')
+  const { status, body } = await json('/api/config.local')
   if (status === 404) {
     checks.push({ name: 'demo /api/config', ok: true, detail: 'not in this build (404)' })
   } else {
-    check('demo /api/config 200', status === 200, `status=${status}`)
-    check('demo /api/config has no envelope', body !== null && !('code' in body), JSON.stringify(body)?.slice(0, 80))
+    check('demo /api/config.local 200', status === 200, `status=${status}`)
+    check('demo /api/config.local has no envelope', body !== null && !('code' in body), JSON.stringify(body)?.slice(0, 80))
   }
 }
 

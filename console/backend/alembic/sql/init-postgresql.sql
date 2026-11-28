@@ -262,6 +262,10 @@ COMMENT ON TABLE "callback_target" IS '回调目标配置：java 与 python 两�
 
 COMMENT ON TABLE "callback_delivery_log" IS '回调投递日志：每次尝试一行，目标删除后日志按软关联保留';
 
+COMMENT ON TABLE "ai_console_tool" IS '会话工具注册表：内置与自定义工具的声明、启停与作用域';
+
+COMMENT ON TABLE "ai_console_calendar_event" IS '日历工具本地事件库：无外部账号授权时的可操作日程，按拥有者隔离';
+
 COMMENT ON COLUMN "param_user"."id" IS '主键标识';
 
 COMMENT ON COLUMN "param_user"."username" IS '登录用户名，全局唯一';
@@ -1009,6 +1013,52 @@ COMMENT ON COLUMN "callback_delivery_log"."duration_ms" IS '本次尝试耗时�
 COMMENT ON COLUMN "callback_delivery_log"."status" IS '尝试结果：success、retrying 或 failed';
 
 COMMENT ON COLUMN "callback_delivery_log"."error" IS '失败原因摘要，成功时为空';
+
+COMMENT ON COLUMN "ai_console_tool"."id" IS '工具稳定标识，对话页与语音工具声明按此引用';
+
+COMMENT ON COLUMN "ai_console_tool"."name" IS '工具名称，全局唯一';
+
+COMMENT ON COLUMN "ai_console_tool"."type" IS '工具类型：联网搜索、日历、天气、知识库或自定义 HTTP';
+
+COMMENT ON COLUMN "ai_console_tool"."description" IS '工具描述，作为模型选择工具时的提示';
+
+COMMENT ON COLUMN "ai_console_tool"."endpoint" IS '自定义 HTTP 工具的接口地址';
+
+COMMENT ON COLUMN "ai_console_tool"."method" IS '自定义 HTTP 工具的请求方法';
+
+COMMENT ON COLUMN "ai_console_tool"."scope" IS '作用域：全局、会话或租户';
+
+COMMENT ON COLUMN "ai_console_tool"."enabled" IS '工具是否启用';
+
+COMMENT ON COLUMN "ai_console_tool"."builtin" IS '是否内置工具，内置工具对所有登录用户可见';
+
+COMMENT ON COLUMN "ai_console_tool"."owner" IS '自定义工具的拥有者用户名，内置工具为空';
+
+COMMENT ON COLUMN "ai_console_tool"."params" IS '参数声明数组，元素包含名称、类型与是否必填';
+
+COMMENT ON COLUMN "ai_console_tool"."config" IS '执行期配置，例如搜索 provider 优先级';
+
+COMMENT ON COLUMN "ai_console_tool"."created_by" IS '创建人用户名';
+
+COMMENT ON COLUMN "ai_console_tool"."updated_by" IS '最近修改人用户名';
+
+COMMENT ON COLUMN "ai_console_tool"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "ai_console_tool"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."id" IS '主键标识';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."owner" IS '事件拥有者用户名，按此隔离';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."title" IS '事件标题';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."start_at" IS '开始时间，采用调用方传入的字符串';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."end_at" IS '结束时间，采用调用方传入的字符串';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."description" IS '事件说明';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."created_at" IS '创建时间（UTC）';
 
 UPDATE alembic_version SET version_num='0007_comments' WHERE alembic_version.version_num = '0006_clusters';
 
@@ -1396,6 +1446,10 @@ COMMENT ON TABLE "callback_target" IS '回调目标配置：java 与 python 两�
 
 COMMENT ON TABLE "callback_delivery_log" IS '回调投递日志：每次尝试一行，目标删除后日志按软关联保留';
 
+COMMENT ON TABLE "ai_console_tool" IS '会话工具注册表：内置与自定义工具的声明、启停与作用域';
+
+COMMENT ON TABLE "ai_console_calendar_event" IS '日历工具本地事件库：无外部账号授权时的可操作日程，按拥有者隔离';
+
 COMMENT ON COLUMN "param_user"."id" IS '主键标识';
 
 COMMENT ON COLUMN "param_user"."username" IS '登录用户名，全局唯一';
@@ -2144,6 +2198,52 @@ COMMENT ON COLUMN "callback_delivery_log"."status" IS '尝试结果：success、
 
 COMMENT ON COLUMN "callback_delivery_log"."error" IS '失败原因摘要，成功时为空';
 
+COMMENT ON COLUMN "ai_console_tool"."id" IS '工具稳定标识，对话页与语音工具声明按此引用';
+
+COMMENT ON COLUMN "ai_console_tool"."name" IS '工具名称，全局唯一';
+
+COMMENT ON COLUMN "ai_console_tool"."type" IS '工具类型：联网搜索、日历、天气、知识库或自定义 HTTP';
+
+COMMENT ON COLUMN "ai_console_tool"."description" IS '工具描述，作为模型选择工具时的提示';
+
+COMMENT ON COLUMN "ai_console_tool"."endpoint" IS '自定义 HTTP 工具的接口地址';
+
+COMMENT ON COLUMN "ai_console_tool"."method" IS '自定义 HTTP 工具的请求方法';
+
+COMMENT ON COLUMN "ai_console_tool"."scope" IS '作用域：全局、会话或租户';
+
+COMMENT ON COLUMN "ai_console_tool"."enabled" IS '工具是否启用';
+
+COMMENT ON COLUMN "ai_console_tool"."builtin" IS '是否内置工具，内置工具对所有登录用户可见';
+
+COMMENT ON COLUMN "ai_console_tool"."owner" IS '自定义工具的拥有者用户名，内置工具为空';
+
+COMMENT ON COLUMN "ai_console_tool"."params" IS '参数声明数组，元素包含名称、类型与是否必填';
+
+COMMENT ON COLUMN "ai_console_tool"."config" IS '执行期配置，例如搜索 provider 优先级';
+
+COMMENT ON COLUMN "ai_console_tool"."created_by" IS '创建人用户名';
+
+COMMENT ON COLUMN "ai_console_tool"."updated_by" IS '最近修改人用户名';
+
+COMMENT ON COLUMN "ai_console_tool"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "ai_console_tool"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."id" IS '主键标识';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."owner" IS '事件拥有者用户名，按此隔离';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."title" IS '事件标题';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."start_at" IS '开始时间，采用调用方传入的字符串';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."end_at" IS '结束时间，采用调用方传入的字符串';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."description" IS '事件说明';
+
+COMMENT ON COLUMN "ai_console_calendar_event"."created_at" IS '创建时间（UTC）';
+
 UPDATE alembic_version SET version_num='0014_comments_backfill' WHERE alembic_version.version_num = '0013_machine_deploy_details';
 
 -- Running upgrade 0014_comments_backfill -> 0015_callback_subsystem
@@ -2413,6 +2513,56 @@ CREATE TABLE param_session_clip (
 CREATE INDEX ix_param_session_clip_session_id ON param_session_clip (session_id);
 
 UPDATE alembic_version SET version_num='0021_session_clips' WHERE alembic_version.version_num = '0020_session_message_fields';
+
+-- Running upgrade 0021_session_clips -> 0022_tools
+
+CREATE TABLE ai_console_tool (
+    id VARCHAR(64) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    type VARCHAR(32) NOT NULL,
+    description VARCHAR(512) DEFAULT '' NOT NULL,
+    endpoint VARCHAR(512) DEFAULT '' NOT NULL,
+    method VARCHAR(8) DEFAULT 'GET' NOT NULL,
+    scope VARCHAR(16) DEFAULT 'global' NOT NULL,
+    enabled BOOLEAN DEFAULT true NOT NULL,
+    builtin BOOLEAN DEFAULT false NOT NULL,
+    owner VARCHAR(64) DEFAULT '' NOT NULL,
+    params JSON DEFAULT '[]' NOT NULL,
+    config JSON DEFAULT '{}' NOT NULL,
+    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_ai_console_tool_name UNIQUE (name)
+);
+
+CREATE INDEX ix_ai_console_tool_type ON ai_console_tool (type);
+
+CREATE INDEX ix_ai_console_tool_owner ON ai_console_tool (owner);
+
+CREATE TABLE ai_console_calendar_event (
+    id SERIAL NOT NULL,
+    owner VARCHAR(64) DEFAULT '' NOT NULL,
+    title VARCHAR(256) NOT NULL,
+    start_at VARCHAR(32) DEFAULT '' NOT NULL,
+    end_at VARCHAR(32) DEFAULT '' NOT NULL,
+    description VARCHAR(1024) DEFAULT '' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_ai_console_calendar_event_owner ON ai_console_calendar_event (owner);
+
+INSERT INTO ai_console_tool (id,name,type,description,endpoint,method,scope,enabled,builtin,owner,params,config,created_by,updated_by,created_at,updated_at) VALUES ('tool-search', 'Web search', 'web_search', 'Attach realtime results to the answer.', 'https://api.example.com/search', 'GET', 'global', 1, 1, '', '[{"k": "query", "t": "string", "req": 1}, {"k": "top_k", "t": "number", "req": 0}]', '{}', 'system', 'system', '2026-11-28T08:49:11.433240+00:00', '2026-11-28T08:49:11.433240+00:00');
+
+INSERT INTO ai_console_tool (id,name,type,description,endpoint,method,scope,enabled,builtin,owner,params,config,created_by,updated_by,created_at,updated_at) VALUES ('tool-calendar', 'Calendar', 'calendar', 'Read the schedule and draft events.', 'https://api.example.com/calendar', 'GET', 'global', 0, 1, '', '[{"k": "range", "t": "string", "req": 0}]', '{}', 'system', 'system', '2026-11-28T08:49:11.433240+00:00', '2026-11-28T08:49:11.433240+00:00');
+
+INSERT INTO ai_console_tool (id,name,type,description,endpoint,method,scope,enabled,builtin,owner,params,config,created_by,updated_by,created_at,updated_at) VALUES ('tool-weather', 'Weather', 'weather', 'Current conditions and forecast.', 'https://api.example.com/weather', 'GET', 'global', 1, 1, '', '[{"k": "city", "t": "string", "req": 1}]', '{}', 'system', 'system', '2026-11-28T08:49:11.433240+00:00', '2026-11-28T08:49:11.433240+00:00');
+
+INSERT INTO ai_console_tool (id,name,type,description,endpoint,method,scope,enabled,builtin,owner,params,config,created_by,updated_by,created_at,updated_at) VALUES ('tool-kb', 'Knowledge base', 'kb', 'RAG over internal documents.', 'https://api.example.com/kb/search', 'POST', 'tenant', 0, 1, '', '[{"k": "query", "t": "string", "req": 1}, {"k": "top_k", "t": "number", "req": 0}]', '{}', 'system', 'system', '2026-11-28T08:49:11.433240+00:00', '2026-11-28T08:49:11.433240+00:00');
+
+UPDATE alembic_version SET version_num='0022_tools' WHERE alembic_version.version_num = '0021_session_clips';
 
 COMMIT;
 

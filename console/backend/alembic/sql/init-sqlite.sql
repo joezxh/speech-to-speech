@@ -706,3 +706,53 @@ CREATE INDEX ix_param_session_clip_session_id ON param_session_clip (session_id)
 
 UPDATE alembic_version SET version_num='0021_session_clips' WHERE alembic_version.version_num = '0020_session_message_fields';
 
+-- Running upgrade 0021_session_clips -> 0022_tools
+
+CREATE TABLE ai_console_tool (
+    id VARCHAR(64) NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    type VARCHAR(32) NOT NULL,
+    description VARCHAR(512) DEFAULT '' NOT NULL,
+    endpoint VARCHAR(512) DEFAULT '' NOT NULL,
+    method VARCHAR(8) DEFAULT 'GET' NOT NULL,
+    scope VARCHAR(16) DEFAULT 'global' NOT NULL,
+    enabled BOOLEAN DEFAULT 1 NOT NULL,
+    builtin BOOLEAN DEFAULT 0 NOT NULL,
+    owner VARCHAR(64) DEFAULT '' NOT NULL,
+    params JSON DEFAULT '[]' NOT NULL,
+    config JSON DEFAULT '{}' NOT NULL,
+    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_ai_console_tool_name UNIQUE (name)
+);
+
+CREATE INDEX ix_ai_console_tool_type ON ai_console_tool (type);
+
+CREATE INDEX ix_ai_console_tool_owner ON ai_console_tool (owner);
+
+CREATE TABLE ai_console_calendar_event (
+    id INTEGER NOT NULL,
+    owner VARCHAR(64) DEFAULT '' NOT NULL,
+    title VARCHAR(256) NOT NULL,
+    start_at VARCHAR(32) DEFAULT '' NOT NULL,
+    end_at VARCHAR(32) DEFAULT '' NOT NULL,
+    description VARCHAR(1024) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_ai_console_calendar_event_owner ON ai_console_calendar_event (owner);
+
+INSERT INTO ai_console_tool (id,name,type,description,endpoint,method,scope,enabled,builtin,owner,params,config,created_by,updated_by,created_at,updated_at) VALUES ('tool-search', 'Web search', 'web_search', 'Attach realtime results to the answer.', 'https://api.example.com/search', 'GET', 'global', 1, 1, '', '[{"k": "query", "t": "string", "req": 1}, {"k": "top_k", "t": "number", "req": 0}]', '{}', 'system', 'system', '2026-11-28T08:49:08.248362+00:00', '2026-11-28T08:49:08.248362+00:00');
+
+INSERT INTO ai_console_tool (id,name,type,description,endpoint,method,scope,enabled,builtin,owner,params,config,created_by,updated_by,created_at,updated_at) VALUES ('tool-calendar', 'Calendar', 'calendar', 'Read the schedule and draft events.', 'https://api.example.com/calendar', 'GET', 'global', 0, 1, '', '[{"k": "range", "t": "string", "req": 0}]', '{}', 'system', 'system', '2026-11-28T08:49:08.248362+00:00', '2026-11-28T08:49:08.248362+00:00');
+
+INSERT INTO ai_console_tool (id,name,type,description,endpoint,method,scope,enabled,builtin,owner,params,config,created_by,updated_by,created_at,updated_at) VALUES ('tool-weather', 'Weather', 'weather', 'Current conditions and forecast.', 'https://api.example.com/weather', 'GET', 'global', 1, 1, '', '[{"k": "city", "t": "string", "req": 1}]', '{}', 'system', 'system', '2026-11-28T08:49:08.248362+00:00', '2026-11-28T08:49:08.248362+00:00');
+
+INSERT INTO ai_console_tool (id,name,type,description,endpoint,method,scope,enabled,builtin,owner,params,config,created_by,updated_by,created_at,updated_at) VALUES ('tool-kb', 'Knowledge base', 'kb', 'RAG over internal documents.', 'https://api.example.com/kb/search', 'POST', 'tenant', 0, 1, '', '[{"k": "query", "t": "string", "req": 1}, {"k": "top_k", "t": "number", "req": 0}]', '{}', 'system', 'system', '2026-11-28T08:49:08.248362+00:00', '2026-11-28T08:49:08.248362+00:00');
+
+UPDATE alembic_version SET version_num='0022_tools' WHERE alembic_version.version_num = '0021_session_clips';
+

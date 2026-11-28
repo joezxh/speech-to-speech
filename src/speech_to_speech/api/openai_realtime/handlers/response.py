@@ -175,6 +175,16 @@ class ResponseHandler(RealtimeBaseHandler):
         if tracker.speech_anchor is not None and (status != "completed" or not st.pending_function_calls):
             tracker.speech_anchor.close()
         tracker.status = status
+        # Per-backend call counters: one finalized turn = one STT + one LLM +
+        # one TTS measurement. Latencies mirror the TURN_LATENCY line's fields
+        # (tts uses TTFA, matching what the log line reports). Non-completed
+        # turns count as an error on every backend involved.
+        self._service.total_usage.backends.record_turn(
+            stt_s=tracker.stt_s,
+            llm_s=tracker.llm_total_s,
+            tts_s=tracker.tts_ttfa_s,
+            error=status != "completed",
+        )
         line = tracker.format_log_line()
         if line:
             logger.info("%s response_key=%s", line, response_key)

@@ -54,6 +54,9 @@ export interface MachineRow {
   role: string
   gpu: string
   gpuTotalGb: number | null
+  // 平台类型与驱动描述（模板硬件校验展示用；旧 agent 未上报时 platform 为推断值）。
+  platform: string
+  driver: string
   version: string
   state: string
   registryMode: string
@@ -131,6 +134,15 @@ export function clusterOptions(
   return values.map((value) => ({ value, label: value }))
 }
 
+/** 命令状态展示：accepted/progress 视为进行中，expired 单独提示。 */
+export function commandStatusView(status: string): 'pending' | 'running' | 'done' | 'failed' | 'expired' {
+  if (status === 'succeeded') return 'done'
+  if (status === 'failed') return 'failed'
+  if (status === 'expired') return 'expired'
+  if (status === 'dispatched' || status === 'accepted' || status === 'progress') return 'running'
+  return 'pending'
+}
+
 export interface MachineCommandView {
   commandId: string
   machineId: string
@@ -145,12 +157,36 @@ export interface MachineCommandView {
   createdAt: string | null
 }
 
-export type CommandKind = 'drain' | 'resume' | 'reboot' | 'config_restart' | 'recover' | 'health_check'
+export type CommandKind = 'drain' | 'resume' | 'reboot' | 'config_restart' | 'recover' | 'health_check' | 'model_reload'
+
+export const RELOAD_MODULES = ['asr', 'llm', 'tts'] as const
+export type ReloadModule = (typeof RELOAD_MODULES)[number]
+
+/** 去重并按 asr→llm→tts 规范顺序返回；非法模块忽略。 */
+export function normalizeReloadModules(modules: string[]): ReloadModule[] {
+  const selected = new Set(modules.filter((m): m is ReloadModule => RELOAD_MODULES.includes(m as ReloadModule)))
+  return RELOAD_MODULES.filter((m) => selected.has(m))
+}
+
+/** 构造 model_reload 命令 payload（camelCase，路由层原样持久化）。 */
+export function buildReloadPayload(
+  modules: string[],
+  options: { scope?: 'all' | 'unit'; unitIndex?: number | null; drain?: boolean; drainTimeoutMs?: number } = {}
+): Record<string, unknown> {
+  return {
+    modules: normalizeReloadModules(modules),
+    scope: options.scope ?? 'all',
+    unitIndex: options.unitIndex ?? null,
+    drain: options.drain ?? true,
+    drainTimeoutMs: options.drainTimeoutMs ?? 5000
+  }
+}
 
 /** 原型机器行动作：排空中→恢复，不可达/故障→拉起，其他→排空+重启。 */
 export function commandActions(
   state: string,
-  activeKinds: string[]
+  activeKinds: string[],
+  supportsModelReload = false
 ): Array<{ kind: CommandKind; labelKey: string; disabled: boolean }> {
   const kinds: CommandKind[] =
     state === 'draining'
@@ -158,6 +194,9 @@ export function commandActions(
       : state === 'unreachable' || state === 'bad' || state === 'offline'
         ? ['recover']
         : ['drain', 'reboot', 'config_restart']
+  if (supportsModelReload && state !== 'draining' && state !== 'unreachable' && state !== 'bad' && state !== 'offline') {
+    kinds.push('model_reload')
+  }
   return kinds.map((kind) => ({
     kind,
     labelKey: `machines.action.${kind}`,

@@ -53,6 +53,9 @@ def pool_usage_snapshot(pool: Iterable[Any]) -> dict[str, Any]:
         "responses": int(total.get("responses_completed") or 0),
         "audio_duration_s": float(total.get("audio_duration_s") or 0.0),
         "window_s": int(total.get("window_s") or 0),
+        # per-backend call counters; the agent diffs and reports them the same
+        # way as the scalar counters. Empty when no turn has finalized yet.
+        "backends": total.get("backends") or {},
     }
 
 

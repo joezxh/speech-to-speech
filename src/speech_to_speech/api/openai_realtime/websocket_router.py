@@ -716,7 +716,7 @@ def create_app(
         with transport=None and attaches the session object once constructed.
         """
         for unit in pool:
-            if unit.session is None:
+            if unit.session is None and not getattr(unit, "maintenance", False):
                 unit.session = SessionState(transport=transport)
                 return unit
         return None
@@ -896,7 +896,8 @@ def create_app(
             "返回 pipeline 实例池的容量与占用情况。\n\n"
             "* `size`：实例总数；`in_use`：当前被会话占用的实例数。\n"
             "* `units[].state` 取值：`idle`（空闲）、`active`（会话进行中）、"
-            "`draining`（客户端已断开，等待 SESSION_END 排空）、`stuck`（排空超时，需人工介入）。\n\n"
+            "`draining`（客户端已断开，等待 SESSION_END 排空）、`stuck`（排空超时，需人工介入）、"
+            "`maintenance`（模型重载中，不接新会话）。\n\n"
             "```bash\ncurl http://localhost:8765/v1/pool\n```"
         ),
         tags=["观测与运维"],
@@ -920,7 +921,7 @@ def create_app(
                                             "index": {"type": "integer", "example": 0},
                                             "state": {
                                                 "type": "string",
-                                                "enum": ["idle", "active", "draining", "stuck"],
+                                                "enum": ["idle", "active", "draining", "stuck", "maintenance"],
                                                 "description": "实例状态。",
                                                 "example": "active",
                                             },
@@ -946,6 +947,8 @@ def create_app(
         now = time.monotonic()
 
         def _state(u: PipelineUnit) -> dict[str, Any]:
+            if getattr(u, "maintenance", False):
+                return {"index": u.index, "state": "maintenance", "session_id": None}
             s = u.session
             if s is None:
                 return {"index": u.index, "state": "idle", "session_id": None}
@@ -974,7 +977,10 @@ def create_app(
 
         return {
             "size": len(pool),
-            "in_use": sum(1 for u in pool if u.session is not None),
+            # 维护中的实例计入占用，避免 console 分配器把会话派到即将重载的 unit。
+            "in_use": sum(
+                1 for u in pool if u.session is not None or getattr(u, "maintenance", False)
+            ),
             "units": [_state(u) for u in pool],
         }
 

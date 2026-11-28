@@ -783,6 +783,16 @@ def _build_pipeline_unit(
             known = set(capabilities.languages)
             setattr(service, f"{kind}_supported_languages", known if allowed is None else allowed & known)
 
+    from speech_to_speech.stage_context import StageContextStore
+
+    stage_context = StageContextStore(
+        stt=stt_selection,
+        llm=llm_selection,
+        tts=tts_selection,
+        vad_kwargs=vad_kw,
+        module_kwargs=module_kwargs,
+    )
+
     return PipelineUnit(
         index=index,
         service=service,
@@ -795,6 +805,7 @@ def _build_pipeline_unit(
         text_prompt_queue=text_prompt_queue,
         output_signal=output_signal,
         handlers=handlers,
+        stage_context=stage_context,
     )
 
 
@@ -824,6 +835,12 @@ def build_pipeline(
         for index in range(module_kwargs.num_pipelines)
     ]
 
+    # 内嵌情感服务：STT 不是 SenseVoice 时，池里没有情绪来源，单独加载一个
+    # SenseVoiceSmall 供内置情感端点使用（崩溃隔离，详见 embedded_ser.py）。
+    from speech_to_speech.embedded_ser import start_embedded_ser
+
+    start_embedded_ser(pool)
+
     # The embedded agent shares the server's stop event: the server's finally
     # block sets it on a failed bind, and ThreadManager.stop() sets it too, so
     # the agent never keeps the process alive.
@@ -831,10 +848,14 @@ def build_pipeline(
     if agent_options is not None and agent_options.autostart:
         from speech_to_speech.agent_integration import build_embedded_agent, pool_usage_provider
 
+        from speech_to_speech.api.openai_realtime.reload_assembly import build_reload_provider
+
+        reload_provider, _coordinator = build_reload_provider(pool)
         agent = build_embedded_agent(
             agent_options,
             stop_event=stop_event,
             usage_provider=pool_usage_provider(pool),
+            reload_provider=reload_provider,
         )
 
     # The embedded LiveKit transcript worker shares the same stop event and follows

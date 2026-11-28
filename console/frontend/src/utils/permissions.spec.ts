@@ -28,6 +28,8 @@ describe('permission mirror', () => {
       'console:agent:enroll',
       'console:audit:export',
       'console:audit:query',
+      'console:callback:manage',
+      'console:callback:query',
       'console:cluster:create',
       'console:cluster:delete',
       'console:cluster:query',
@@ -42,7 +44,16 @@ describe('permission mirror', () => {
       'console:machine:update',
       'console:release:query',
       'console:release:write',
-      'console:token:query'
+      'console:smart:analyze',
+      'console:template:create',
+      'console:template:delete',
+      'console:template:query',
+      'console:template:update',
+      'console:token:query',
+      'console:tool:create',
+      'console:tool:delete',
+      'console:tool:query',
+      'console:tool:update'
     ])
   })
 })

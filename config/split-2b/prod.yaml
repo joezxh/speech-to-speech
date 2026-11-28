@@ -1,0 +1,154 @@
+# config.split.0.6b.2 —— 192.168.40.30 split 形态部署档（pipeline:8765 + console:8010，GPU1）。
+#
+# 模型选择与参数**逐项对齐仓库 config/prod.yaml**（本地 Windows 直跑版）：
+#   STT  = qwen3-asr（Qwen3-ASR-1.7B，自回归多模态，cuda）
+#   TTS  = voxcpm（VoxCPM2-2B，扩散式 48kHz，cuda，streaming）
+#   LLM  = chat-completions → GPUStack qwen3-32b
+#   说话人分离 = nemotron3-diarization（bfloat16）
+#   口型音素   = wav2vec2-ljspeech-gruut（cpu）
+#   嵌入式 LiveKit worker = 开启
+# 与基准的唯一差异：**权重路径改成容器路径**（容器 WORKDIR 是 /usr/src/app，
+# 仓库里的相对路径 cache/... 不可达；权重统一在 /root/.cache/，由 compose 绑定挂载）。
+#
+# 参照：docker-compose.split.yml（40.30 版）、deploy/4030/README.md §10。
+#
+# 独立服务（ASR / TTS / 声纹 / 情感）不在本文件声明：顶层键是严格白名单
+# （config.py:validate_config），新增 services: 段会被判 Unknown field。
+# 它们的开关与端点配置全部来自 config.split.0.6b.2/prod.env 的同名环境变量；
+# 本文件只保留权重路径的 {env: NAME} 联动。
+schema_version: 1
+
+blocks:
+  vad:
+    kind: vad
+    # 与基准一致：silero VAD，纯静音检测（Smart Turn 关闭）。
+    backend: silero
+    settings:
+      # 2026-11-27 ASR 调优：300→450。此前 300ms 把长语音切成多段独立转写，
+      # 上下文断裂、同音错字累积。代价：每轮判停多等 150ms（在延迟预算内）。
+      min_silence_ms: 450
+      # --no_smart_turn: pure silence detection, no Smart Turn
+      smart_turn: false
+      # Kept even though smart_turn is off: a missing path makes the backend
+      # download v3.2 at startup, which stalls an offline container.
+      # 容器内改绝对路径（权重在 /root/.cache/，由 compose 绑定挂载）。
+      smart_turn_model_path: /root/.cache/smart-turn-v3.2-cpu.onnx
+      speculative_reopen_ms: 0
+      unanswered_reopen_ms: 0
+      # 2026-11-27 ASR 调优：日志实测近 1 秒语音因有效语音 <384ms 被**整段丢弃**
+      # （VAD: discarding segment=884ms active=32ms），这是长语音丢字的主因。
+      # 降门槛 + 开短段拼接，让短句/低音量段进 STT 而不是被丢。
+      # 反模式约束：short_segment_merge_ms 必须 > min_silence_ms（playbook §438）。
+      # thresh 0.5 是实验项（原 0.6）：日志显示 884ms 段只判出 32ms 语音，
+      # 疑似阈值偏高/麦克风音量低；若出现噪声误触发（VAD 频繁起停）回 0.6。
+      min_speech_ms: 250
+      short_segment_merge_ms: 800
+      thresh: 0.5
+
+  stt:
+    kind: stt
+    # Qwen3-ASR-1.7B：自回归多模态 ASR，准确率高于 SenseVoiceSmall/Large，
+    # 代价是 RTF 0.47~0.90（自回归解码），比 CTC 非自回归慢一个数量级。
+    # 注意：Qwen3-ASR **不产出情感标签**，内置情感服务由 src/speech_to_speech/
+    # embedded_ser.py 单独加载 SenseVoiceSmall 提供（SER_PROVIDER=local）。
+    backend: qwen3-asr
+    settings:
+      qwen3_asr_model_name: {env: S2S_ASR_MODEL_DIR}
+      qwen3_asr_device: cuda
+      # 2026-11-27 调优：auto→zh。日志 language: null——短段语言识别不稳，
+      # 锁定中文消除语言误判，也省去每段的语言识别开销。
+      qwen3_asr_language: zh
+      # 256→320：长句防截断（parameter-catalog §3.3：过小截断长句转写）。
+      qwen3_asr_gen_max_new_tokens: 320
+      # 2026-11-27 调优：领域热词注入转写偏置，压同音/近音错字（日志实测
+      # "市场人员/研发/产品经理" 等业务词来自被切碎/误识别的连续语音）。
+      # 控制在 100 字内——过长会抬高每段转写延迟。词表可按业务自行维护。
+      # 需要 transformers>=5.15.1（镜像 5.20.2 ✓），旧版本会 warning 并忽略。
+      qwen3_asr_prompt: "热词：市场人员、研发、产品经理、项目、客户、需求、部署、发布、上线、语音助手、集群、参数目录。请准确转写以上词汇与中文专有名词。"
+      # beam search：同音/近音择优。默认 1；3 使 STT 约 0.4-0.6s → 0.8-1.2s
+      #（延迟预算内）。参数经 qwen3_asr_stt_arguments.py 暴露（gen_kwargs 透传）。
+      qwen3_asr_gen_num_beams: 3
+
+  llm:
+    kind: llm
+    backend: chat-completions
+    settings:
+      # LLM 走内网 GPUStack 的 Qwen3-32B（与 config/prod.env 的 GPUSTACK_* 一致，
+      # 与基准 config/prod.yaml 同模型名）。
+      model_name: {env: GPUSTACK_MODEL}
+      responses_api_base_url: {env: GPUSTACK_BASE_URL}
+      # chat-completions 后端同样读这组 responses_api_* 字段；环境变量缺失是
+      # resolve 期硬错误，没有默认值兜底。
+      responses_api_api_key: {env: GPUSTACK_API_KEY}
+      responses_api_stream: true
+      # 空串 = 不发 reasoning_effort；chat-completions 会回退到
+      # chat_template_kwargs.enable_thinking=false，关闭 Qwen3 思考链。
+      responses_api_reasoning_effort: ""
+      # 每攒 1 句就送 TTS，首音最快（默认 3 句会多等 1-2 句的生成时间）。
+      stream_batch_sentences: 1
+      init_chat_role: system
+      # 中文提示词：整段 system prompt 的模板（LLM/voice_prompt.py）仍是英文，
+      # 这里把会话人格部分换成中文，模型回答语言会随提示词一起偏回中文。
+      # 2026-11-27 调优：加入转写纠错与领域词规则——ASR 转写含同音错字时，
+      # 结合上下文自动纠正后再回答（覆盖 voice_prompt.py 默认的 noisy 容忍策略），
+      # 并给出领域词表供 LLM 做语义消歧。temperature 保持 0.0 不变。
+      init_chat_prompt: >-
+        你是一个语音助手。请始终用中文回答，回复要简短：一两句话即可，除非用户要求展开细节。
+        用户的话经语音识别转写，可能包含同音/近音错字；请结合上下文自动纠正明显的错别字后再理解用户意图，无需向用户确认。
+        领域词汇包括：市场人员、研发、产品经理、项目、客户、需求、部署、发布、上线、集群、参数目录。
+      # 注入语言指令（"Please reply to my message in <language>."）。
+      enable_lang_prompt: true
+
+  tts:
+    kind: tts
+    # 从 qwen3-tts-1.7b-customvoice 换成 VoxCPM2-2B：更高音质（48 kHz），
+    # 扩散式语音生成，支持流式输出。
+    backend: voxcpm
+    settings:
+      voxcpm_tts_model_name: {env: S2S_TTS_MODEL_DIR}
+      voxcpm_tts_device: cuda
+      voxcpm_tts_dtype: auto
+      voxcpm_tts_streaming: true
+
+pipelines:
+  # `--name prod` in the compose command selects this definition and nothing
+  # else: `serve` requires exactly one selected definition.
+  prod:
+    stages: {vad: vad, stt: stt, llm: llm, tts: tts}
+    # 40.30 的 GPU1 是 24G，且 ASR+TTS+diarization+情感模型同卡共存，
+    # 并发按 1 路跑（与基准 config/prod.yaml 一致）。
+    num_pipelines: 1
+    options:
+      # --no_enable_live_transcription. Lives here rather than in a block because
+      # it is a ModuleArguments field, not a component setting.
+      enable_live_transcription: false
+      # STV 口型（ModuleArguments 字段，放 options）。打开后 pipeline 会挂载
+      # Wav2Vec2STVHandler，并在 TTS 音频上产出 viseme 扩展事件。权重已预取到
+      # /root/.cache/wav2vec2-ljspeech-gruut（compose 绑定挂载），缺失时 setup 会
+      # soft-fail 为 skip（仅记日志，不影响音频链路），capability 标 not_ready。
+      enable_visemes: true
+      stv_model_name: {env: S2S_STV_MODEL_DIR}
+      stv_device: cpu
+      # 说话人分离：file 模式不接受 --with-diarization 命令行开关（cli.py 会
+      # 直接 exit 2），只能经本 YAML 起停。权重已预取到本地目录（HF_HUB_OFFLINE=1
+      # 下任何 repo id 都会因无缓存而启动失败）；删掉 model_name 行则回退默认
+      # repo id（需联网）。
+      diarization: true
+      diarization_model_name: /root/.cache/nemotron3-diarization
+      # 默认 fp32 改 bf16 可省 ~0.5GB，对说话人分离精度几乎无感。取值限
+      # float32/float16/bfloat16。
+      diarization_dtype: bfloat16
+
+runtime:
+  server:
+    # Deliberately widened: the catalog default is 127.0.0.1, unreachable from
+    # outside the container.
+    host: 0.0.0.0
+    port: 8765
+
+  # 嵌入式 LiveKit worker：随本服务启动/停止（共享 pipeline stop event），无需
+  # 单独容器。密钥不进 YAML：启动前 fail-fast 校验的 LIVEKIT_URL / API_KEY /
+  # API_SECRET 及 LIVEKIT_WORKER_ASR_MODE=local 均在 config.split.0.6b.2/prod.env
+  # 声明；local 模式要求 STT backend，本文件 stt 块已满足。
+  livekit_worker:
+    enabled: true

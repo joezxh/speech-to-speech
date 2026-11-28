@@ -1,0 +1,20 @@
+export default {
+  title: '设置',
+  desc: '对话态热更与机器相关的前台设置。语音与音频设备偏好在「语音对话」页的设置浮层。',
+  machine: { title: '选择机器', hint: '下方的参数按所选机器过滤' },
+  hotTitle: '对话态热更',
+  hotHint: '来自 {machine} 的当前参数；白名单内的修改经 session.update 即时生效',
+  hotNote: '灰显参数（音色/模型等）不在热更白名单内：修改会随模板保存或随下次发布生效。',
+  hotCol: { param: '参数', current: '机器当前值', value: '新值', patch: 'session.update 路径', source: '生效方式' },
+  hotLive: '即时热更',
+  hotCold: '非白名单',
+  hotApply: '应用热更',
+  hotApplying: '正在下发…',
+  hotNothingToApply: '没有可下发的白名单参数。',
+  hotApplied: '已下发 {accepted}/{total} 台会话',
+  hotFailed: '{n} 台失败',
+  hotRejected: '未下发（非白名单）: {names}',
+  pickMachine: '先在上方选择机器。',
+  smartTitle: '智能设置',
+  smartApplyNote: 'AI 推荐值写入上方热更表后手动「应用热更」生效。'
+}

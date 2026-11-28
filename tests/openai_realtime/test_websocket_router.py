@@ -2078,6 +2078,19 @@ class TestPool:
             assert data["errors_by_type"] == {"foo": 2, "bar": 1}
             assert data["total_errors"] == 3
 
+    def test_usage_aggregates_backend_counters_across_units(self):
+        pool = [_make_unit(0), _make_unit(1)]
+        pool[0].service.total_usage.backends.record_turn(stt_s=0.2, llm_s=0.4, tts_s=0.1)
+        pool[1].service.total_usage.backends.record_turn(stt_s=0.3, error=True)
+        app = create_app(pool=pool, stop_event=ThreadingEvent())
+        with TestClient(app) as client:
+            data = client.get("/v1/usage").json()
+            assert data["backends"]["stt"] == {"calls": 2, "errors": 1, "ms_sum": 500}
+            # unit1's turn never reached LLM/TTS (no latency measured), so only
+            # unit0's calls land in those buckets.
+            assert data["backends"]["llm"] == {"calls": 1, "errors": 0, "ms_sum": 400}
+            assert data["backends"]["tts"] == {"calls": 1, "errors": 0, "ms_sum": 100}
+
 
 # ===================================================================
 # Chain B: the admin hot update (spec §5, §11.2)

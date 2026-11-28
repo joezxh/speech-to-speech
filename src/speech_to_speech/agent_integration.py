@@ -122,6 +122,7 @@ def build_embedded_agent(
     *,
     stop_event: object | None = None,
     usage_provider: Callable[[], Usage] | None = None,
+    reload_provider: Callable[[dict, Callable[[dict], None]], str] | None = None,
 ) -> EmbeddedAgent:
     """Build the in-process agent for an enabled run.
 
@@ -144,6 +145,7 @@ def build_embedded_agent(
         stop_event=stop_event,  # type: ignore[arg-type]
         embedded=True,
         usage_provider=usage_provider,
+        reload_provider=reload_provider,
     )
 
 

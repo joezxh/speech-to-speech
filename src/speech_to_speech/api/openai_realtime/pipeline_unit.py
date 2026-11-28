@@ -139,4 +139,9 @@ class PipelineUnit(BaseModel):
     output_signal: OutputSignal
     handlers: list[Any]
 
+    # 阶段重建上下文：保存启动时的 BackendSelection/HandlerContext，
+    # 模型重载时原地重建 handler 而不重新解析配置（首期范围）。
+    stage_context: Any | None = None
+    maintenance: bool = False
+
     session: Optional[SessionState] = None

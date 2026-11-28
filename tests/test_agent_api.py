@@ -216,6 +216,19 @@ def test_the_command_endpoint_forwards_the_kind_and_payload(admin_client):
     assert response.status_code == 200
 
 
+def test_model_reload_command_kind_is_accepted(admin_client):
+    response = admin_client.post(
+        COMMANDS_PATH,
+        headers=_auth(),
+        json={
+            "kind": "model_reload",
+            "payload": {"modules": ["asr", "tts"], "scope": "all"},
+        },
+    )
+
+    assert response.status_code == 200
+
+
 def test_an_unknown_command_kind_is_rejected(admin_client):
     response = admin_client.post(COMMANDS_PATH, headers=_auth(), json={"kind": "rm -rf"})
 
@@ -303,4 +316,6 @@ def test_the_documented_parameters_match_the_runtime_contract(client):
         "config_restart",
         "recover",
         "health_check",
-    ]
+        "model_reload",
+        ]
+

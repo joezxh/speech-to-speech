@@ -56,6 +56,12 @@ PERMISSION_ROLES: dict[str, frozenset[str]] = {
     # 保存入口（POST ""）用 write 码——保存自己的通话不需要管理员。
     "console:session:query": frozenset({"admin", "operator"}),
     "console:session:write": frozenset({"admin", "operator"}),
+    # 会话工具（原型「工具」页）：四个码都给 operator；全局作用域与内置删除
+    # 由 tool_service 再按 role==admin 校验，启停只要求登录。
+    "console:tool:query": frozenset({"admin", "operator"}),
+    "console:tool:create": frozenset({"admin", "operator"}),
+    "console:tool:update": frozenset({"admin", "operator"}),
+    "console:tool:delete": frozenset({"admin", "operator"}),
 }
 
 

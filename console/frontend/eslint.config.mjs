@@ -1,4 +1,4 @@
-// Flat config: this repo runs ESLint 8.57 in flat mode, so `.eslintrc.*` is
+// Flat config.local: this repo runs ESLint 8.57 in flat mode, so `.eslintrc.*` is
 // never read. Keep the rule set to what the two plugins recommend plus the
 // handful of style rules this project deliberately turns off.
 import js from '@eslint/js'

@@ -239,7 +239,7 @@ uv.lock
 node_modules/
 /cache/
 
-# Parameter platform runtime state (demo/param_platform). Of `config/`, only
+# Parameter platform runtime state (demo/param_platform). Of `config.local/`, only
 # `prod.yaml` and `prod.env.example` are meant to be committed: the rendered
 # `.env` holds credentials, and every backup and temp file the publish flow
 # writes is named after it.
@@ -281,8 +281,9 @@ console/backend/data/
 .env.agentconsole
 
 # agentconsole runtime artifacts
-config.container/prod.env
+config.container.0.6b/prod.env
 config.container/*.etag
 data/
 /.transfer/
 /.screenshots/
+/deploy/

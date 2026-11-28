@@ -6,7 +6,9 @@ import { useRoute } from 'vue-router'
 import LogAnalysisCard from '@/components/LogAnalysisCard.vue'
 import LogPanel from '@/components/LogPanel.vue'
 import PDot from '@/components/proto/PDot.vue'
-import ScenarioAdvisor from '@/components/proto/ScenarioAdvisor.vue'
+import SmartSettingsPanel from '@/components/proto/SmartSettingsPanel.vue'
+import TemplatePanel from '@/components/proto/TemplatePanel.vue'
+import TemplateSelectBar from '@/components/proto/TemplateSelectBar.vue'
 import { machineConfigApi, type MachineParamRow } from '@/api/machineConfig'
 import { useLogsStore } from '@/stores/logs'
 import { useMachineStore as useMachinesStore } from '@/stores/machine'
@@ -50,7 +52,6 @@ const grouped = computed(() => {
   }
   return [...map.entries()]
 })
-const actual = computed(() => Object.fromEntries(rows.value.map((r) => [r.key, r.actual ?? ''])))
 const kpis = computed(() => deployKpis(rows.value, driftCount.value, selectedScene.value))
 const chips = computed(() => groupChips(rows.value))
 const stack = computed(() => deployStack(rows.value))
@@ -125,12 +126,9 @@ async function deploy(mode: 'push' | 'rollback'): Promise<void> {
   confirmWord.value = ''
 }
 
-function applyScene(name: string): void {
-  selectedScene.value = name
-  const scene = scenes.find((s) => s.name === name)
-  if (scene) {
-    for (const [key, value] of Object.entries(scene.patches)) patch.value[key] = value
-  }
+function applyTemplate(values: Record<string, string>): void {
+  Object.assign(patch.value, values)
+  notice.value = t('templates.panel.applyNote')
 }
 
 onMounted(load)
@@ -151,9 +149,12 @@ onMounted(load)
         >
           <PDot :state="item.state === 'ok' ? 'ok' : item.state === 'draining' ? 'draining' : 'bad'" />
           {{ item.machineId }}
+          <small class="hint">{{ t(`templates.platform.${item.platform || 'gpu'}`) }}</small>
         </button>
       </div>
     </header>
+
+    <TemplateSelectBar />
 
     <p v-if="driftCount" class="alert">{{ t('deploy.driftAlert') }}: {{ driftCount }}</p>
     <p v-if="machine && machine.state !== 'ok'" class="alert">{{ t('deploy.offline', { machine: machine.machineId }) }}</p>
@@ -256,11 +257,29 @@ onMounted(load)
     <div class="card">
       <h2>{{ t('deploy.sceneTitle') }}</h2>
       <div class="scene-list">
-        <button v-for="scene in scenes" :key="scene.name" class="chip" :class="{ active: selectedScene === scene.name }" @click="applyScene(scene.name)">
+        <button v-for="scene in scenes" :key="scene.name" class="chip" :class="{ active: selectedScene === scene.name }" @click="selectedScene = scene.name">
           {{ scene.note }}
         </button>
       </div>
-      <ScenarioAdvisor :scenes="scenes" :actual="actual" :patch="patch" @apply="patch = $event" />
+      <p class="note">{{ t('templates.sceneCollapsed') }}</p>
+    </div>
+
+    <div class="card">
+      <TemplatePanel
+        v-if="machine"
+        :machine="{ machineId: machine.machineId, platform: machine.platform || 'gpu', driver: machine.driver || '', gpuTotalGb: machine.gpuTotalGb }"
+        :rows="rows"
+        :patch="patch"
+        @apply="applyTemplate"
+      />
+    </div>
+
+    <div v-if="machine" class="card">
+      <SmartSettingsPanel
+        :machine-id="machine.machineId"
+        mode="deploy"
+        @apply="(key, value) => applyTemplate({ [key]: value })"
+      />
     </div>
 
     <div class="card">
@@ -276,10 +295,16 @@ onMounted(load)
       <h2>{{ stage }} <span class="hint">{{ t('deploy.col.actual') }} · {{ selectedMachine || DASH }}</span></h2>
       <div v-if="group === 'ALL' || group === stage" class="table-scroll">
         <table class="tbl"><thead><tr>
-          <th v-for="col in ['key','expected','actual','drift','source','effect','exposure','risk','anchor','draft','action']" :key="col">{{ col }}</th>
+          <th v-for="col in ['key','what','expected','actual','drift','source','effect','exposure','risk','anchor','draft','action']" :key="col">{{ col }}</th>
         </tr></thead><tbody>
-          <tr v-for="row in visibleRows.filter((r) => r.key.split('.')[0] === stage)" :key="row.key" :class="rowTone({ ...row, draft: patch[row.key] }) ?? ''">
+          <tr
+            v-for="row in visibleRows.filter((r) => r.key.split('.')[0] === stage)"
+            :key="row.key"
+            :class="rowTone({ ...row, draft: patch[row.key] }) ?? ''"
+            :title="[row.what, row.impact, row.changeCost, row.sourceRef].filter(Boolean).join(' · ')"
+          >
             <td>{{ row.key }}</td>
+            <td class="wrap-what">{{ row.what || DASH }}</td>
             <td>{{ row.expected ?? DASH }}</td>
             <td>{{ row.actual ?? DASH }}</td>
             <td>{{ row.drift ? '⚠' : DASH }}</td>
@@ -325,6 +350,7 @@ onMounted(load)
 .table-scroll { overflow-x: auto; }
 .tbl { width: 100%; border-collapse: collapse; }
 .tbl th, .tbl td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.wrap-what { max-width: 260px; white-space: normal; word-break: break-word; font-size: 12px; color: var(--muted); }
 tr.drift { background: var(--danger-soft); }
 tr.ops { background: var(--warn-soft); }
 tr.ro { color: var(--muted); }

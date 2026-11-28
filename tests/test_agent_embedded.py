@@ -59,6 +59,10 @@ class FakeClient:
         self.calls.append(("upload_logs", token, len(logs)))
         return {"written": len(logs)}
 
+    def report_turn_latency(self, token: str, rows: list[dict]) -> dict:
+        self.calls.append(("report_turn_latency", token, rows))
+        return {"received": len(rows)}
+
     def probe_instances(self, token: str) -> dict:
         self.calls.append(("probe_instances", token))
         return {"statuses": {}}
@@ -122,6 +126,11 @@ def agent(settings, monkeypatch) -> EmbeddedAgent:
             responses=3,
             audio_duration_s=1.5,
             window_s=15,
+            backends={
+                "stt": {"calls": 1, "errors": 0, "ms_sum": 120},
+                "llm": {"calls": 1, "errors": 0, "ms_sum": 900},
+                "tts": {"calls": 1, "errors": 0, "ms_sum": 400},
+            },
         ),
     )
     monkeypatch.setattr(
@@ -138,6 +147,40 @@ def test_the_token_is_written_with_owner_only_permissions(agent, settings):
     assert settings.token_file.endswith("token")
 
 
+def test_model_reload_provider_is_forwarded_on_all_command_paths(settings, monkeypatch):
+    seen = []
+
+    def provider(request, on_progress):
+        seen.append(request)
+        return "task-x"
+
+    embedded = EmbeddedAgent(
+        settings, client=FakeClient(), embedded=True, reload_provider=provider
+    )
+    embedded.save_token("tok-123")
+    monkeypatch.setattr(embedded.client, "pull_commands", lambda token, limit=10: [
+        {"command_id": "c1", "kind": "model_reload", "payload": {"modules": ["tts"]}}
+    ])
+
+    polled = embedded.poll_commands_once()
+    assert polled["receipts"][0]["ok"] is True
+    assert seen[-1]["modules"] == ["tts"]
+
+    direct = embedded.run_command_once("model_reload", {"modules": ["asr"]})
+    assert direct["ok"] is True
+    assert seen[-1]["modules"] == ["asr"]
+
+
+def test_capability_declares_model_reload_only_with_provider(settings):
+    with_provider = EmbeddedAgent(
+        settings, client=FakeClient(), embedded=True, reload_provider=lambda *_: "t"
+    )
+    without_provider = EmbeddedAgent(settings, client=FakeClient(), embedded=True)
+
+    assert "model_reload" in with_provider.capability()["actions"]
+    assert "model_reload" not in without_provider.capability()["actions"]
+
+
 def test_a_heartbeat_carries_the_machine_state(agent):
     result = agent.heartbeat_once()
 
@@ -145,7 +188,75 @@ def test_a_heartbeat_carries_the_machine_state(agent):
     heartbeat = result["heartbeat"]
     assert heartbeat["machine"]["machine_id"] == "node-a"
     assert heartbeat["tokens"]["input_tokens"] == 10
+    assert heartbeat["tokens"]["backends"]["stt"] == {"calls": 1, "errors": 0, "ms_sum": 120}
     assert agent.status()["last_heartbeat_ok"] is True
+
+
+def test_the_second_heartbeat_reports_backend_deltas_only(agent):
+    agent.heartbeat_once()
+    agent._read_usage = lambda: SimpleNamespace(
+        input_tokens=30,
+        output_tokens=50,
+        responses=6,
+        audio_duration_s=3.0,
+        window_s=15,
+        backends={
+            "stt": {"calls": 3, "errors": 1, "ms_sum": 600},
+            "llm": {"calls": 2, "errors": 0, "ms_sum": 1800},
+            "tts": {"calls": 2, "errors": 0, "ms_sum": 800},
+        },
+    )
+
+    result = agent.heartbeat_once()
+
+    tokens = result["heartbeat"]["tokens"]
+    assert tokens["input_tokens"] == 20
+    assert tokens["backends"]["stt"] == {"calls": 2, "errors": 1, "ms_sum": 480}
+    assert tokens["backends"]["llm"] == {"calls": 1, "errors": 0, "ms_sum": 900}
+
+
+def test_turn_latency_rows_are_uploaded_and_the_cursor_advances(agent, monkeypatch, tmp_path):
+    rows = [{"response_key": "r1", "e2e_ms": 2000, "logged_at": None}]
+    monkeypatch.setattr(
+        "speech_to_speech.agent.collectors.tail_turn_latency",
+        lambda _path, _offset: (123, rows),
+    )
+
+    agent.save_token("tok-123")
+    assert agent._tail_latency("tok-123") == 1
+    assert ("report_turn_latency", "tok-123", rows) in agent.client.calls
+    assert agent._turn_offset == 123
+
+    # 空批次只推进游标，不上报
+    monkeypatch.setattr(
+        "speech_to_speech.agent.collectors.tail_turn_latency",
+        lambda _path, _offset: (200, []),
+    )
+    assert agent._tail_latency("tok-123") == 0
+    assert agent._turn_offset == 200
+
+
+def test_a_failed_turn_latency_upload_keeps_the_cursor_for_retry(agent, monkeypatch):
+    rows = [{"response_key": "r1", "e2e_ms": 2000, "logged_at": None}]
+    monkeypatch.setattr(
+        "speech_to_speech.agent.collectors.tail_turn_latency",
+        lambda _path, _offset: (123, rows),
+    )
+
+    # 上报抛错 → 游标不动（下一轮重读整批），行数仍返回
+    class _FailingClient:
+        def __init__(self) -> None:
+            self.attempts = 0
+
+        def report_turn_latency(self, token: str, payload_rows: list[dict]) -> dict:
+            self.attempts += 1
+            raise RuntimeError("console unreachable")
+
+    failing = _FailingClient()
+    agent._client = failing
+    assert agent._tail_latency("tok-123") == 1
+    assert agent._turn_offset == 0
+    assert failing.attempts == 1
 
 
 def test_registering_stores_the_token_but_never_echoes_it(agent):

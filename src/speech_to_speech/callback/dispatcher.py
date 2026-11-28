@@ -3,8 +3,15 @@
 serve 进程内单例：dispatch(event) → 读取启用目标（TTL 缓存热加载）→ 过滤
 → 按目标协议适配投递（java/python）→ 重试 → callback_delivery_log 落库。
 
-- DB 不可用时 env 兜底（JAVA_CALLBACK_BASE + MEETING_INTERNAL_TOKEN → 内存
-  java 目标），保持源工程零改动部署可用（spec §8.3）；DB 查询失败期同样回落。
+目标来源三级优先（2026-11-27 HTTP 配置源）：
+  1. SessionLocal 可导入（同进程 console）→ 直连 DB（现状不变）
+  2. CONSOLE_CALLBACK_CONFIG_URL（缺省由 S2S_AGENT_CONSOLE_URL 派生）+
+     S2S_ADMIN_TOKEN 齐备 → 轮询 console 下发接口（明文 authToken），
+     成功即生效（**含空列表** = 明确不投递）；拉取失败保留最近一次成功配置
+     继续投递（stale-while-error），从未成功过才回落 env
+  3. env 兜底（JAVA_CALLBACK_BASE + MEETING_INTERNAL_TOKEN → 内存 java 目标），
+     保持源工程零改动部署可用（spec §8.3）
+
 - 投递在线程池执行，不阻塞转写主流程；每目标独立，单点失败不影响其它目标。
 - 段序说明：异步投递按段并发，同房间 transcript 的到达顺序为 best-effort；
   需要严格保序的场景由目标端按 startTs 排序。
@@ -26,6 +33,8 @@ JAVA_TRANSCRIPT_PATH = "/admin-api/ai/meeting/internal/transcript"
 DEFAULT_TTL_SECONDS = 5.0
 PAYLOAD_SNIPPET_MAX = 2000
 RESPONSE_SNIPPET_MAX = 200
+DISPATCH_CONFIG_PATH = "/api/v1/callbacks/targets/dispatch-config"
+DEFAULT_HTTP_TIMEOUT_S = 2.0
 
 
 @dataclass(frozen=True)
@@ -88,6 +97,45 @@ def _env_fallback_targets() -> list[CallbackTargetConfig]:
     return []
 
 
+def _payload_to_config(item: dict) -> CallbackTargetConfig:
+    """console 下发接口的 camelCase JSON → 平铺配置（authToken 为明文）。"""
+    return CallbackTargetConfig(
+        id=item.get("id"), name=str(item.get("name", "")),
+        target_type=str(item.get("targetType", "python")),
+        base_url=str(item.get("baseUrl", "")),
+        auth_type=str(item.get("authType", "none")),
+        auth_header_name=item.get("authHeaderName"),
+        auth_token=str(item.get("authToken", "")),
+        extra_headers=dict(item.get("extraHeaders") or {}),
+        timeout_ms=int(item.get("timeoutMs") or 3000),
+        retry_max_attempts=int(item.get("retryMaxAttempts") or 3),
+        retry_backoff_ms=int(item.get("retryBackoffMs") or 500),
+        events=tuple(item.get("events") or []),
+        filters=item.get("filters"),
+        enabled=bool(item.get("enabled", True)),
+    )
+
+
+def _http_dispatch_config_fetcher(base_url: str, token: str,
+                                  timeout_s: float = DEFAULT_HTTP_TIMEOUT_S):
+    """构造 console 下发接口拉取器（闭包）。
+
+    GET {base_url}{DISPATCH_CONFIG_PATH}，头 X-Internal-Token: {token}；
+    返回仅 enabled 的目标列表（**空列表也是有效结果**——语义为"明确不投递"）。
+    网络/HTTP 异常向上抛，由调用方按 stale-while-error 处置。
+    """
+    url = f"{base_url.rstrip('/')}{DISPATCH_CONFIG_PATH}"
+    headers = {"X-Internal-Token": token}
+
+    def fetch() -> list[CallbackTargetConfig]:
+        resp = requests.get(url, headers=headers, timeout=timeout_s)
+        resp.raise_for_status()
+        data = (resp.json() or {}).get("data") or {}
+        return [_payload_to_config(item) for item in (data.get("targets") or [])]
+
+    return fetch
+
+
 def _passes_filters(event, config: CallbackTargetConfig) -> bool:
     """事件订阅 + 过滤器（speakers / min_text_len）。"""
     if event.event_type not in (config.events or ()):
@@ -119,7 +167,7 @@ def build_request(event, config: CallbackTargetConfig) -> tuple[str, object, dic
         segment.update(event.extra)
         headers["X-Internal-Token"] = config.auth_token
         headers.setdefault("tenant-id", os.environ.get("MEETING_TENANT_ID", "1"))
-        url = f"{config.base_url}{JAVA_TRANSCRIPT_PATH}"
+        url = f"{config.base_url.rstrip('/')}{JAVA_TRANSCRIPT_PATH}"
         return url, [segment], headers
     # python：base_url 即完整 webhook；body 为统一事件 JSON
     payload = event.to_payload()
@@ -160,16 +208,23 @@ def _sanitize_payload(payload: object) -> str:
 
 
 class CallbackDispatcher:
-    """单例分发器。session_factory 为 None 时进入 env 兜底模式（不写 DB 日志）。"""
+    """单例分发器。目标来源三级优先：DB > HTTP > env 兜底。
+
+    session_factory 非 None 时直连 DB（写投递日志）；否则若配置了 http_fetcher
+    则轮询 console 下发接口（日志走 stdout）；两者皆无 → env 兜底模式。
+    """
 
     def __init__(self, session_factory, ttl_seconds: float = DEFAULT_TTL_SECONDS,
-                 max_workers: int = 8) -> None:
+                 max_workers: int = 8,
+                 http_fetcher=None) -> None:
         self._session_factory = session_factory
+        self._http_fetcher = http_fetcher
         self._ttl_seconds = ttl_seconds
         self._pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="callback")
         self._cache: list[CallbackTargetConfig] | None = None
         self._cache_at = 0.0
         self._lock = threading.Lock()
+        self._fetch_lock = threading.Lock()
         self._pending_futures: set = set()
 
     # ---- 目标解析（TTL 缓存热加载，spec §8.3）----
@@ -180,30 +235,65 @@ class CallbackDispatcher:
             self._cache_at = 0.0
 
     def _load_targets(self) -> list[CallbackTargetConfig]:
-        if self._session_factory is None:
+        if self._session_factory is None and self._http_fetcher is None:
             return _env_fallback_targets()
         now = time.monotonic()
         with self._lock:
             if self._cache is not None and now - self._cache_at < self._ttl_seconds:
                 return self._cache
-        session = None
-        try:
-            session = self._session_factory()
-            from app.models.callbacks import CallbackTarget
 
-            rows = session.query(CallbackTarget).filter(CallbackTarget.enabled.is_(True)).all()
-            configs = [_row_to_config(row) for row in rows]
-        except Exception:  # noqa: BLE001 DB 故障期回落 env 兜底（spec §8.3）
-            logger.warning("callback targets DB query failed; falling back to env target",
-                           exc_info=True)
-            return _env_fallback_targets()
-        finally:
-            if session is not None:
-                session.close()
+        # ── 来源 1：SessionLocal 直连 DB（同进程 console，现状不变）──────────
+        if self._session_factory is not None:
+            session = None
+            try:
+                session = self._session_factory()
+                from app.models.callbacks import CallbackTarget
+
+                rows = session.query(CallbackTarget).filter(
+                    CallbackTarget.enabled.is_(True)).all()
+                configs = [_row_to_config(row) for row in rows]
+            except Exception:  # noqa: BLE001 DB 故障期回落 env 兜底（spec §8.3）
+                logger.warning("callback targets DB query failed; falling back to env target",
+                               exc_info=True)
+                return _env_fallback_targets()
+            finally:
+                if session is not None:
+                    session.close()
+            with self._lock:
+                self._cache = configs
+                self._cache_at = now
+            return configs
+
+        # ── 来源 2：console 下发接口（stale-while-error）────────────────────
+        # 失败且从未成功过：一个 TTL 内不再发请求（避免每次 dispatch 阻塞 2s），
+        # 直接 env 兜底；TTL 过后自动重试拉取。
         with self._lock:
-            self._cache = configs
-            self._cache_at = now
-        return configs
+            if self._cache is None and now - self._cache_at < self._ttl_seconds:
+                return _env_fallback_targets()
+        # 锁外拉取：2s 超时不阻塞其它 dispatch 线程读到旧缓存；
+        # 非阻塞获取拉取互斥锁，并发时后来者直接用旧缓存（stale-while-revalidate）。
+        if not self._fetch_lock.acquire(blocking=False):
+            with self._lock:
+                if self._cache is not None:
+                    return self._cache
+            return _env_fallback_targets()
+        try:
+            try:
+                configs = self._http_fetcher()
+            except Exception:  # noqa: BLE001 拉取失败：保留最近一次成功配置
+                logger.warning("callback dispatch-config fetch failed; keeping last known targets",
+                               exc_info=True)
+                with self._lock:
+                    self._cache_at = time.monotonic()  # 失败也推进节拍：每 TTL 最多重试一次
+                    if self._cache is not None:
+                        return self._cache
+                return _env_fallback_targets()
+            with self._lock:
+                self._cache = configs
+                self._cache_at = time.monotonic()
+            return configs
+        finally:
+            self._fetch_lock.release()
 
     def _effective_targets(self) -> list[CallbackTargetConfig]:
         return [t for t in self._load_targets() if t.enabled]
@@ -316,7 +406,12 @@ _dispatcher_lock = threading.Lock()
 
 
 def get_dispatcher() -> CallbackDispatcher:
-    """进程级单例；优先复用 console 后端的 SessionLocal，失败退 env 兜底。"""
+    """进程级单例。来源优先级：SessionLocal 直连 DB > console 下发接口 > env 兜底。
+
+    HTTP 模式的寻址：优先显式 CONSOLE_CALLBACK_CONFIG_URL（console 基址），
+    缺省由 S2S_AGENT_CONSOLE_URL（agent 心跳已在用的 console 地址）派生；
+    令牌复用 S2S_ADMIN_TOKEN（与实例管理同源，两容器共用 env_file）。
+    """
     global _dispatcher
     with _dispatcher_lock:
         if _dispatcher is None:
@@ -325,9 +420,21 @@ def get_dispatcher() -> CallbackDispatcher:
                 from app.db.database import SessionLocal
 
                 session_factory = SessionLocal
-            except Exception:  # noqa: BLE001 console 后端不可导入 → env 兜底
+            except Exception:  # noqa: BLE001 console 后端不可导入 → HTTP / env
                 session_factory = None
-            _dispatcher = CallbackDispatcher(session_factory)
+            http_fetcher = None
+            if session_factory is None:
+                base = (os.environ.get("CONSOLE_CALLBACK_CONFIG_URL", "").strip()
+                        or os.environ.get("S2S_AGENT_CONSOLE_URL", "").strip())
+                token = os.environ.get("S2S_ADMIN_TOKEN", "").strip()
+                if base and token:
+                    http_fetcher = _http_dispatch_config_fetcher(base, token)
+                    logger.info("callback targets source: console HTTP (%s)", base)
+                else:
+                    logger.info("callback targets source: env fallback")
+            else:
+                logger.info("callback targets source: in-process DB")
+            _dispatcher = CallbackDispatcher(session_factory, http_fetcher=http_fetcher)
         return _dispatcher
 
 

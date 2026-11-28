@@ -53,6 +53,7 @@ from speech_to_speech.api.openai_realtime.service import (
     CHUNK_SIZE_BYTES,
     RealtimeService,
     SpeechToSpeechInputAudioTranscriptionSnapshotEvent,
+    UsageMetrics,
 )
 from speech_to_speech.LLM.lm_output_processor import LMOutputProcessor
 from speech_to_speech.LLM.tool_call.function_call import FunctionToolCall
@@ -5934,6 +5935,35 @@ class TestUsageMetricsTracking:
         usage = service.get_usage()
         assert usage["total_errors"] == 2
         assert usage["errors_by_type"] == {"type_a": 1, "type_b": 1}
+
+    # -- per-backend call counters --
+
+    def test_backend_turn_counters_accumulate(self, service):
+        service.total_usage.backends.record_turn(stt_s=0.5, llm_s=1.2, tts_s=0.35)
+        # text turn: STT/TTS never ran, LLM errored — only llm is charged
+        service.total_usage.backends.record_turn(llm_s=0.8, error=True)
+        backends = service.total_usage.backends
+        assert backends.stt.calls == 1 and backends.stt.errors == 0 and backends.stt.ms_sum == 500
+        assert backends.llm.calls == 2 and backends.llm.errors == 1 and backends.llm.ms_sum == 2000
+        assert backends.tts.calls == 1 and backends.tts.errors == 0 and backends.tts.ms_sum == 350
+        usage = service.get_usage()
+        assert usage["backends"]["stt"] == {"calls": 1, "errors": 0, "ms_sum": 500}
+        assert usage["backends"]["llm"]["calls"] == 2
+        assert usage["backends"]["tts"]["ms_sum"] == 350
+
+    def test_backend_record_without_latency_counts_call(self, service):
+        service.total_usage.backends.stt.record(None, error=True)
+        assert service.total_usage.backends.stt.calls == 1
+        assert service.total_usage.backends.stt.errors == 1
+        assert service.total_usage.backends.stt.ms_sum == 0
+
+    def test_response_usage_rollup_leaves_backends_alone(self, service):
+        # backends only move via record_turn(); the per-response += rollup
+        # must never inflate call counters.
+        service.total_usage += UsageMetrics(input_tokens=5, responses_completed=1)
+        assert service.total_usage.backends.stt.calls == 0
+        assert service.total_usage.backends.llm.calls == 0
+        assert service.total_usage.backends.tts.calls == 0
 
     # -- get_usage --
 
