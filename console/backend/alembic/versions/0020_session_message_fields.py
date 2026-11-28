@@ -14,6 +14,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
+from app.models.comments import comment_statements
+
 revision = "0020_session_message_fields"
 down_revision = "0019_session_records"
 branch_labels = None
@@ -29,6 +31,10 @@ def upgrade() -> None:
         "param_session_message",
         sa.Column("duration_ms", sa.Integer(), server_default="0", nullable=False),
     )
+    # 新列晚于 0014 注释回填建成：对该表补挂中文注释（PG；SQLite 无 COMMENT ON 跳过）。
+    for statement in comment_statements(op.get_context().dialect.name):
+        if '"param_session_message"' in statement:
+            op.execute(sa.text(statement))
 
 
 def downgrade() -> None:

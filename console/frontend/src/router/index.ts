@@ -24,6 +24,26 @@ export const routes: RouteRecordRaw[] = [
         meta: { face: 'voice', requiresAuth: true, navGroup: 'front', navKey: 'nav.voice', navIcon: 'target', navOrder: 10 }
       },
       {
+        // 历史记录独立页：与对话页右侧面板共用 sessionRecords store；
+        // 详情页内展开消息面板（对齐原型），不再有 /history/:id 深链。
+        path: 'history',
+        name: 'history',
+        component: () => import('@/views/HistoryView.vue'),
+        meta: { face: 'voice', requiresAuth: true, navGroup: 'front', navKey: 'nav.history', navIcon: 'history', navOrder: 20 }
+      },
+      {
+        path: 'tools',
+        name: 'tools',
+        component: () => import('@/views/ToolsView.vue'),
+        meta: { face: 'voice', requiresAuth: true, navGroup: 'front', navKey: 'nav.tools', navIcon: 'wrench', navOrder: 30 }
+      },
+      {
+        path: 'settings',
+        name: 'settings',
+        component: () => import('@/views/SettingsView.vue'),
+        meta: { face: 'voice', requiresAuth: true, navGroup: 'front', navKey: 'nav.settings', navIcon: 'sliders', navOrder: 40 }
+      },
+      {
         // 无组件记录只是命名空间：`hasRoute` 与 `addRoute` 需要一个挂点。
         // `meta` 会被子路由继承。导航从各子路由的 `navGroup/navKey/navIcon/navOrder` 派生。
         path: 'console',
@@ -41,6 +61,8 @@ export const routes: RouteRecordRaw[] = [
             meta: { navGroup: 'ops', navKey: 'nav.machines', navIcon: 'server', navOrder: 10 } },
           { path: 'deploy', name: 'deploy', component: () => import('@/views/DeployView.vue'),
             meta: { navGroup: 'ops', navKey: 'nav.deploy', navIcon: 'cpu', navOrder: 20 } },
+          { path: 'templates', name: 'templates', component: () => import('@/views/TemplatesView.vue'),
+            meta: { navGroup: 'ops', navKey: 'nav.templates', navIcon: 'layers', navOrder: 25 } },
           // 旧的 profile 参数树保留为子页（草稿/发布仍可用）。
           { path: 'deploy/profile', name: 'deploy-profile', component: () => import('@/views/ParamsView.vue'),
             meta: { navGroup: 'ops', navIcon: 'sliders', navOrder: 21, hidden: true } },

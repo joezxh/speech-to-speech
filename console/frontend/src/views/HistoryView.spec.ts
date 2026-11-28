@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
 
 import * as sessionRecordsApi from '@/api/sessionRecords'
-import type { SessionRecordRow } from '@/api/sessionRecords'
+import type { SessionMessageRow, SessionRecordRow } from '@/api/sessionRecords'
 import i18n from '@/i18n'
 import HistoryView from './HistoryView.vue'
 
@@ -44,7 +44,7 @@ const row = (overrides: Partial<SessionRecordRow>): SessionRecordRow => ({
   ...overrides
 })
 
-const message = (overrides: Record<string, unknown>) => ({
+const message = (overrides: Partial<SessionMessageRow>): SessionMessageRow => ({
   id: 11,
   ordinal: 0,
   role: 'user',
@@ -88,7 +88,8 @@ function mount(): HTMLElement {
 afterEach(() => {
   for (const root of roots) {
     try {
-      ;(root as never as { __vue_app__: { unmount: () => void } }).__vue_app__.unmount()
+      const app = (root as never as { __vue_app__: { unmount: () => void } }).__vue_app__
+      app.unmount()
     } catch {
       /* already gone */
     }
@@ -180,12 +181,14 @@ describe('HistoryView（原型对齐）', () => {
     await flush()
     await nextTick()
 
-    ;(root.querySelector('tbody tr.clickable') as HTMLTableRowElement).click()
+    const target = root.querySelector('tbody tr.clickable') as HTMLTableRowElement
+    target.click()
     await flush()
     await nextTick()
 
     const del = Array.from(root.querySelectorAll('.hv__panel tbody button')).find((b) => b.classList.contains('danger'))
-    ;(del as HTMLButtonElement).click()
+    const delBtn = del as HTMLButtonElement
+    delBtn.click()
     await flush()
     await nextTick()
 

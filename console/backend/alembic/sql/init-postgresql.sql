@@ -606,6 +606,10 @@ COMMENT ON COLUMN "param_session_message"."content" IS '消息文本（转写或
 
 COMMENT ON COLUMN "param_session_message"."interrupted" IS '是否被用户插话打断（助手条目）';
 
+COMMENT ON COLUMN "param_session_message"."status" IS '识别/合成结果：ok 或 fail（用户行=STT，助手行=TTS）';
+
+COMMENT ON COLUMN "param_session_message"."duration_ms" IS '该条语音时长（毫秒），无音频来源时为 0';
+
 COMMENT ON COLUMN "param_session_message"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine_command"."id" IS '主键标识';
@@ -1712,6 +1716,10 @@ COMMENT ON COLUMN "param_session_message"."content" IS '消息文本（转写或
 
 COMMENT ON COLUMN "param_session_message"."interrupted" IS '是否被用户插话打断（助手条目）';
 
+COMMENT ON COLUMN "param_session_message"."status" IS '识别/合成结果：ok 或 fail（用户行=STT，助手行=TTS）';
+
+COMMENT ON COLUMN "param_session_message"."duration_ms" IS '该条语音时长（毫秒），无音频来源时为 0';
+
 COMMENT ON COLUMN "param_session_message"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine_command"."id" IS '主键标识';
@@ -2311,6 +2319,28 @@ UPDATE alembic_version SET version_num='0019_session_records' WHERE alembic_vers
 ALTER TABLE param_session_message ADD COLUMN status VARCHAR(16) DEFAULT 'ok' NOT NULL;
 
 ALTER TABLE param_session_message ADD COLUMN duration_ms INTEGER DEFAULT '0' NOT NULL;
+
+COMMENT ON TABLE "param_session_message" IS '会话消息行：会话内逐条转写，按 ordinal 保持通话顺序，随会话级联删除';
+
+COMMENT ON COLUMN "param_session_message"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_session_message"."session_id" IS '所属会话记录 id，外键级联删除';
+
+COMMENT ON COLUMN "param_session_message"."ordinal" IS '通话内顺序号，从 0 起';
+
+COMMENT ON COLUMN "param_session_message"."role" IS '角色：user、assistant 或 tool';
+
+COMMENT ON COLUMN "param_session_message"."type" IS '内容形态：text 或 audio（带原音转写）';
+
+COMMENT ON COLUMN "param_session_message"."content" IS '消息文本（转写或编辑后的内容）';
+
+COMMENT ON COLUMN "param_session_message"."interrupted" IS '是否被用户插话打断（助手条目）';
+
+COMMENT ON COLUMN "param_session_message"."status" IS '识别/合成结果：ok 或 fail（用户行=STT，助手行=TTS）';
+
+COMMENT ON COLUMN "param_session_message"."duration_ms" IS '该条语音时长（毫秒），无音频来源时为 0';
+
+COMMENT ON COLUMN "param_session_message"."created_at" IS '创建时间（UTC）';
 
 UPDATE alembic_version SET version_num='0020_session_message_fields' WHERE alembic_version.version_num = '0019_session_records';
 

@@ -195,25 +195,25 @@ onMounted(() => {
       <h3>{{ t('sessions.hist.filter.title') }}</h3>
       <form class="hv__filters" @submit.prevent="search">
         <input
-          v-model="store.filters.q"
           id="hist-kw"
+          v-model="store.filters.q"
           type="search"
           class="fin"
           :placeholder="t('sessions.hist.filter.kwPh')"
           autocomplete="off"
         />
-        <select v-model="store.filters.state" id="hist-state" class="fin">
+        <select id="hist-state" v-model="store.filters.state" class="fin">
           <option v-for="option in stateOptions" :key="option.value" :value="option.value">
             {{ option.label }}
           </option>
         </select>
-        <select v-model="store.filters.inst" id="hist-inst" class="fin">
+        <select id="hist-inst" v-model="store.filters.inst" class="fin">
           <option value="">{{ t('sessions.hist.filter.all') }}</option>
           <option v-for="item in store.instances" :key="`${item.instanceId}|${item.node}`" :value="item.instanceId">
             {{ routeCell(item.instanceId, item.node) }}
           </option>
         </select>
-        <select v-model="store.filters.range" id="hist-range" class="fin">
+        <select id="hist-range" v-model="store.filters.range" class="fin">
           <option v-for="option in rangeOptions" :key="option.value" :value="option.value">
             {{ option.label }}
           </option>
