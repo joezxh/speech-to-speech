@@ -21,7 +21,16 @@ from app.repositories.audit_repository import AuditRepository
 
 router = APIRouter(prefix="/api/v1/audit", tags=["audit"])
 
-CATEGORY_PREFIXES = ("machine.", "lb.", "deploy.", "release.", "voice.", "cluster.")
+CATEGORY_PREFIXES = (
+    "machine.",
+    "lb.",
+    "deploy.",
+    "release.",
+    "voice.",
+    "cluster.",
+    "template.",
+    "smart.",
+)
 
 
 def _category(action: str) -> str:

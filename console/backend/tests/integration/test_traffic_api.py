@@ -47,3 +47,35 @@ def test_no_audit_row_written(client):
     client.get("/api/v1/traffic/settings", headers=headers)
     # No side effects: re-read yields identical payload and DB/audit untouched.
     assert client.get("/api/v1/traffic/settings", headers=headers).json()["data"]["allocatorMode"] == allocator.mode
+
+
+def test_latency_stats_requires_auth(client):
+    assert client.get("/api/v1/traffic/latency-stats").status_code == 401
+
+
+def test_latency_stats_empty_db_shape(client):
+    headers = _auth(client)
+    body = client.get("/api/v1/traffic/latency-stats", headers=headers).json()
+    assert set(body) == {"code", "message", "data"}
+    data = body["data"]
+    # 空库：无数据一律 None/空，绝不编 0
+    assert data["p95_ttft_ms"] is None
+    assert data["by_machine_ttft"] == []
+    assert data["err_rate"] is None
+    assert data["top_err_instance"] is None
+    assert data["instances"] == []
+
+
+def test_backends_requires_auth(client):
+    assert client.get("/api/v1/tokens/backends").status_code == 401
+
+
+def test_backends_empty_db_shape(client):
+    headers = _auth(client)
+    body = client.get("/api/v1/tokens/backends", headers=headers).json()
+    data = body["data"]
+    assert set(data) == {"by_kind", "by_model", "by_machine", "trend"}
+    assert data["by_kind"] == []
+    assert data["by_model"] == []
+    assert data["by_machine"] == []
+    assert all(point["calls"] == 0 for point in data["trend"])

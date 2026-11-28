@@ -12,7 +12,7 @@ from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.lb import ParamLbRouteLog
-from app.models.session_record import ParamSessionMessage, ParamSessionRecord
+from app.models.session_record import ParamSessionClip, ParamSessionMessage, ParamSessionRecord
 
 
 class SessionRecordRepository:
@@ -158,6 +158,49 @@ class SessionRecordRepository:
             .limit(max(1, min(200, limit)))
         )
         return list(self.session.scalars(stmt))
+
+    def add_session_clip(
+        self,
+        session_id: int,
+        *,
+        message_ordinal: int,
+        role: str,
+        item_ref: str = "",
+        mime: str = "audio/wav",
+        sample_rate: int = 24000,
+        duration_ms: int = 0,
+        data: bytes = b"",
+    ) -> ParamSessionClip:
+        clip = ParamSessionClip(
+            session_id=session_id,
+            message_ordinal=message_ordinal,
+            role=role,
+            item_ref=item_ref,
+            mime=mime,
+            sample_rate=sample_rate,
+            duration_ms=duration_ms,
+            size_bytes=len(data),
+            data=data,
+        )
+        self.session.add(clip)
+        self.session.commit()
+        self.session.refresh(clip)
+        return clip
+
+    def list_session_clips(self, record_id: int) -> list[ParamSessionClip]:
+        stmt = (
+            select(ParamSessionClip)
+            .where(ParamSessionClip.session_id == record_id)
+            .order_by(ParamSessionClip.message_ordinal, ParamSessionClip.id)
+        )
+        return list(self.session.scalars(stmt))
+
+    def get_session_clip(self, record_id: int, clip_id: int) -> ParamSessionClip | None:
+        stmt = select(ParamSessionClip).where(
+            ParamSessionClip.session_id == record_id,
+            ParamSessionClip.id == clip_id,
+        )
+        return self.session.scalar(stmt)
 
     def stats(self, *, user_id: str = "") -> dict:
         base = select(ParamSessionRecord)

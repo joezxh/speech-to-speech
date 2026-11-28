@@ -227,3 +227,23 @@ def test_ack_ring_keeps_at_most_five_versions(client, token, db_session):
         ).all()
     )
     assert versions == [3, 4, 5, 6, 7], "按机保留最近 5 版"
+
+
+def test_ack_writes_full_69_char_marker_without_truncation(client, token, db_session):
+    """回归：yaml_hash 列曾为 varchar(64)，ack 打 "ack:" 前缀（4 + 64 = 68 字符）触发
+    StringDataRightTruncation → agent 的 config/ack 永久 500（40.30 部署实测，
+    迁移 0016 已扩到 80）。"""
+    data = _pull(client, token).json()["data"]
+    response = client.post(
+        "/api/v1/agent/config/ack",
+        json={"config_version": data["config_version"], "ok": True, "error": None},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    row = db_session.scalar(
+        select(ParamAgentConfigVersion).where(ParamAgentConfigVersion.machine_id == "node-a01")
+    )
+    assert row is not None
+    assert row.yaml_hash.startswith("ack:")
+    assert len(row.yaml_hash) == 68, "ack 前缀标记必须完整落库（4 + 64 位摘要）"
+    assert len(row.yaml_hash.removeprefix("ack:")) == 64

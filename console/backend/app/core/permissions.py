@@ -45,6 +45,17 @@ PERMISSION_ROLES: dict[str, frozenset[str]] = {
     # 回调子系统（spec 2026-11-25 §8.4）：查询 operator 可看，写仅管理员。
     "console:callback:query": frozenset({"admin", "operator"}),
     "console:callback:manage": frozenset({"admin"}),
+    # 参数模板（原型「模板管理」）：查询 operator 可看，写仅管理员。
+    "console:template:query": frozenset({"admin", "operator"}),
+    "console:template:create": frozenset({"admin"}),
+    "console:template:update": frozenset({"admin"}),
+    "console:template:delete": frozenset({"admin"}),
+    # 智能设置（原型 smartPanel）：AI 分析是付费副作用，独立权限码。
+    "console:smart:analyze": frozenset({"admin", "operator"}),
+    # 会话记录（对话页「会话记录」面板 + 历史页）：查询与写均 operator 可用；
+    # 保存入口（POST ""）用 write 码——保存自己的通话不需要管理员。
+    "console:session:query": frozenset({"admin", "operator"}),
+    "console:session:write": frozenset({"admin", "operator"}),
 }
 
 

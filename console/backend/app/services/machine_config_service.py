@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.errors import ApiError
 from app.db.base import utcnow
 from app.models.param_audit import ParamAudit
+from app.schemas.common import json_safe
 
 from app.models.machine_config import ParamAgentConfigVersion, ParamMachineConfig, ParamMachineDraft
 from app.repositories.machine_repository import MachineRepository
@@ -62,13 +63,18 @@ def expected_value(db: Session, machine_id: str, key: str) -> tuple[str | None, 
 
 
 def config_view(db: Session, machine_id: str) -> list[dict]:
-    """每目录行：expected/actual/drift/source/effect/exposure/risk/anchor。"""
+    """每目录行：expected/actual/drift/source/effect/exposure/risk/anchor + 目录元数据。
+
+    元数据（default/what/type/choices/scope/impact/changeCost/sourceRef）来自
+    catalog 条目，供部署页参数表与模板面板共用（原型 11 列的前 6 列取这里）。
+    """
     reported = {
         row.param_key: row.actual_value
         for row in db.scalars(
             select(ParamMachineConfig).where(ParamMachineConfig.machine_id == machine_id)
         ).all()
     }
+    draft = draft_values(db, machine_id)
     rows: list[dict] = []
     for entry in publish_flow_service.entries().values():
         expected, source = expected_value(db, machine_id, entry.key)
@@ -84,9 +90,28 @@ def config_view(db: Session, machine_id: str) -> list[dict]:
                 "exposure": entry.exposure,
                 "risk": entry.risk,
                 "anchor": entry.anchor,
+                "default": json_safe(entry.default),
+                "what": entry.what,
+                "type": entry.type,
+                "choices": list(entry.choices),
+                "scope": entry.scope,
+                "impact": entry.impact,
+                "changeCost": entry.change_cost,
+                "sourceRef": entry.source_ref,
+                "draft": draft.get(entry.key),
             }
         )
     return sorted(rows, key=lambda row: row["key"])
+
+
+def draft_values(db: Session, machine_id: str) -> dict[str, str]:
+    """机器草稿键值（模板"应用到草稿"与部署页草稿徽章共用）。"""
+    return {
+        row.param_key: row.value
+        for row in db.scalars(
+            select(ParamMachineDraft).where(ParamMachineDraft.machine_id == machine_id)
+        ).all()
+    }
 
 
 def drift(db: Session, machine_id: str) -> dict:

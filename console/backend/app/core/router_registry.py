@@ -29,7 +29,10 @@ def register_api_routers(app: FastAPI) -> None:
         releases,
         runtime,
         sessions,
+        sessions_records,
+        smart_settings,
         status,
+        templates,
         tokens,
         traffic,
         turn_latency,
@@ -61,6 +64,12 @@ def register_api_routers(app: FastAPI) -> None:
     app.include_router(voices.router)
     app.include_router(sessions.router)
     app.include_router(status.router)
+    # 参数模板（原型「模板管理」）：查询 operator 可看，写仅管理员。
+    app.include_router(templates.router)
+    # 智能设置（原型 smartPanel）：拉取走机器读权限，分析独立权限码。
+    app.include_router(smart_settings.router)
+    # 会话记录（对话页「会话记录」面板 + 历史页）：查询 operator 可看，写 operator 可写。
+    app.include_router(sessions_records.router)
     # S1 spec §10.2: read-only traffic settings snapshot; no write path, no DB, no audit.
     app.include_router(traffic.router)
     # A.15/A.16: read-only side channels; no prefix overlap with anything above.

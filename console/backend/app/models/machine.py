@@ -32,6 +32,10 @@ class ParamMachine(Base):
     role: Mapped[str] = mapped_column(String(16), nullable=False, default="agent")
     gpu: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     gpu_total_gb: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # 平台类型与驱动描述：模板硬件校验（平台匹配 + 显存门槛）使用；
+    # agent 未上报时由 gpu 描述推断 platform（machine_service.infer_platform）。
+    platform: Mapped[str] = mapped_column(String(16), nullable=False, default="gpu")
+    driver: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     version: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     # 节点资源与部署参数：agent 心跳上报，采集失败为空（不编数据）。
     gpu_util_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)

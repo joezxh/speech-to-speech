@@ -233,12 +233,17 @@ def issue_command(
 ):
     """下发命令到 agent 队列；同机同类型已有未完成任务 → 409。"""
     try:
+        command_payload = (
+            {"service_id": payload.serviceId}
+            if payload.kind == "health_check"
+            else dict(payload.payload or {})
+        )
         command = machine_command_service.issue(
             db,
             machine_id,
             payload.kind,
             actor=user.username,
-            payload={"service_id": payload.serviceId} if payload.kind == "health_check" else {},
+            payload=command_payload,
         )
     except KeyError:
         raise ApiError("not_found", f"machine {machine_id} does not exist", 404) from None

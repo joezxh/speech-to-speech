@@ -94,6 +94,29 @@ def test_egress_groups_by_kind_and_route(db_session):
     assert sum(row["tokens"] for row in rows) == 2000
 
 
+def test_egress_carries_engine_hosts_load_and_vram(db_session):
+    """出口卡 7 列：kind/engine/hosts/load/tokens/vram/route。"""
+    from app.models.param_instance import ParamInstance  # noqa: PLC0415
+
+    _seed(db_session)
+    db_session.add(
+        ParamInstance(
+            instance_id="pipe-a", machine_id="node-a01", base_url="http://node-a01:8765",
+        )
+    )
+    db_session.commit()
+
+    rows = token_analytics_service.egress(db_session, None, "1h", now=NOW)
+    by_kind = {row["kind"]: row for row in rows}
+    pipeline = by_kind["pipeline"]
+    assert pipeline["hosts"] == ["node-a01"]
+    assert pipeline["load"] == "1 · instances"
+    llm = by_kind["llm"]
+    assert set(llm["hosts"]) == {"node-a01", "node-b02"}
+    assert llm["load"] == "2 machines"
+    assert "vram_gb" in pipeline and "engine" in pipeline
+
+
 def test_route_stats_without_logs_has_none_sticky_rate(db_session):
     result = lb_policy_service.route_stats(db_session, window_s=3600)
     assert result["rules"] == []

@@ -65,6 +65,42 @@ def test_config_restart_is_supported_command(client, db_session):
     assert created.json()["data"]["kind"] == "config_restart"
 
 
+def test_model_reload_payload_survives_issue_pull_and_report(client, db_session):
+    token = _machine_and_token(client, db_session)
+    auth = _auth(client)
+    payload = {
+        "modules": ["asr", "tts"],
+        "scope": "unit",
+        "unitIndex": 0,
+        "drain": True,
+        "drainTimeoutMs": 6000,
+    }
+
+    created = _issue(client, auth, kind="model_reload", payload=payload)
+    assert created.status_code == 200
+
+    pulled = client.get("/api/v1/agent/commands", headers={"Authorization": f"Bearer {token}"})
+    assert pulled.status_code == 200
+    command = pulled.json()["data"][0]
+    assert command["kind"] == "model_reload"
+    assert command["payload"] == payload
+
+    result = {
+        "status": "accepted",
+        "stage": "queued",
+        "progress": [{"stage": "maintenance_set", "unitIndex": 0}],
+    }
+    reported = client.post(
+        f"/api/v1/agent/commands/{command['command_id']}/report",
+        json={"ok": True, "result": result},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert reported.status_code == 200
+    row = client.get("/api/v1/machines/node-a01/commands", headers=auth).json()["data"][0]
+    assert row["status"] == "succeeded"
+    assert row["result"] == result
+
+
 def test_admin_can_issue_and_list_commands(client, db_session):
     _machine_and_token(client, db_session)
     auth = _auth(client)

@@ -105,3 +105,44 @@ def test_expire_stale_marks_old_commands_and_poll_skips_them(db_session, machine
     assert svc.expire_stale(db_session) == 1
     assert svc.poll(db_session, "m-01") == []
     assert svc.list_for_machine(db_session, "m-01")[0]["status"] == "expired"
+
+
+def test_model_reload_uses_long_ttl_and_persists_payload(db_session, machines):
+    payload = {
+        "modules": ["asr", "tts"],
+        "scope": "unit",
+        "unitIndex": 1,
+        "drain": True,
+        "drainTimeoutMs": 8000,
+    }
+    row = svc.issue(db_session, "m-01", "model_reload", actor="alice", payload=payload)
+
+    assert row["status"] == "pending"
+    assert row["payload"] == payload
+    assert (row["expires_at"] - utcnow()).total_seconds() >= svc.TTL_BY_KIND["model_reload"] - 5
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"modules": []},
+        {"modules": ["gpu"]},
+        {"modules": ["asr", "bogus"]},
+        {"modules": "asr"},
+    ],
+)
+def test_model_reload_rejects_invalid_modules(db_session, machines, payload):
+    with pytest.raises(ValueError, match="modules"):
+        svc.issue(db_session, "m-01", "model_reload", actor="alice", payload=payload)
+
+
+def test_model_reload_rejects_unit_scope_without_unit_index(db_session, machines):
+    with pytest.raises(ValueError, match="unitIndex"):
+        svc.issue(
+            db_session,
+            "m-01",
+            "model_reload",
+            actor="alice",
+            payload={"modules": ["asr"], "scope": "unit"},
+        )

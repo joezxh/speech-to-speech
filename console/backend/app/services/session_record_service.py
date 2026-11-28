@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
-from app.models.session_record import ParamSessionMessage, ParamSessionRecord
+from app.models.session_record import ParamSessionClip, ParamSessionMessage, ParamSessionRecord
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.session_record_repository import SessionRecordRepository
 from app.schemas.common import iso_utc
@@ -28,6 +28,9 @@ STATES = ("done", "failed")
 STATUS_VALUES = ("ok", "fail")
 ROLES = ("user", "assistant", "tool")
 TYPES = ("text", "audio")
+CLIP_ROLES = ("user", "assistant")
+CLIP_MIME = "audio/wav"
+CLIP_MAX_BYTES = 8 * 1024 * 1024
 
 
 def _check_enum(value: str, allowed: tuple[str, ...], label: str) -> None:
@@ -79,11 +82,24 @@ def _out(row: ParamSessionRecord, *, with_messages: bool = False) -> dict:
         ]
         out["messageCount"] = len(messages)
         out["excerpt"] = " · ".join(msg.content for msg in messages)[:90]
+        # 片段概要（不含字节）：前端按 message_ordinal 对齐消息行接线回放。
+        out["clips"] = [_clip_out(clip) for clip in row.clips]
     else:
         # 列表分支占位（Task 3 批量查询真值替换，避免逐行 lazy load）。
         out["messageCount"] = 0
         out["excerpt"] = ""
     return out
+
+
+def _clip_out(clip: ParamSessionClip) -> dict:
+    return {
+        "id": clip.id,
+        "role": clip.role,
+        "itemRef": clip.item_ref,
+        "messageOrdinal": clip.message_ordinal,
+        "durationMs": clip.duration_ms,
+        "sizeBytes": clip.size_bytes,
+    }
 
 
 def get_row(db: Session, record_id: int) -> ParamSessionRecord:
@@ -291,6 +307,53 @@ def clear_messages(db: Session, record_id: int, *, actor: str) -> int:
     db.commit()
     _audit(db, actor=actor, action="message.clear", name=row.title, fields=[])
     return cleared
+
+
+def save_clip(
+    db: Session,
+    record_id: int,
+    *,
+    message_ordinal: int,
+    role: str,
+    item_ref: str = "",
+    sample_rate: int = 24000,
+    duration_ms: int = 0,
+    data: bytes,
+    actor: str,
+) -> dict:
+    """保存一段会话音频（multipart 上传；失败不影响已保存记录）。"""
+    _check_enum(role, CLIP_ROLES, "role")
+    if len(data) > CLIP_MAX_BYTES:
+        raise ApiError("invalid_request", f"clip too large ({len(data)} bytes, max {CLIP_MAX_BYTES})", 400)
+    row = get_row(db, record_id)
+    clip = SessionRecordRepository(db).add_session_clip(
+        row.id,
+        message_ordinal=max(0, message_ordinal),
+        role=role,
+        item_ref=item_ref[:128],
+        mime=CLIP_MIME,
+        sample_rate=max(1, sample_rate),
+        duration_ms=max(0, duration_ms),
+        data=data,
+    )
+    _audit(
+        db,
+        actor=actor,
+        action="session-clip.upload",
+        name=row.title,
+        fields=["role", "messageOrdinal", "sizeBytes"],
+    )
+    return _clip_out(clip)
+
+
+def clip_bytes(db: Session, record_id: int, clip_id: int, *, actor: str) -> tuple[str, bytes]:
+    """回放：返回 (mime, 字节)。找不到记录或片段都是 404。"""
+    row = get_row(db, record_id)
+    clip = SessionRecordRepository(db).get_session_clip(row.id, clip_id)
+    if clip is None:
+        raise KeyError(clip_id)
+    _audit(db, actor=actor, action="session-clip.download", name=row.title, fields=[])
+    return clip.mime, clip.data
 
 
 def _parse_range(value: str):

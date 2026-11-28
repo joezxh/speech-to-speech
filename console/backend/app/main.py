@@ -193,8 +193,12 @@ def create_app() -> FastAPI:
         SecurityHeadersMiddleware,
         max_body_bytes=app_settings.max_body_bytes,
         # A voice upload is capped by its own endpoint (10 MiB), plus multipart
-        # overhead; the 2 MiB guard is for JSON payloads.
+        # overhead; the 2 MiB guard is for JSON payloads. 会话片段上传同理：
+        # 片段端点自己把关 8 MiB（CLIP_MAX_BYTES），multipart 再留 1 MiB 余量。
         upload_body_bytes=console_settings.voice_max_bytes + 1024 * 1024,
+        # 前缀含 record_id：/api/v1/session-records/{id}/clips 无法精确枚举；
+        # save/batch-delete 等子资源 POST 顺带放宽到同一上限（均为已登录写接口，无害）。
+        upload_paths=("/api/v1/voices", "/api/v1/session-records/"),
         # 这三条由代理自己把关：限值与错误体（pipeline 风格的 413）必须一致，
         # 中间件的闸会给 console envelope 的 413，两种形状不能混（spec §5.4）。
         exempt_paths=(

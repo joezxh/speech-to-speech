@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.errors import ApiError
 from app.models.machine import ParamMachine
 from app.models.machine_config import ParamAgentConfigVersion
 from app.models.param_audit import ParamAudit
@@ -24,6 +25,30 @@ from app.repositories.machine_repository import MachineRepository
 from app.schemas.common import iso_utc
 
 REGISTER_CODE_BYTES = 24
+
+# 平台类型（模板硬件校验用）：显式传入优先，否则按 gpu 描述推断；推断不出 → cpu。
+PLATFORMS = ("gpu", "npu", "amd", "cpu")
+_GPU_HINTS = ("rtx", "gtx", "nvidia", "cuda", "a100", "h100", "l40", "4090", "3090", "t4", "v100")
+_NPU_HINTS = ("ascend", "npu", "910b", "310p")
+_AMD_HINTS = ("radeon", "amd", "mi3", "instinct")
+
+
+def infer_platform(gpu: str) -> str:
+    """从显卡描述推断平台类型；模板面板的平台徽章与硬件校验消费该值。"""
+    text = (gpu or "").lower()
+    if any(hint in text for hint in _NPU_HINTS):
+        return "npu"
+    if any(hint in text for hint in _AMD_HINTS):
+        return "amd"
+    if any(hint in text for hint in _GPU_HINTS):
+        return "gpu"
+    return "cpu"
+
+
+def _resolve_platform(platform: str | None, gpu: str) -> str:
+    if platform and platform in PLATFORMS:
+        return platform
+    return infer_platform(gpu)
 
 
 def hash_secret(raw: str) -> str:
@@ -60,6 +85,8 @@ class MachineCreate(BaseModel):
     role: str = Field(default="agent", max_length=16)
     gpu: str = Field(default="", max_length=64)
     gpuTotalGb: float | None = Field(default=None, ge=0)
+    platform: str | None = Field(default=None, max_length=16)
+    driver: str | None = Field(default=None, max_length=64)
     version: str = ""
     registryMode: str = Field(default="manual", max_length=16)
 
@@ -91,6 +118,8 @@ class MachineUpdate(BaseModel):
     role: str | None = Field(default=None, max_length=16)
     gpu: str | None = Field(default=None, max_length=64)
     gpuTotalGb: float | None = Field(default=None, ge=0)
+    platform: str | None = Field(default=None, max_length=16)
+    driver: str | None = Field(default=None, max_length=64)
     version: str | None = None
 
 
@@ -102,6 +131,8 @@ class MachineOut(BaseModel):
     role: str = "agent"
     gpu: str = ""
     gpuTotalGb: float | None = None
+    platform: str = "gpu"
+    driver: str = ""
     version: str = ""
     state: str = "pending_register"
     registryMode: str = "manual"
@@ -142,6 +173,8 @@ _UPDATE_COLUMNS = {
     "role": "role",
     "gpu": "gpu",
     "gpuTotalGb": "gpu_total_gb",
+    "platform": "platform",
+    "driver": "driver",
     "version": "version",
 }
 
@@ -204,6 +237,8 @@ def _machine_out(
         role=row.role,
         gpu=row.gpu,
         gpuTotalGb=row.gpu_total_gb,
+        platform=row.platform,
+        driver=row.driver,
         version=row.version,
         state=row.state,
         registryMode=row.registry_mode,
@@ -289,6 +324,8 @@ def create_machine(db: Session, p: MachineCreate, actor: str) -> tuple[MachineOu
         role=p.role,
         gpu=p.gpu,
         gpu_total_gb=p.gpuTotalGb,
+        platform=_resolve_platform(p.platform, p.gpu),
+        driver=p.driver or "",
         version=p.version,
         state="pending_register",
         registry_mode=p.registryMode,
@@ -310,8 +347,12 @@ def create_machine(db: Session, p: MachineCreate, actor: str) -> tuple[MachineOu
 def update_machine(db: Session, machine_id: str, p: MachineUpdate, actor: str) -> MachineOut:
     row = _get_row(db, machine_id)
     changed = p.model_dump(exclude_unset=True)
+    if "platform" in changed and changed["platform"] and changed["platform"] not in PLATFORMS:
+        raise ApiError("invalid_request", f"platform must be one of {', '.join(PLATFORMS)}", 400)
     for attr, value in changed.items():
         setattr(row, _UPDATE_COLUMNS[attr], value)
+    if "gpu" in changed and "platform" not in changed:
+        row.platform = infer_platform(changed["gpu"] or "")
     row.updated_by = actor
     db.commit()
     db.refresh(row)

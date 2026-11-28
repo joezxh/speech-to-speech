@@ -113,6 +113,11 @@ def distribution(db: Session, cluster: str | None, window: str, *, now: datetime
 
 
 def egress(db: Session, cluster: str | None, window: str, *, now: datetime | None = None) -> list[dict]:
+    """负载出口 7 列：kind/engine/hosts/load/tokens/vram/route。
+
+    token 记账与 engine/hosts/vram 分开：后者来自机器负载声明（心跳全量
+    覆盖），与窗口内有没有流量无关——有负载声明就出列，tokens 为 0 不隐藏。
+    """
     now = now or datetime.now(UTC)
     since, until = _range(window, now)
     totals: dict[str, dict] = {}
@@ -121,9 +126,36 @@ def egress(db: Session, cluster: str | None, window: str, *, now: datetime | Non
         row = totals.setdefault(kind, {"kind": kind, "route": "lb" if kind == "pipeline" else "direct", "tokens": 0})
         row["tokens"] += tokens
 
-    from sqlalchemy import select  # noqa: PLC0415
+    from sqlalchemy import func, select  # noqa: PLC0415
 
     from app.models.machine import ParamMachine, ParamMachineWorkload  # noqa: PLC0415
+    from app.models.param_instance import ParamInstance  # noqa: PLC0415
+
+    # 负载声明 → per-kind 的 engine/hosts/vram/load（与流量无关的静态面）。
+    workloads = db.execute(
+        select(
+            ParamMachineWorkload.kind,
+            ParamMachineWorkload.engine,
+            ParamMachineWorkload.machine_id,
+            ParamMachineWorkload.vram_gb,
+        )
+    ).all()
+    kind_meta: dict[str, dict] = {}
+    for kind, engine, machine_id, vram_gb in workloads:
+        meta = kind_meta.setdefault(kind, {"engines": [], "hosts": [], "vram": 0.0})
+        if engine and engine not in meta["engines"]:
+            meta["engines"].append(engine)
+        if machine_id not in meta["hosts"]:
+            meta["hosts"].append(machine_id)
+        if vram_gb is not None:
+            meta["vram"] += float(vram_gb)
+    instance_counts = dict(
+        db.execute(
+            select(ParamInstance.machine_id, func.count(ParamInstance.id))
+            .where(ParamInstance.machine_id.isnot(None))
+            .group_by(ParamInstance.machine_id)
+        ).all()
+    )
 
     machine_ids = list(db.scalars(select(ParamMachine.machine_id)).all())
     for machine_id in machine_ids:
@@ -144,7 +176,45 @@ def egress(db: Session, cluster: str | None, window: str, *, now: datetime | Non
                 break
         else:
             _bump(kinds[0] if kinds else "other", tokens)
-    return sorted(totals.values(), key=lambda r: -r["tokens"])
+
+    rows = []
+    for kind, row in totals.items():
+        meta = kind_meta.get(kind, {"engines": [], "hosts": [], "vram": 0.0})
+        if kind == "pipeline":
+            load = f"{sum(instance_counts.get(host, 0) for host in meta['hosts'])} · instances"
+        elif meta["hosts"]:
+            load = f"{len(meta['hosts'])} machines"
+        else:
+            load = "0 machines"
+        rows.append(
+            {
+                **row,
+                "engine": " / ".join(meta["engines"]),
+                "hosts": meta["hosts"],
+                "load": load,
+                "vram_gb": round(meta["vram"], 1) if meta["vram"] else None,
+            }
+        )
+    # 有负载声明但窗口内零流量的 kind 也出列（tokens=0，如实呈现）。
+    for kind, meta in kind_meta.items():
+        if kind not in totals:
+            load = (
+                f"{sum(instance_counts.get(host, 0) for host in meta['hosts'])} · instances"
+                if kind == "pipeline"
+                else f"{len(meta['hosts'])} machines"
+            )
+            rows.append(
+                {
+                    "kind": kind,
+                    "route": "lb" if kind == "pipeline" else "direct",
+                    "tokens": 0,
+                    "engine": " / ".join(meta["engines"]),
+                    "hosts": meta["hosts"],
+                    "load": load,
+                    "vram_gb": round(meta["vram"], 1) if meta["vram"] else None,
+                }
+            )
+    return sorted(rows, key=lambda r: -r["tokens"])
 
 
 def policy(db: Session) -> dict:

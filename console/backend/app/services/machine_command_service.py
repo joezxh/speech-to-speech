@@ -19,9 +19,35 @@ from app.repositories.audit_repository import AuditRepository
 from app.repositories.machine_command_repository import MachineCommandRepository
 from app.repositories.machine_repository import MachineRepository
 
-KINDS = frozenset({"drain", "resume", "reboot", "config_restart", "recover", "health_check"})
+KINDS = frozenset(
+    {"drain", "resume", "reboot", "config_restart", "recover", "health_check", "model_reload"}
+)
 DEFAULT_TTL_S = 120
+# model_reload 需重建模型（可数十秒），独立长 TTL（D5）。
+MODEL_RELOAD_TTL_S = 600
+TTL_BY_KIND = {kind: DEFAULT_TTL_S for kind in KINDS}
+TTL_BY_KIND["model_reload"] = MODEL_RELOAD_TTL_S
 DEFAULT_LIMIT = 20
+
+RELOAD_MODULES = ("asr", "llm", "tts")
+
+
+def _validate_reload_payload(payload: dict | None) -> dict:
+    """校验 model_reload payload；console camelCase 原样持久化。"""
+    if not isinstance(payload, dict):
+        raise ValueError("modules must be a non-empty list")
+    modules = payload.get("modules")
+    if not isinstance(modules, (list, tuple)) or not modules:
+        raise ValueError("modules must be a non-empty list")
+    for module in modules:
+        if not isinstance(module, str) or module not in RELOAD_MODULES:
+            raise ValueError(f"modules contains unsupported value: {module!r}")
+    scope = str(payload.get("scope", "all") or "all")
+    if scope not in ("all", "unit"):
+        raise ValueError(f"scope must be all or unit, got {scope!r}")
+    if scope == "unit" and payload.get("unitIndex") is None:
+        raise ValueError("unitIndex is required when scope=unit")
+    return payload
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -65,10 +91,12 @@ def issue(
     *,
     actor: str,
     payload: dict | None = None,
-    ttl_s: int = DEFAULT_TTL_S,
+    ttl_s: int | None = None,
 ) -> dict[str, Any]:
     if kind not in KINDS:
         raise ValueError(f"unsupported command kind: {kind}")
+    if kind == "model_reload":
+        payload = _validate_reload_payload(payload)
     if MachineRepository(db).get(machine_id) is None:
         raise KeyError(machine_id)
     now = utcnow()
@@ -80,7 +108,7 @@ def issue(
         machine_id=machine_id,
         kind=kind,
         payload=dict(payload or {}),
-        expires_at=now + timedelta(seconds=ttl_s),
+        expires_at=now + timedelta(seconds=ttl_s if ttl_s is not None else TTL_BY_KIND.get(kind, DEFAULT_TTL_S)),
     )
     command = _as_dict(row)
     _audit(db, actor=actor, action="machine.command.issue", command=command)

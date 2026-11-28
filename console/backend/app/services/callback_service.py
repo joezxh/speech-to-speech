@@ -62,6 +62,31 @@ def list_targets(db: Session, page: int, page_size: int) -> dict:
     return {"list": [_to_out(r) for r in rows], "total": total, "page": page, "pageSize": page_size}
 
 
+def dispatch_configs(db: Session) -> dict:
+    """内部下发（s2s-agent CallbackDispatcher 轮询拉取）：仅 enabled，**authToken 明文**。
+
+    明文是投递的硬需求（dispatcher 用它构造鉴权头），与 `send_test_event` 的明文
+    消费模式一致；普通管理 API 一律走 `_to_out` 脱敏。本函数只能由
+    `S2S_ADMIN_TOKEN` 保护的内部端点暴露，不得接入 JWT 管理面。
+
+    `revision` 由 max(updated_at) + 行数派生（不改表结构），观测配置变更用。
+    """
+    rows = db.execute(
+        select(CallbackTarget).where(CallbackTarget.enabled.is_(True)).order_by(CallbackTarget.id)
+    ).scalars().all()
+    latest = max((r.updated_at for r in rows), default=None)
+    revision = f"{int(latest.timestamp() * 1000):x}-{len(rows):x}" if rows and latest else ""
+    targets = [{
+        "id": r.id, "name": r.name, "targetType": r.target_type,
+        "baseUrl": r.base_url, "authType": r.auth_type,
+        "authHeaderName": r.auth_header_name, "authToken": r.auth_token or "",
+        "extraHeaders": r.extra_headers or {}, "timeoutMs": r.timeout_ms,
+        "retryMaxAttempts": r.retry_max_attempts, "retryBackoffMs": r.retry_backoff_ms,
+        "events": r.events or [], "filters": r.filters, "enabled": bool(r.enabled),
+    } for r in rows]
+    return {"revision": revision, "targets": targets}
+
+
 def get_target(db: Session, target_id: int) -> dict | None:
     row = CallbackRepository(db).get(target_id)
     return _to_out(row) if row else None

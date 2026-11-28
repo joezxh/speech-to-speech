@@ -141,3 +141,65 @@ def test_put_with_masked_token_preserves_old_secret(
     data = resp.json()["data"]
     assert data["ok"] is True and data["httpStatus"] == 200
     assert captured["X-Callback-Token"] == real_token
+
+
+# ── 内部下发端点 GET /targets/dispatch-config（agent dispatcher 轮询拉取）──────
+
+
+def test_dispatch_config_requires_internal_token(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("S2S_ADMIN_TOKEN", "admintok")
+    # 无令牌头 → 401；错令牌 → 401
+    assert client.get("/api/v1/callbacks/targets/dispatch-config").status_code == 401
+    assert client.get(
+        "/api/v1/callbacks/targets/dispatch-config",
+        headers={"X-Internal-Token": "wrong"}).status_code == 401
+
+
+def test_dispatch_config_disabled_without_console_token(client, monkeypatch: pytest.MonkeyPatch) -> None:
+    # fail-closed：console 未配置 S2S_ADMIN_TOKEN → 503（配置缺失，不是无权限）
+    monkeypatch.delenv("S2S_ADMIN_TOKEN", raising=False)
+    resp = client.get(
+        "/api/v1/callbacks/targets/dispatch-config", headers={"X-Internal-Token": "anything"})
+    assert resp.status_code == 503
+    assert resp.json()["code"] == "internal_disabled"
+
+
+def test_dispatch_config_shape_and_plaintext(client, auth_headers: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("S2S_ADMIN_TOKEN", "admintok")
+    headers = {"X-Internal-Token": "admintok"}
+    real_token = "toktoktoktok"
+    # 空库：空 targets 也是有效响应（dispatcher 语义 = 明确不投递）
+    resp = client.get("/api/v1/callbacks/targets/dispatch-config", headers=headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["data"]["targets"] == []
+    revision_empty = resp.json()["data"]["revision"]
+    assert isinstance(revision_empty, str)
+
+    # 建一个目标（另一个 disabled 不应出现），明文 token 必须原样下发
+    client.post("/api/v1/callbacks/targets", json={
+        "name": "d0", "targetType": "python", "baseUrl": "http://x",
+        "authType": "none", "authToken": "", "extraHeaders": {}, "timeoutMs": 3000,
+        "retryMaxAttempts": 1, "retryBackoffMs": 0, "events": ["transcript"], "enabled": False,
+    }, headers=auth_headers)
+    resp = client.post("/api/v1/callbacks/targets", json={
+        "name": "d1", "targetType": "java", "baseUrl": "http://192.168.110.167:8086",
+        "authType": "header_token", "authHeaderName": "X-Internal-Token",
+        "authToken": real_token, "extraHeaders": {"tenant-id": "1"}, "timeoutMs": 3000,
+        "retryMaxAttempts": 3, "retryBackoffMs": 500, "events": ["transcript"], "enabled": True,
+    }, headers=auth_headers)
+    assert resp.status_code == 200
+
+    resp = client.get("/api/v1/callbacks/targets/dispatch-config", headers=headers)
+    data = resp.json()["data"]
+    assert [t["name"] for t in data["targets"]] == ["d1"]
+    assert data["targets"][0]["authToken"] == real_token      # 明文（非 _to_out 的脱敏）
+    assert data["targets"][0]["baseUrl"] == "http://192.168.110.167:8086"
+    assert data["revision"] and data["revision"] != revision_empty
+
+    # 禁用后从下发列表消失
+    listing = client.get("/api/v1/callbacks/targets?page=1&pageSize=50", headers=auth_headers).json()["data"]
+    target_id = next(r["id"] for r in listing["list"] if r["name"] == "d1")
+    client.post("/api/v1/callbacks/targets/batch",
+                json={"ids": [target_id], "action": "disable"}, headers=auth_headers)
+    resp = client.get("/api/v1/callbacks/targets/dispatch-config", headers=headers)
+    assert resp.json()["data"]["targets"] == []

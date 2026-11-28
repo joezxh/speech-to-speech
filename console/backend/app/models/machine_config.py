@@ -59,7 +59,9 @@ class ParamAgentConfigVersion(Base):
 
     machine_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     config_version: Mapped[int] = mapped_column(Integer, primary_key=True)
-    yaml_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    # 80 而非 64：ack 成功时会在 64 位摘要前打 "ack:" 标记（4 + 64 = 68 字符），见
+    # agent_config_service.ack；64 列会触发 StringDataRightTruncation（2026-11-27 实测）。
+    yaml_hash: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     yaml_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     rendered_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow

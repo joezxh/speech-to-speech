@@ -33,10 +33,15 @@ class MachineDeployIn(BaseModel):
 
 
 class MachineCommandIn(BaseModel):
-    """用户侧下发机器命令；serviceId 仅 health_check 使用（agent 侧按它探测）。"""
+    """用户侧下发机器命令。
+
+    serviceId 仅 health_check 使用；payload 供 model_reload 等带参命令透传，
+    保持 camelCase 契约（路由层映射为 agent snake_case）。
+    """
 
     kind: str = Field(min_length=1, max_length=32)
     serviceId: str = Field(default="", max_length=64)
+    payload: dict = Field(default_factory=dict)
 
 
 __all__ = [

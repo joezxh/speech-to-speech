@@ -15,6 +15,7 @@ sys.path.insert(0, str(SRC))
 
 from speech_to_speech.agent.collectors import (  # noqa: E402
     Usage,
+    read_usage,
     tail_turn_latency,
     usage_diff,
 )
@@ -45,6 +46,67 @@ def test_usage_diff_first_sample_is_absolute():
     cur = Usage(input_tokens=120, output_tokens=60, responses=3, audio_duration_s=12.0, window_s=30)
     delta = usage_diff(None, cur)
     assert (delta.input_tokens, delta.output_tokens, delta.responses) == (120, 60, 3)
+
+
+def test_usage_diff_backends_leafwise():
+    prev = Usage(
+        window_s=15,
+        backends={
+            "stt": {"calls": 4, "errors": 1, "ms_sum": 800},
+            "llm": {"calls": 3, "errors": 0, "ms_sum": 1200},
+            "tts": {"calls": 3, "errors": 0, "ms_sum": 600},
+        },
+    )
+    cur = Usage(
+        window_s=15,
+        backends={
+            "stt": {"calls": 6, "errors": 1, "ms_sum": 1500},
+            "llm": {"calls": 5, "errors": 1, "ms_sum": 2000},
+            "tts": {"calls": 5, "errors": 0, "ms_sum": 900},
+        },
+    )
+    delta = usage_diff(prev, cur)
+    assert delta.backends["stt"] == {"calls": 2, "errors": 0, "ms_sum": 700}
+    assert delta.backends["llm"] == {"calls": 2, "errors": 1, "ms_sum": 800}
+    assert delta.backends["tts"] == {"calls": 2, "errors": 0, "ms_sum": 300}
+
+
+def test_usage_diff_backends_reset_and_legacy_pipeline():
+    # 计数器归零（pipeline 重启）：本窗增量按累计值计
+    prev = Usage(window_s=15, backends={"stt": {"calls": 100, "errors": 5, "ms_sum": 90000}})
+    cur = Usage(window_s=15, backends={"stt": {"calls": 2, "errors": 0, "ms_sum": 1500}})
+    delta = usage_diff(prev, cur)
+    assert delta.backends["stt"] == {"calls": 2, "errors": 0, "ms_sum": 1500}
+
+    # 旧版 pipeline 不带 backends 段：全零，不抛错
+    delta = usage_diff(prev, Usage(window_s=15))
+    assert delta.backends["stt"] == {"calls": 0, "errors": 0, "ms_sum": 0}
+
+
+def test_read_usage_parses_backends_segment(monkeypatch):
+    # read_usage 内部局部 import httpx，patch 模块本身的 get 才能拦截。
+    import httpx  # noqa: PLC0415
+
+    class _Response:
+        def raise_for_status(self): ...
+        def json(self):
+            return {
+                "input_tokens": 1,
+                "output_tokens": 2,
+                "responses_completed": 3,
+                "audio_duration_s": 0.5,
+                "window_s": 15,
+                "backends": {
+                    "stt": {"calls": 1, "errors": 0, "ms_sum": 120},
+                    "llm": {"calls": 1, "errors": 0, "ms_sum": 900},
+                    "tts": {"calls": 1, "errors": 1, "ms_sum": 400},
+                },
+            }
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _Response())
+    usage = read_usage()
+    assert usage.backends["stt"] == {"calls": 1, "errors": 0, "ms_sum": 120}
+    assert usage.backends["tts"] == {"calls": 1, "errors": 1, "ms_sum": 400}
 
 
 def test_tail_turn_latency_resumes_from_offset(tmp_path):

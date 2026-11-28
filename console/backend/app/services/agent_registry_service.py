@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
+from app.repositories.backend_metric_repository import append_backend_deltas
 from app.repositories.token_metric_repository import TokenDelta, append_delta
 from app.db.base import utcnow
 from app.models.machine import ParamMachine
@@ -208,6 +209,12 @@ def heartbeat(db: Session, token_machine_id: str, body: HeartbeatIn) -> dict:
                 window_s=int(body.tokens.get("window_s") or 0),
             ),
         )
+        # per-backend 调用计数：tokens.backends{}（窗口增量，钳 0，全零段跳过）。
+        backends = body.tokens.get("backends")
+        if isinstance(backends, dict) and backends:
+            append_backend_deltas(
+                db, token_machine_id, backends, window_s=int(body.tokens.get("window_s") or 0)
+            )
 
     return {
         "accepted": True,

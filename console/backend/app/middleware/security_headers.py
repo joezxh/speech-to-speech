@@ -69,9 +69,12 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if request.url.path in self.exempt_paths:
             limit = None
         else:
+            # upload_paths 按前缀匹配：会话片段等带路径参数的上传端点
+            # （/api/v1/session-records/{id}/clips）不能逐条枚举。
             limit = (
                 self.upload_body_bytes
-                if request.method == "POST" and request.url.path in self.upload_paths
+                if request.method == "POST"
+                and any(request.url.path.startswith(p) for p in self.upload_paths)
                 else self.max_body_bytes
             )
         if limit is not None and declared and declared.isdigit() and int(declared) > limit:

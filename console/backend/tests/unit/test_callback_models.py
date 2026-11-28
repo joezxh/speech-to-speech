@@ -68,7 +68,10 @@ def test_log_set_null_on_target_delete(session: Session) -> None:
 
 
 def test_migration_up_and_down(tmp_path) -> None:
-    """alembic upgrade head + downgrade -1 + upgrade head 可执行（0015 可逆）。
+    """alembic upgrade head + 显式降回 0014_comments_backfill + upgrade head 可执行（0015 可逆）。
+
+    降级目标必须显式写 0014_comments_backfill（0015 之前的版本）而非 -1：head 之后
+    新增的迁移（如 0016）不影响本用例所要验证的 0015 可逆性；写 -1 会变成降掉 0016。
 
     env.py 从 app.config.database 读 URL（DATABASE_URL 环境变量），且 settings 在
     import 期固化 —— 与 test_lb_backbone_models / dump_schema_sql 一致地用子进程。
@@ -98,7 +101,7 @@ def test_migration_up_and_down(tmp_path) -> None:
     assert upgraded.returncode == 0, upgraded.stderr
     assert {"callback_target", "callback_delivery_log"} <= tables()
 
-    downgraded = alembic("downgrade", "-1")
+    downgraded = alembic("downgrade", "0014_comments_backfill")
     assert downgraded.returncode == 0, downgraded.stderr
     assert not ({"callback_target", "callback_delivery_log"} & tables())
 

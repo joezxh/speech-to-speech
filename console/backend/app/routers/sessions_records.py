@@ -6,7 +6,7 @@ session_record_service 落（session-record.* / message.*），路由层不重�
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 
 from app.core.errors import ApiError
 from app.core.permissions import require_permission
@@ -180,3 +180,52 @@ def clear_messages(
     except KeyError:
         raise ApiError("not_found", f"session record {record_id} does not exist", 404) from None
     return ok({"cleared": cleared})
+
+
+@router.post("/{record_id}/clips")
+def upload_clip(
+    record_id: int,
+    db: DbSession,
+    file: UploadFile = File(...),
+    message_ordinal: int = Form(0),
+    role: str = Form("user"),
+    item_ref: str = Form(""),
+    sample_rate: int = Form(24000),
+    duration_ms: int = Form(0),
+    user_write: CurrentUser = Depends(require_permission("console:session:write")),
+):
+    """上传一段会话音频（multipart）。失败不影响已保存记录。"""
+    try:
+        data = file.file.read()
+    finally:
+        file.file.close()
+    try:
+        clip = session_record_service.save_clip(
+            db,
+            record_id,
+            message_ordinal=message_ordinal,
+            role=role,
+            item_ref=item_ref,
+            sample_rate=sample_rate,
+            duration_ms=duration_ms,
+            data=data,
+            actor=user_write.username,
+        )
+    except KeyError:
+        raise ApiError("not_found", f"session record {record_id} does not exist", 404) from None
+    return ok(clip)
+
+
+@router.get("/{record_id}/clips/{clip_id}")
+def download_clip(
+    record_id: int,
+    clip_id: int,
+    db: DbSession,
+    user: CurrentUser = Depends(require_permission("console:session:query")),
+):
+    """回放片段字节（Content-Type 为片段 mime，浏览器可直接播放）。"""
+    try:
+        mime, data = session_record_service.clip_bytes(db, record_id, clip_id, actor=user.username)
+    except KeyError:
+        raise ApiError("not_found", f"clip {clip_id} does not exist", 404) from None
+    return Response(content=data, media_type=mime)

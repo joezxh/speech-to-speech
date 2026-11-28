@@ -3,10 +3,23 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.config import allocator
+from app.core.permissions import require_permission
 from app.core.security import CurrentUser, require_user
+from app.deps import DbSession
 from app.schemas.common import ok
+from app.services import traffic_latency_service
 
 router = APIRouter(prefix="/api/v1", tags=["traffic"])
+
+
+@router.get("/traffic/latency-stats")
+def latency_stats(
+    db: DbSession,
+    user: CurrentUser = Depends(require_permission("console:lb:query")),
+    window: str = "1h",
+):
+    """P95 TTFT / 错误率 / top 错误实例 / 实例级 TTFT·RTF（turn_latency + instance_metric）。"""
+    return ok(traffic_latency_service.latency_stats(db, window))
 
 
 @router.get("/traffic/settings")

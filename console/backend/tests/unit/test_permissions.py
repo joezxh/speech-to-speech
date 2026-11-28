@@ -34,6 +34,15 @@ def test_registry_contains_the_registered_codes():
         # 回调子系统（spec 2026-11-25 §8.4）
         "console:callback:query",
         "console:callback:manage",
+        # 参数模板（原型「模板管理」）与智能设置（原型「智能设置」）
+        "console:template:query",
+        "console:template:create",
+        "console:template:update",
+        "console:template:delete",
+        "console:smart:analyze",
+        # 会话记录（对话页「会话记录」面板 + 历史页）
+        "console:session:query",
+        "console:session:write",
     }
     assert PERMISSION_ROLES["console:cluster:switch"] == frozenset({"admin", "operator"})
     assert PERMISSION_ROLES["console:cluster:create"] == frozenset({"admin"})
