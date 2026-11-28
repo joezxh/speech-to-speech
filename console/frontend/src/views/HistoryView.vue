@@ -165,7 +165,7 @@ onMounted(() => {
     <header class="hv__head">
       <div>
         <h1>{{ t('sessions.hist.title') }}</h1>
-        <p class="hint">{{ t('sessions.historyDesc') }}</p>
+        <p class="hv__sub">{{ t('sessions.historyDesc') }}</p>
       </div>
       <button type="button" class="btn sm" @click="store.resetAndLoad()">{{ t('common.refresh') }}</button>
     </header>
@@ -399,10 +399,17 @@ onMounted(() => {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    /* 原型 .page-head：h1 20px 粗体 + 13px muted 副标题。 */
     h1 {
-      margin: 0 0 4px;
-      font-size: 18px;
+      margin: 0 0 6px;
+      font-size: 20px;
+      font-weight: 700;
     }
+  }
+  &__sub {
+    margin: 0;
+    color: var(--s2s-color-muted);
+    font-size: 13px;
   }
   &__kpis {
     margin-bottom: 2px;
