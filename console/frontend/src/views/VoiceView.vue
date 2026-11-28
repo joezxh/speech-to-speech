@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 
 import { endSessionBeacon, getDemoConfig, getMe, heartbeat, leaveQueueBeacon, search } from '@/api/demo'
 import { acquireMic, releaseMic } from '@/features/voice/audio/capture'
@@ -7,7 +9,6 @@ import { GATE_OFF_DB, SpeakingDetector } from '@/features/voice/audio/meter'
 import { startLocalVad } from '@/features/voice/audio/vad'
 import BubbleStack from '@/features/voice/components/BubbleStack.vue'
 import CameraPip from '@/features/voice/components/CameraPip.vue'
-import HistoryDrawer from '@/features/voice/components/HistoryDrawer.vue'
 import IdentityBlock from '@/features/voice/components/IdentityBlock.vue'
 import LimitDialog from '@/features/voice/components/LimitDialog.vue'
 import MicGate from '@/features/voice/components/MicGate.vue'
@@ -21,21 +22,54 @@ import { buildDirectWsUrl, S2sClient } from '@/features/voice/transport/s2s-clie
 import type { ToolCallRecord, ToolResultRecord } from '@/features/voice/transport/events'
 import type { SentAudio } from '@/features/voice/audio/sent-audio'
 import type { ToolCall, ToolDef, TurnLatency, VoiceSettings } from '@/features/voice/types'
+import SessionLogPanel from '@/components/voice/SessionLogPanel.vue'
+import StageTranscript from '@/components/voice/StageTranscript.vue'
 import { useShellStore } from '@/stores/shell'
+import { toSavePayload, useSessionRecordsStore } from '@/stores/sessionRecords'
 import { useVoiceStore } from '@/stores/voice'
 import type { VoiceStatus } from '@/stores/voice'
+import { useToast } from '@/composables/useToast'
 
 const store = useVoiceStore()
 const shell = useShellStore()
+const records = useSessionRecordsStore()
+const toast = useToast()
+const route = useRoute()
+const router = useRouter()
+const { t } = useI18n()
+
+/** 会话记录右侧面板：tab 状态写进 URL（/?panel=log|route），详情深链 /?session=<id>。 */
+const panelTab = ref<'log' | 'route'>('log')
+
+watch(
+  () => [route.query.panel, route.query.session] as const,
+  ([panel, session]) => {
+    if (panel === 'log' || panel === 'route') {
+      panelTab.value = panel
+    }
+    const id = Number(session)
+    if (Number.isFinite(id) && id > 0) {
+      panelTab.value = 'log'
+      void records.openDetail(id)
+    }
+    if (session) router.replace({ query: { ...route.query, session: undefined } })
+  },
+  { immediate: true }
+)
+
+function openPanel(tab: 'log' | 'route'): void {
+  panelTab.value = tab
+  router.replace({ query: { ...route.query, panel: tab } })
+}
 
 /**
- * 侧栏的 History / Tools / Settings 是「打开浮层」的动作，不是路由（§3.2.4）：
- * 外壳只把选择写进 `shell.voiceOverlay`，页面负责打开对应的抽屉/对话窗并立刻清空选择。
+ * 侧栏的 History / Tools / Settings：history 已是真实路由（历史页），tools/settings
+ * 仍是页面内对话窗——外壳把选择写进 `shell.voiceOverlay`，本页消费并立刻清空。
  */
 watch(
   () => shell.voiceOverlay,
   (overlay) => {
-    if (overlay === 'history') store.openHistory()
+    if (overlay === 'history') router.push('/history')
     if (overlay === 'tools') toolsOpen.value = true
     if (overlay === 'settings') {
       settingsOpen.value = true
@@ -63,11 +97,6 @@ watch(
     shell.closeLimit()
   }
 )
-
-/** 回放用户原音时静音上行，停止后按当前静音钮状态恢复（demo 的 `userAudioReplaying`）。 */
-function onReplay(playing: boolean): void {
-  client?.setMuted(playing || muted.value)
-}
 
 /** demo/index.html 的九个 voice：顺序与值都不能变，它会进 session.update。 */
 const VOICES = ['Aiden', 'Ryan', 'Dylan', 'Eric', 'Ono_Anna', 'Serena', 'Sohee', 'Uncle_Fu', 'Vivian']
@@ -238,6 +267,7 @@ async function connect(): Promise<void> {
   if (client) return
   store.resetTranscript()
   resetBubbles()
+  connectedAtMs = Date.now()
   micError.value = ''
   notice.value = ''
   queueFull.value = false
@@ -401,7 +431,37 @@ async function teardown(): Promise<void> {
   levelDb.value = -100
 }
 
+/** 本次通话的起始墙钟（保存会话记录时算 durationMs 用）。 */
+let connectedAtMs = 0
+
+/**
+ * 通话结束自动保存会话记录（0019）：一次通话 = 一条记录 + 逐行消息。
+ * 失败静默降级：不清空内存转写，只 toast 提示，不阻塞挂断清理。
+ */
+async function saveSessionFromCall(): Promise<void> {
+  const entries = store.entries
+  if (!store.grant || entries.length === 0) return
+  const payload = toSavePayload(entries, {
+    pipelineSessionId: store.grant.sessionId,
+    instanceId: '',
+    node: store.config.pipeline.container,
+    state: store.state === 'error' ? 'failed' : 'done',
+    durationMs: connectedAtMs ? Date.now() - connectedAtMs : 0
+  })
+  if (payload.messages.length === 0) return
+  try {
+    await records.saveFromCall(payload)
+    toast.push(`Session saved with ${payload.messages.length} messages.`)
+    // 保存成功才清内存转写；失败保留，用户可重试（重启对话页也不丢）。
+    store.resetTranscript()
+  } catch (caught) {
+    const msg = caught instanceof Error ? caught.message : String(caught)
+    toast.push(`Failed to save session record: ${msg}`, 'warn')
+  }
+}
+
 async function stop(): Promise<void> {
+  await saveSessionFromCall()
   if (store.grant?.sessionId) endSessionBeacon(store.grant.sessionId)
   store.grant = null
   await teardown()
@@ -526,54 +586,54 @@ onBeforeUnmount(() => {
       <IdentityBlock />
     </header>
 
-    <section class="v-stage">
-      <BubbleStack :items="bubbleItems" />
+    <!-- 双卡布局（原型 .voice-grid）：左舞台 1fr + 右面板 360px，≤1100px 单列。 -->
+    <div class="voice-grid">
+      <section class="v-stage">
+        <!-- 瞬时气泡只留语音状态词（聆听中/发送中）；逐轮转写由下方 StageTranscript 持久呈现。 -->
+        <BubbleStack :items="bubbleItems.filter((item) => item.voice)" />
 
-      <OrbStage
-        :state="store.state"
-        :level-db="levelDb"
-        :caption="caption"
-        :sub-caption="subCaption"
-        :tone="captionTone"
-        @activate="connect"
-      >
-        <template #left>
-          <MicGate v-if="store.live" :muted="muted" :gate-db="store.settings.noiseGateDb" :level-db="levelDb" @update:muted="toggleMute" @update:gate-db="setGate" />
-        </template>
-        <template #right>
-          <button v-if="store.live" class="v-side v-side--stop" type="button" aria-label="End" title="End" @click="stop">
-            <svg class="v-i v-i--fill" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-stop" /></svg>
-          </button>
-        </template>
-      </OrbStage>
+        <OrbStage
+          :state="store.state"
+          :level-db="levelDb"
+          :caption="caption"
+          :sub-caption="subCaption"
+          :tone="captionTone"
+          @activate="connect"
+        >
+          <template #left>
+            <MicGate v-if="store.live" :muted="muted" :gate-db="store.settings.noiseGateDb" :level-db="levelDb" @update:muted="toggleMute" @update:gate-db="setGate" />
+          </template>
+          <template #right>
+            <button v-if="store.live" class="v-side v-side--stop" type="button" aria-label="End" title="End" @click="stop">
+              <svg class="v-i v-i--fill" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-stop" /></svg>
+            </button>
+          </template>
+        </OrbStage>
 
-      <QueueOverlay
-        :state="store.state"
-        :position="store.queue?.position ?? 0"
-        :expires-sec="expiresSec"
-        :full="queueFull"
-        @join="join"
-        @leave="leaveQueue"
-      />
+        <StageTranscript :entries="store.entries" />
 
-      <!--
-        舞台上不放任何计时 chip：demo 的 `index.html` / `main.js` 搜不到 latency 节点，
-        计时只出现在历史条目的 `details.hist-timings` 里（`TranscriptList` → `TurnTimings`）。
-        这里也不再传 `turnIndex`：没有任何组件需要它。
-      -->
-    </section>
+        <QueueOverlay
+          :state="store.state"
+          :position="store.queue?.position ?? 0"
+          :expires-sec="expiresSec"
+          :full="queueFull"
+          @join="join"
+          @leave="leaveQueue"
+        />
+
+        <!--
+          舞台上不放任何计时 chip：demo 的 `index.html` / `main.js` 搜不到 latency 节点，
+          计时只出现在历史条目的 `details.hist-timings` 里（`TranscriptList` → `TurnTimings`）。
+          这里也不再传 `turnIndex`：没有任何组件需要它。
+        -->
+      </section>
+
+      <SessionLogPanel :tab="panelTab" @update:tab="openPanel" />
+    </div>
 
 
 
     <CameraPip ref="camPip" :active="store.settings.tools.camera && Boolean(camStream)" />
-
-    <HistoryDrawer
-      v-if="store.historyOpen"
-      :open="store.historyOpen"
-      :entries="store.entries"
-      @replay="onReplay"
-      @update:open="(value: boolean) => (value ? store.openHistory() : store.closeHistory())"
-    />
 
     <SettingsDialog
       v-if="settingsOpen"
@@ -608,3 +668,19 @@ onBeforeUnmount(() => {
     <LimitDialog v-if="limitOpen" v-model:open="limitOpen" v-bind="limitCopy" />
   </main>
 </template>
+
+<style scoped lang="less">
+/* 双卡布局（原型 .voice-grid 271 行）：左 1fr + 右 360px；窄屏单列。 */
+.voice-grid {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .voice-grid {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

@@ -12,9 +12,14 @@ import nav from './nav'
 import overview from './overview'
 import release from './release'
 import sessionUpdate from './sessionUpdate'
+import sessions from './sessions'
+import settings from './settings'
 import shell from './shell'
+import smart from './smart'
+import templates from './templates'
 import traffic from './traffic'
 import voice from './voice'
 import voices from './voices'
+import voiceStage from './voiceStage'
 
-export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices, voice, logs, latency, overview, traffic, callbacks }
+export default { nav, shell, common, errors, alerts, auth, machines, deploy, audit, release, sessionUpdate, voices, voice, logs, latency, overview, traffic, callbacks, templates, smart, settings, sessions, voiceStage }
