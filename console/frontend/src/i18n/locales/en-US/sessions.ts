@@ -41,6 +41,23 @@ export default {
     matched: 'Matched',
     tokens: 'In/Out tokens'
   },
+  route: {
+    title: 'Access routing',
+    instance: 'Instance',
+    endpoint: 'Endpoint',
+    node: 'Machine',
+    policy: 'Scheduling policy',
+    registry: 'Registry',
+    sticky: 'Sticky TTL',
+    voice: 'Voice',
+    lastttft: 'Last TTFT',
+    turn: 'Turn engine',
+    session: 'Session id',
+    tools: 'Session tools',
+    toolWeb: 'Web search',
+    toolCamera: 'Camera snapshot',
+    recent: 'Recent decisions'
+  },
   filterAllStates: 'All states',
   searchPlaceholder: 'Search title / note / session ID',
   batchDeleteTitle: 'Batch delete',

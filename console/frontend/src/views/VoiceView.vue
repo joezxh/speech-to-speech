@@ -634,6 +634,12 @@ function onToolsChange(): void {
   else stopCamera()
 }
 
+/** 右栏路由 tab 的工具开关：与 SettingsDialog 走同一条 onToolsChange 链路。 */
+function onPanelToolChange(key: 'web' | 'camera', value: boolean): void {
+  store.settings.tools[key] = value
+  onToolsChange()
+}
+
 async function refreshMe(): Promise<void> {
   store.me = await getMe()
 }
@@ -706,7 +712,13 @@ onBeforeUnmount(() => {
         -->
       </section>
 
-      <SessionLogPanel :tab="panelTab" :live="panelLive" :save-state="saveState" @update:tab="openPanel" />
+      <SessionLogPanel
+        :tab="panelTab"
+        :live="panelLive"
+        :save-state="saveState"
+        @update:tab="openPanel"
+        @tool-change="onPanelToolChange"
+      />
     </div>
 
 

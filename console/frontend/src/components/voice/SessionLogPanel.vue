@@ -33,32 +33,54 @@
       </template>
     </div>
 
-    <!-- 访问路由：最近的 LB 路由决策（只读） -->
+    <!-- 访问路由：键值行（对齐原型 pane-route）+ 工具开关区 + 最近路由决策留痕 -->
     <div v-else class="slp__body">
-      <div class="slp__routetoolbar">
-        <button type="button" class="btn sm" @click="store.loadRouteLogs()">{{ t('common.refresh') }}</button>
+      <div class="slp__section">
+        <h4>{{ t('sessions.route.title') }}</h4>
+        <div v-for="row in routeRows" :key="row.label" class="v-row">
+          <span>{{ row.label }}</span>
+          <b>{{ row.value }}</b>
+        </div>
       </div>
-      <table class="slp__tbl">
-        <thead>
-          <tr>
-            <th>{{ t('sessions.routeCol.time') }}</th>
-            <th>{{ t('sessions.routeCol.instance') }}</th>
-            <th>{{ t('sessions.routeCol.matched') }}</th>
-            <th>{{ t('sessions.routeCol.tokens') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(row, index) in store.routeLogs" :key="index">
-            <td class="mono">{{ row.at }}</td>
-            <td class="mono">{{ row.instanceId || '—' }}</td>
-            <td>
-              <PBadge :kind="row.matched ? 'ok' : 'equal'" :text="row.matched ? 'rule' : 'policy'" />
-            </td>
-            <td class="mono">{{ row.inputTokens }}/{{ row.outputTokens }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-if="!store.routeLogs.length" class="slp__empty">{{ t('sessions.noRouteLogs') }}</p>
+      <div class="slp__section">
+        <h4>{{ t('sessions.route.tools') }}</h4>
+        <div v-for="tool in toolRows" :key="tool.key" class="v-row">
+          <span>{{ tool.label }}</span>
+          <button
+            type="button"
+            role="switch"
+            class="slp__switch"
+            :class="{ on: voice.settings.tools[tool.key] }"
+            :aria-checked="voice.settings.tools[tool.key] ? 'true' : 'false'"
+            :aria-label="tool.label"
+            @click="onToggleTool(tool.key)"
+          ></button>
+        </div>
+      </div>
+      <div class="slp__section">
+        <h4>{{ t('sessions.route.recent') }}</h4>
+        <table class="slp__tbl">
+          <thead>
+            <tr>
+              <th>{{ t('sessions.routeCol.time') }}</th>
+              <th>{{ t('sessions.routeCol.instance') }}</th>
+              <th>{{ t('sessions.routeCol.matched') }}</th>
+              <th>{{ t('sessions.routeCol.tokens') }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(row, index) in store.routeLogs" :key="index">
+              <td class="mono">{{ row.at }}</td>
+              <td class="mono">{{ row.instanceId || '—' }}</td>
+              <td>
+                <PBadge :kind="row.matched ? 'ok' : 'equal'" :text="row.matched ? 'rule' : 'policy'" />
+              </td>
+              <td class="mono">{{ row.inputTokens }}/{{ row.outputTokens }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p v-if="!store.routeLogs.length" class="slp__empty">{{ t('sessions.noRouteLogs') }}</p>
+      </div>
     </div>
   </aside>
 </template>
@@ -68,6 +90,8 @@ import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
+import { useClusterStore } from '@/stores/cluster'
+import { useVoiceStore } from '@/stores/voice'
 import SessionCards from '@/components/voice/SessionCards.vue'
 import type { LiveCard, SessionCardLine, SessionCardState, SessionCardVM } from '@/components/voice/SessionCards.vue'
 import SessionRecordDetail from '@/components/voice/SessionRecordDetail.vue'
@@ -82,11 +106,46 @@ const props = defineProps<{
   /** 保存流程状态：pending=保存中，saved/partial/unsaved=终态（决定卡的处置）。 */
   saveState: 'pending' | 'saved' | 'partial' | 'unsaved'
 }>()
-const emit = defineEmits<{ (e: 'update:tab', value: 'log' | 'route'): void }>()
+const emit = defineEmits<{
+  (e: 'update:tab', value: 'log' | 'route'): void
+  (e: 'tool-change', key: 'web' | 'camera', value: boolean): void
+}>()
 
 const { t } = useI18n()
 const router = useRouter()
 const store = useSessionRecordsStore()
+const clusters = useClusterStore()
+const voice = useVoiceStore()
+
+/* ── 访问路由：键值行数据源（原型 routeRow 3767-3777 行的行序） ── */
+const routeRows = computed(() => {
+  const row = clusters.currentRow
+  return [
+    { label: t('sessions.route.instance'), value: props.live?.instanceId || '—' },
+    { label: t('sessions.route.endpoint'), value: props.live?.node ? `${props.live.node}:8765` : '—' },
+    { label: t('sessions.route.node'), value: props.live?.node || '—' },
+    { label: t('sessions.route.policy'), value: row ? t(`overview.policy.${row.policy}`) : '—' },
+    { label: t('sessions.route.registry'), value: row?.registry || '—' },
+    { label: t('sessions.route.sticky'), value: '300 s' },
+    { label: t('sessions.route.voice'), value: voice.settings.voice },
+    {
+      label: t('sessions.route.lastttft'),
+      value: voice.latency?.tts_ttfa_s != null ? `${Math.round(voice.latency.tts_ttfa_s * 1000)} ms` : '—'
+    },
+    { label: t('sessions.route.turn'), value: 'smart-turn' },
+    { label: t('sessions.route.session'), value: props.live?.pipelineSessionId || '—' }
+  ]
+})
+
+const toolRows = computed(() => [
+  { key: 'web' as const, label: t('sessions.route.toolWeb') },
+  { key: 'camera' as const, label: t('sessions.route.toolCamera') }
+])
+
+/** 面板是镜子不是第二个状态容器：开关只 emit，由 VoiceView 走 onToolsChange 同一链路。 */
+function onToggleTool(key: 'web' | 'camera'): void {
+  emit('tool-change', key, !voice.settings.tools[key])
+}
 
 // 右栏常驻：按当前 tab 拉数据；切 tab 时补拉对应数据源。
 watch(
@@ -241,9 +300,14 @@ function openRecord(recordId: number): void {
   &__history {
     align-self: flex-start;
   }
-  &__routetoolbar {
-    display: flex;
-    justify-content: flex-end;
+  &__section {
+    h4 {
+      margin: 6px 0 4px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--voice-faint);
+      letter-spacing: 0.04em;
+    }
   }
   &__tbl {
     width: 100%;
@@ -262,6 +326,56 @@ function openRecord(recordId: number): void {
     font-size: 12px;
     text-align: center;
     padding: 16px 0;
+  }
+}
+
+/* 原型 .v-row / .switch：键值行与工具开关 */
+.v-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--voice-faint);
+  padding: 5px 0;
+  span {
+    flex: 0 0 auto;
+  }
+  b {
+    color: var(--voice-text);
+    font-weight: 600;
+    text-align: right;
+    word-break: break-all;
+  }
+}
+
+.slp__switch {
+  appearance: none;
+  width: 34px;
+  height: 19px;
+  border-radius: 999px;
+  border: 1px solid var(--voice-border-strong);
+  background: var(--voice-surface-mix, var(--voice-surface-2));
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  &::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: var(--voice-faint);
+    transition: transform 0.15s ease;
+  }
+  &.on {
+    border-color: var(--voice-accent);
+    &::after {
+      transform: translateX(15px);
+      background: var(--voice-accent);
+    }
   }
 }
 </style>

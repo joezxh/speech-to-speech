@@ -41,6 +41,23 @@ export default {
     matched: '命中',
     tokens: '输入/输出 tokens'
   },
+  route: {
+    title: '访问路由',
+    instance: '实例',
+    endpoint: '端点',
+    node: '所在机器',
+    policy: '调度策略',
+    registry: '注册中心',
+    sticky: '粘滞会话',
+    voice: '当前音色',
+    lastttft: '末轮 TTFT',
+    turn: '轮次引擎',
+    session: '会话 ID',
+    tools: '会话工具',
+    toolWeb: '联网搜索',
+    toolCamera: '摄像头取景',
+    recent: '最近路由决策'
+  },
   filterAllStates: '全部状态',
   searchPlaceholder: '搜索标题 / 备注 / 会话 ID',
   batchDeleteTitle: '批量删除',
