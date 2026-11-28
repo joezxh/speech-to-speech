@@ -2,7 +2,7 @@
 // 历史记录页：对齐原型 console-refactor-demo.html#/history（renderHistory）。
 // KPI 四卡（总数/正常/失败/平均TTFT）→ 筛选卡（关键词/状态/实例/时间范围）→
 // 11 列会话表（摘录/消息数/操作）→ 分页 → 行下页内展开消息面板（消息级删除/清空）。
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import PBadge from '@/components/proto/PBadge.vue'
@@ -34,6 +34,9 @@ const panelKw = ref('')
 
 const pageTotal = computed(() => Math.max(1, Math.ceil(store.total / store.pageSize)))
 
+// 消息面板锚点：展开后滚入视野（面板在长表格下方，不滚会看不到）。
+const panelEl = ref<HTMLElement | null>(null)
+
 const allChecked = computed(
   () => store.rows.length > 0 && store.rows.every((row) => selected.value.has(row.id))
 )
@@ -48,9 +51,12 @@ const panelMessages = computed<SessionMessageRow[]>(() => {
   )
 })
 
-watch(openId, (id) => {
-  if (id != null) void store.openDetail(id)
-  else {
+watch(openId, async (id) => {
+  if (id != null) {
+    void store.openDetail(id)
+    await nextTick()
+    panelEl.value?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' })
+  } else {
     store.closeDetail()
     panelKw.value = ''
   }
@@ -323,7 +329,7 @@ onMounted(() => {
     </div>
 
     <!-- 页内展开：会话消息面板 -->
-    <div v-if="openId != null && store.detail" class="card hv__panel">
+    <div v-if="openId != null && store.detail" ref="panelEl" class="card hv__panel">
       <h3>
         {{ t('sessions.hist.msg.title') }}
         <span class="hint">{{ store.detail.id }} · {{ t('sessions.hist.msg.count', { n: panelMessages.length }) }}</span>
@@ -393,7 +399,8 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 16px 20px;
+  /* 原型 .content：上/左留白与原型一致。 */
+  padding: 22px 26px 60px;
 
   &__head {
     display: flex;
