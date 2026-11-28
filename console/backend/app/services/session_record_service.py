@@ -10,10 +10,11 @@
 
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError
-from app.models.session_record import ParamSessionRecord
+from app.models.session_record import ParamSessionMessage, ParamSessionRecord
 from app.repositories.audit_repository import AuditRepository
 from app.repositories.session_record_repository import SessionRecordRepository
 from app.schemas.common import iso_utc
@@ -96,9 +97,11 @@ def list_records(
     db: Session,
     *,
     state: str = "",
+    inst: str = "",
     q: str = "",
     from_date: str = "",
     to_date: str = "",
+    date_range: str = "",
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
@@ -107,18 +110,39 @@ def list_records(
     repo = SessionRecordRepository(db)
     rows, total = repo.list(
         state=state,
+        inst=inst,
         q=q,
-        since=_parse_date(from_date),
+        since=_parse_date(from_date) or _parse_range(date_range),
         until=_parse_date(to_date, end_of_day=True),
         page=max(1, page),
         page_size=max(1, min(200, page_size)),
     )
+    list_out = []
+    if rows:
+        # 当页消息批量查出，填 messageCount/excerpt（避免逐行 lazy load）。
+        grouped: dict[int, list[str]] = {}
+        stmt = select(ParamSessionMessage).where(
+            ParamSessionMessage.session_id.in_([row.id for row in rows])
+        )
+        for msg in db.scalars(stmt):
+            grouped.setdefault(msg.session_id, []).append(msg.content)
+        for row in rows:
+            contents = grouped.get(row.id, [])
+            out = _out(row)
+            out["messageCount"] = len(contents)
+            out["excerpt"] = " · ".join(contents)[:90]
+            list_out.append(out)
     return {
-        "list": [_out(row) for row in rows],
+        "list": list_out,
         "total": total,
         "page": page,
         "pageSize": page_size,
     }
+
+
+def instances(db: Session) -> list[dict]:
+    """实例下拉数据源（历史页筛选卡）。"""
+    return SessionRecordRepository(db).instances()
 
 
 def stats(db: Session) -> dict:
@@ -266,6 +290,23 @@ def clear_messages(db: Session, record_id: int, *, actor: str) -> int:
     db.commit()
     _audit(db, actor=actor, action="message.clear", name=row.title, fields=[])
     return cleared
+
+
+def _parse_range(value: str):
+    """today/24h/7d → UTC since；all/空 → None（不限）；未知值 400。"""
+    from datetime import datetime, timedelta, timezone
+
+    raw = (value or "").strip()
+    if not raw or raw == "all":
+        return None
+    now = datetime.now(timezone.utc)
+    if raw == "today":
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+    if raw == "24h":
+        return now - timedelta(hours=24)
+    if raw == "7d":
+        return now - timedelta(days=7)
+    raise ApiError("invalid_request", f"bad range {value}, expect all|today|24h|7d", 400)
 
 
 def _parse_date(value: str, *, end_of_day: bool = False):

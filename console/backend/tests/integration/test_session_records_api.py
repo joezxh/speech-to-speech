@@ -218,3 +218,42 @@ def test_clear_messages_zeros_turns(client):
     client.post(f"/api/v1/session-records/{record['id']}/messages/clear", headers=headers)
     got = client.get(f"/api/v1/session-records/{record['id']}", headers=headers).json()["data"]
     assert got["turns"] == 0 and got["messageCount"] == 0 and got["excerpt"] == ""
+
+
+def test_list_inst_range_and_excerpt(client):
+    headers = _auth(client)
+    client.post("/api/v1/session-records", json=_save_payload(instanceId="pipe-a", node="n1"), headers=headers)
+    client.post("/api/v1/session-records", json=_save_payload(instanceId="pipe-b", node="n2"), headers=headers)
+
+    data = client.get("/api/v1/session-records", params={"inst": "pipe-a"}, headers=headers).json()["data"]
+    assert data["total"] == 1
+
+    data = client.get("/api/v1/session-records", params={"range": "today"}, headers=headers).json()["data"]
+    assert data["total"] == 2
+    # from/to 与 range 并存：from/to 优先（未来日期 → 0 行）。
+    data = client.get(
+        "/api/v1/session-records", params={"range": "7d", "from_date": "2030-01-01"}, headers=headers
+    ).json()["data"]
+    assert data["total"] == 0
+
+    row = client.get("/api/v1/session-records", headers=headers).json()["data"]["list"][0]
+    assert row["messageCount"] == 3
+    assert "你好" in row["excerpt"] and "search(...)" in row["excerpt"]
+
+    # q 搜转写原文（EXISTS 消息 content）。
+    data = client.get("/api/v1/session-records", params={"q": "有什么可以帮你"}, headers=headers).json()["data"]
+    assert data["total"] == 2
+
+
+def test_instances_endpoint(client):
+    headers = _auth(client)
+    client.post("/api/v1/session-records", json=_save_payload(instanceId="pipe-a", node="n1"), headers=headers)
+    data = client.get("/api/v1/session-records/instances", headers=headers).json()["data"]
+    assert {"instanceId": "pipe-a", "node": "n1"} in data
+
+
+def test_stats_avg_ttfa(client):
+    headers = _auth(client)
+    client.post("/api/v1/session-records", json=_save_payload(), headers=headers)
+    stats = client.get("/api/v1/session-records/stats", headers=headers).json()["data"]
+    assert stats["avgTtfaMs"] == 660

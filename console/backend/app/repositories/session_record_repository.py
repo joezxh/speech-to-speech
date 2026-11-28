@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.lb import ParamLbRouteLog
@@ -24,6 +24,7 @@ class SessionRecordRepository:
         *,
         user_id: str = "",
         state: str = "",
+        inst: str = "",
         q: str = "",
         since: datetime | None = None,
         until: datetime | None = None,
@@ -35,6 +36,10 @@ class SessionRecordRepository:
             base = base.where(ParamSessionRecord.user_id == user_id)
         if state:
             base = base.where(ParamSessionRecord.state == state)
+        if inst:
+            base = base.where(
+                or_(ParamSessionRecord.instance_id == inst, ParamSessionRecord.node == inst)
+            )
         if since is not None:
             base = base.where(ParamSessionRecord.created_at >= since)
         if until is not None:
@@ -46,6 +51,12 @@ class SessionRecordRepository:
                     ParamSessionRecord.title.like(like),
                     ParamSessionRecord.note.like(like),
                     ParamSessionRecord.pipeline_session_id.like(like),
+                    ParamSessionRecord.instance_id.like(like),
+                    ParamSessionRecord.node.like(like),
+                    exists().where(
+                        ParamSessionMessage.session_id == ParamSessionRecord.id,
+                        ParamSessionMessage.content.like(like),
+                    ),
                 )
             )
         total = self.session.scalar(select(func.count()).select_from(base.subquery())) or 0
@@ -57,6 +68,18 @@ class SessionRecordRepository:
             )
         )
         return rows, int(total)
+
+    def instances(self) -> list[dict]:
+        """实例下拉数据源：非空 (instance_id, node) 对去重排序。"""
+        rows = list(
+            self.session.scalars(select(ParamSessionRecord)).all()
+        )
+        pairs = {
+            (row.instance_id, row.node)
+            for row in rows
+            if row.instance_id or row.node
+        }
+        return [{"instanceId": a, "node": b} for a, b in sorted(pairs)]
 
     def get(self, record_id: int) -> ParamSessionRecord | None:
         return self.session.get(ParamSessionRecord, record_id)
@@ -145,10 +168,12 @@ class SessionRecordRepository:
         failed = len(rows) - done
         durations = [row.duration_ms for row in rows if row.duration_ms > 0]
         avg_duration_ms = round(sum(durations) / len(durations)) if durations else 0
+        ttfas = [row.ttfa_ms for row in rows if row.ttfa_ms]
         return {
             "total": len(rows),
             "done": done,
             "failed": failed,
             "turns": sum(row.turns for row in rows),
             "avgDurationMs": avg_duration_ms,
+            "avgTtfaMs": round(sum(ttfas) / len(ttfas)) if ttfas else 0,
         }
