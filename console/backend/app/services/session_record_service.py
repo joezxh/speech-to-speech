@@ -130,7 +130,8 @@ def list_records(
             contents = grouped.get(row.id, [])
             out = _out(row)
             out["messageCount"] = len(contents)
-            out["excerpt"] = " · ".join(contents)[:90]
+            # 完整转写（不截断）：历史页摘录列整段展示。
+            out["excerpt"] = " · ".join(contents)
             list_out.append(out)
     return {
         "list": list_out,

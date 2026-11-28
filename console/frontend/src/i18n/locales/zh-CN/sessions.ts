@@ -50,7 +50,8 @@ export default {
       total: '会话总数',
       done: '正常结束',
       failed: '失败',
-      avgTtfa: '平均 TTFT'
+      avgTtfa: '平均 TTFT',
+      sub: '本集群'
     },
     filter: {
       title: '会话查询',

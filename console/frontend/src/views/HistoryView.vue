@@ -170,64 +170,84 @@ onMounted(() => {
       <button type="button" class="btn sm" @click="store.resetAndLoad()">{{ t('common.refresh') }}</button>
     </header>
 
-    <!-- KPI 卡：总数 / 正常 / 失败 / 平均 TTFT -->
-    <div class="hv__kpis">
-      <div class="hv__kpi">
-        <small>{{ t('sessions.hist.kpi.total') }}</small>
-        <b>{{ store.stats?.total ?? '—' }}</b>
+    <!-- KPI 卡（原型 grid g4 + .kpi）：总数 / 正常 / 失败 / 平均 TTFT -->
+    <div class="grid g4 hv__kpis">
+      <div class="kpi hv__kpi">
+        <div class="label">{{ t('sessions.hist.kpi.total') }}</div>
+        <div class="value">{{ store.stats?.total ?? '—' }}</div>
+        <div class="sub">{{ t('sessions.hist.kpi.sub') }}</div>
       </div>
-      <div class="hv__kpi">
-        <small>{{ t('sessions.hist.kpi.done') }}</small>
-        <b>{{ store.stats?.done ?? '—' }}</b>
+      <div class="kpi hv__kpi">
+        <div class="label">{{ t('sessions.hist.kpi.done') }}</div>
+        <div class="value">{{ store.stats?.done ?? '—' }}</div>
+        <div class="sub">{{ t('sessions.hist.kpi.sub') }}</div>
       </div>
-      <div class="hv__kpi">
-        <small>{{ t('sessions.hist.kpi.failed') }}</small>
-        <b>{{ store.stats?.failed ?? '—' }}</b>
+      <div class="kpi hv__kpi">
+        <div class="label">{{ t('sessions.hist.kpi.failed') }}</div>
+        <div class="value" :style="store.stats?.failed ? 'color:var(--s2s-color-danger)' : ''">
+          {{ store.stats?.failed ?? '—' }}
+        </div>
+        <div class="sub">{{ t('sessions.hist.kpi.sub') }}</div>
       </div>
-      <div class="hv__kpi">
-        <small>{{ t('sessions.hist.kpi.avgTtfa') }}</small>
-        <b>{{ store.stats ? `${store.stats.avgTtfaMs}ms` : '—' }}</b>
+      <div class="kpi hv__kpi">
+        <div class="label">{{ t('sessions.hist.kpi.avgTtfa') }}</div>
+        <div class="value">{{ store.stats ? `${store.stats.avgTtfaMs}ms` : '—' }}</div>
+        <div class="sub">{{ t('sessions.hist.kpi.sub') }}</div>
       </div>
     </div>
 
-    <!-- 筛选卡：关键词 / 状态 / 实例 / 时间范围 -->
+    <!-- 筛选卡（原型 filter-grid 12 列）：一行 4 个检索框，动作行在下 -->
     <div class="card">
       <h3>{{ t('sessions.hist.filter.title') }}</h3>
-      <form class="hv__filters" @submit.prevent="search">
-        <input
-          id="hist-kw"
-          v-model="store.filters.q"
-          type="search"
-          class="fin"
-          :placeholder="t('sessions.hist.filter.kwPh')"
-          autocomplete="off"
-        />
-        <select id="hist-state" v-model="store.filters.state" class="fin">
-          <option v-for="option in stateOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-        <select id="hist-inst" v-model="store.filters.inst" class="fin">
-          <option value="">{{ t('sessions.hist.filter.all') }}</option>
-          <option v-for="item in store.instances" :key="`${item.instanceId}|${item.node}`" :value="item.instanceId">
-            {{ routeCell(item.instanceId, item.node) }}
-          </option>
-        </select>
-        <select id="hist-range" v-model="store.filters.range" class="fin">
-          <option v-for="option in rangeOptions" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option>
-        </select>
-        <button type="submit" class="btn primary sm">{{ t('sessions.hist.query') }}</button>
-        <button type="button" class="btn sm" @click="reset">{{ t('sessions.hist.reset') }}</button>
-        <span class="spacer"></span>
-        <span class="muted">{{ t('sessions.hist.count', { n: store.total }) }}</span>
-        <span v-if="selected.size" class="hv__selbar">
-          <span class="muted">{{ t('sessions.hist.sel.count', { n: selected.size }) }}</span>
-          <button type="button" class="btn sm danger" @click="batchDelete">
-            {{ t('sessions.hist.deleteSelected') }}
-          </button>
-        </span>
+      <form class="filter-grid" @submit.prevent="search">
+        <div class="fbar wide">
+          <label for="hist-kw">{{ t('sessions.hist.filter.kw') }}</label>
+          <input
+            id="hist-kw"
+            v-model="store.filters.q"
+            type="search"
+            class="fin"
+            :placeholder="t('sessions.hist.filter.kwPh')"
+            autocomplete="off"
+          />
+        </div>
+        <div class="fbar n2">
+          <label for="hist-state">{{ t('sessions.hist.filter.state') }}</label>
+          <select id="hist-state" v-model="store.filters.state" class="fin">
+            <option v-for="option in stateOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+        <div class="fbar n2">
+          <label for="hist-inst">{{ t('sessions.hist.filter.inst') }}</label>
+          <select id="hist-inst" v-model="store.filters.inst" class="fin">
+            <option value="">{{ t('sessions.hist.filter.all') }}</option>
+            <option v-for="item in store.instances" :key="`${item.instanceId}|${item.node}`" :value="item.instanceId">
+              {{ routeCell(item.instanceId, item.node) }}
+            </option>
+          </select>
+        </div>
+        <div class="fbar n2">
+          <label for="hist-range">{{ t('sessions.hist.filter.range') }}</label>
+          <select id="hist-range" v-model="store.filters.range" class="fin">
+            <option v-for="option in rangeOptions" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option>
+          </select>
+        </div>
+        <div class="fbar-actions">
+          <button type="submit" class="btn primary sm">{{ t('sessions.hist.query') }}</button>
+          <button type="button" class="btn sm" @click="reset">{{ t('sessions.hist.reset') }}</button>
+          <span class="spacer"></span>
+          <span class="muted">{{ t('sessions.hist.count', { n: store.total }) }}</span>
+          <span v-if="selected.size" class="hv__selbar">
+            <span class="muted">{{ t('sessions.hist.sel.count', { n: selected.size }) }}</span>
+            <button type="button" class="btn sm danger" @click="batchDelete">
+              {{ t('sessions.hist.deleteSelected') }}
+            </button>
+          </span>
+        </div>
       </form>
     </div>
 
@@ -270,7 +290,7 @@ onMounted(() => {
               <td class="mono">#{{ row.id }}</td>
               <td class="mono">{{ row.createdAt }}</td>
               <td class="mono">{{ routeCell(row.instanceId, row.node) }}</td>
-              <td class="cell-clip" :title="row.excerpt">{{ row.excerpt || '—' }}</td>
+              <td class="hv__excerpt" :title="row.excerpt">{{ row.excerpt || '—' }}</td>
               <td class="num mono">{{ row.turns }}</td>
               <td class="num mono">{{ row.messageCount }}</td>
               <td class="num mono">{{ fmtDuration(row.durationMs) }}</td>
@@ -385,38 +405,48 @@ onMounted(() => {
     }
   }
   &__kpis {
+    margin-bottom: 2px;
+  }
+  /* 原型 filter-grid（12 列栅格）：一行 4 个检索框，动作行 span 12。 */
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 12px;
+  }
+  .fbar {
+    grid-column: span 3;
+    min-width: 0;
+    label {
+      display: block;
+      font-size: 12px;
+      color: var(--s2s-color-muted);
+      margin-bottom: 6px;
+    }
+    .fin {
+      margin: 0;
+    }
+  }
+  .fbar.wide {
+    grid-column: span 6;
+  }
+  .fbar.n2 {
+    grid-column: span 2;
+  }
+  .fbar-actions {
+    grid-column: span 12;
     display: flex;
+    align-items: center;
     gap: 10px;
     flex-wrap: wrap;
-  }
-  &__kpi {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 16px;
-    min-width: 120px;
-    small {
-      display: block;
-      color: var(--muted);
-      font-size: 11px;
-      margin-bottom: 4px;
-    }
-    b {
-      font-size: 20px;
-    }
-  }
-  &__filters {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-    max-width: 100%;
-    .fin {
-      min-width: 140px;
-    }
     .muted {
       font-size: 12px;
     }
+  }
+  &__excerpt {
+    white-space: normal;
+    word-break: break-word;
+    min-width: 260px;
+    max-width: 480px;
   }
   &__selbar {
     display: inline-flex;

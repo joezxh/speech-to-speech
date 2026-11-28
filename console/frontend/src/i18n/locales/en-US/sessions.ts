@@ -50,7 +50,8 @@ export default {
       total: 'Total sessions',
       done: 'Finished',
       failed: 'Failed',
-      avgTtfa: 'Avg TTFT'
+      avgTtfa: 'Avg TTFT',
+      sub: 'on this cluster'
     },
     filter: {
       title: 'Session query',
