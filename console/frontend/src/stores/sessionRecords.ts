@@ -39,16 +39,21 @@ export interface SessionRecordFilters {
  * - turns = 助手轮数（含失败行）；durationMs 由调用方给（会话起止墙钟差）；
  * - ttfaMs 取第一条助手延迟的 tts_ttfa_s（秒 → 毫秒，四舍五入）。
  */
-export function toSavePayload(
-  entries: readonly TranscriptEntry[],
-  opts: { title?: string; pipelineSessionId?: string; instanceId?: string; node?: string; state?: 'done' | 'failed'; durationMs?: number } = {}
-): SessionSavePayload {
-  const usable = entries.filter(
+/** 会被落库的条目（与 toSavePayload 的 messages 下标严格一一对应）——片段上传按同一下标对齐。 */
+export function usableEntriesOf(entries: readonly TranscriptEntry[]): TranscriptEntry[] {
+  return entries.filter(
     (entry) =>
       entry.text.trim() !== '' ||
       (entry.role === 'user' && entry.audio != null) ||
       (entry.role === 'assistant' && entry.latency != null)
   )
+}
+
+export function toSavePayload(
+  entries: readonly TranscriptEntry[],
+  opts: { title?: string; pipelineSessionId?: string; instanceId?: string; node?: string; state?: 'done' | 'failed'; durationMs?: number } = {}
+): SessionSavePayload {
+  const usable = usableEntriesOf(entries)
   const messages = usable.map((entry) => ({
     role: entry.role,
     type: entry.audio ? 'audio' : 'text',

@@ -1,4 +1,4 @@
-import { api } from './client'
+import { api, client } from './client'
 import type { Page } from '@/types/api'
 
 /**
@@ -37,6 +37,17 @@ export interface SessionRecordRow {
   messageCount: number
   excerpt: string
   messages?: SessionMessageRow[]
+  /** 详情才带：音频片段概要（不含字节），按 messageOrdinal 对齐消息行。 */
+  clips?: SessionClipRow[]
+}
+
+export interface SessionClipRow {
+  id: number
+  role: 'user' | 'assistant'
+  itemRef: string
+  messageOrdinal: number
+  durationMs: number
+  sizeBytes: number
 }
 
 export interface SessionRecordStats {
@@ -134,3 +145,32 @@ export const deleteSessionMessage = (recordId: number, messageId: number): Promi
 
 export const clearSessionMessages = (recordId: number): Promise<{ cleared: number }> =>
   api.post<{ cleared: number }>(`/session-records/${recordId}/messages/clear`)
+
+/** 上传一段会话音频（multipart，snake_case 表单字段与后端 Form 参数一致）。 */
+export const uploadSessionClip = (
+  recordId: number,
+  clip: {
+    role: 'user' | 'assistant'
+    itemRef: string
+    messageOrdinal: number
+    sampleRate: number
+    durationMs: number
+    blob: Blob
+  }
+): Promise<SessionClipRow> => {
+  const form = new FormData()
+  form.append('file', new File([clip.blob], 'clip.wav', { type: 'audio/wav' }))
+  form.append('message_ordinal', String(clip.messageOrdinal))
+  form.append('role', clip.role)
+  form.append('item_ref', clip.itemRef)
+  form.append('sample_rate', String(clip.sampleRate))
+  form.append('duration_ms', String(clip.durationMs))
+  return api.post<SessionClipRow>(`/session-records/${recordId}/clips`, form)
+}
+
+/** 回放已保存片段：取字节 → objectURL（调用方负责 revokeObjectURL）。
+ *  字节端点不走 `{code,data}` envelope，必须用原始 client（api.get 会错误解包 Blob）。 */
+export const fetchSessionClipUrl = (recordId: number, clipId: number): Promise<string> =>
+  client
+    .get<Blob>(`/api/v1/session-records/${recordId}/clips/${clipId}`, { responseType: 'blob' })
+    .then((response) => URL.createObjectURL(response.data))

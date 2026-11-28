@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import * as sessionRecordsApi from '@/api/sessionRecords'
-import { useSessionRecordsStore, toSavePayload } from '@/stores/sessionRecords'
+import { useSessionRecordsStore, toSavePayload, usableEntriesOf } from '@/stores/sessionRecords'
 import type { SessionRecordRow } from '@/api/sessionRecords'
 import type { TranscriptEntry } from '@/features/voice/types'
 
@@ -99,6 +99,21 @@ describe('toSavePayload', () => {
     const payload = toSavePayload([entry({ text: 'partial', interrupted: true })], { state: 'failed' })
     expect(payload.state).toBe('failed')
     expect(payload.messages[0].interrupted).toBe(true)
+  })
+
+  it('usableEntriesOf aligns 1:1 with toSavePayload messages (clip ordinal contract)', () => {
+    const entries = [
+      entry({ key: 'u:1', role: 'user', text: '', audio: { url: 'blob:x', durationMs: 3800, truncated: false } }),
+      entry({ key: 'a:1', role: 'assistant', text: '好', latency: latency(1.8) }),
+      entry({ key: 't:1', role: 'tool', text: 'search()' }),
+      entry({ key: 'u:2', role: 'user', text: '  ' })
+    ]
+    const usable = usableEntriesOf(entries)
+    const payload = toSavePayload(entries)
+    expect(usable).toHaveLength(payload.messages.length)
+    usable.forEach((item, index) => {
+      expect(item.role).toBe(payload.messages[index].role)
+    })
   })
 })
 
