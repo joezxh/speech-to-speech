@@ -1,0 +1,107 @@
+export default {
+  tabLog: '会话记录',
+  tabRoute: '访问路由',
+  backToList: '返回列表',
+  openHistory: '打开历史页',
+  noRecords: '暂无会话记录',
+  noRouteLogs: '暂无路由记录',
+  untitled: '未命名会话',
+  turnsBadge: '{n} 轮',
+  historyDesc: '每次通话结束自动保存一条会话记录，可查看、修改、删除。',
+  deleteRecord: '删除会话',
+  deleteTitle: '删除会话记录',
+  deleteBody: '删除后不可恢复，确认删除该会话及其全部消息？',
+  messageSearch: '搜索消息内容',
+  clearMessages: '清空消息',
+  clearTitle: '清空消息',
+  clearBody: '确认清空该会话的全部消息行？会话本身保留。',
+  deleteMsgTitle: '删除消息',
+  deleteMsgBody: '确认删除这条消息？',
+  routeCol: {
+    time: '时间',
+    instance: '实例',
+    matched: '命中',
+    tokens: '输入/输出 tokens'
+  },
+  filterAllStates: '全部状态',
+  searchPlaceholder: '搜索标题 / 备注 / 会话 ID',
+  batchDeleteTitle: '批量删除',
+  batchDeleteBody: '确认删除选中的 {n} 条会话记录？',
+  batchDelete: '删除选中（{n}）',
+  kpi: {
+    total: '会话总数',
+    done: '正常结束',
+    failed: '异常结束',
+    turns: '对话轮数',
+    avgDuration: '平均时长'
+  },
+  col: {
+    title: '标题',
+    state: '状态',
+    node: '实例 / 节点',
+    turns: '轮数',
+    duration: '时长',
+    ttfa: 'TTFA',
+    createdAt: '创建时间'
+  },
+  hist: {
+    title: '会话历史',
+    kpi: {
+      total: '会话总数',
+      done: '正常结束',
+      failed: '失败',
+      avgTtfa: '平均 TTFT'
+    },
+    filter: {
+      title: '会话查询',
+      kw: '关键词',
+      kwPh: 'ID / 实例 / 节点 / 转写',
+      state: '状态',
+      all: '全部',
+      inst: '实例',
+      range: '时间范围'
+    },
+    range: {
+      today: '今天',
+      '24h': '近 24 小时',
+      '7d': '近 7 天'
+    },
+    query: '查询',
+    reset: '重置',
+    count: '{n} 条会话',
+    sel: { count: '已选 {n} 条' },
+    deleteSelected: '删除所选',
+    col: {
+      id: '会话 ID',
+      start: '开始时间',
+      route: '实例 · 节点',
+      excerpt: '转写摘录',
+      turns: '轮数',
+      msgs: '消息数',
+      dur: '语音时长',
+      ttft: 'TTFT',
+      actions: '操作'
+    },
+    viewMessages: '查看消息',
+    empty: '没有符合条件的会话。',
+    prev: '上一页',
+    next: '下一页',
+    pageOf: '第 {n} / {m} 页',
+    msg: {
+      title: '会话消息',
+      count: '{n} 条消息',
+      kw: '消息内搜索',
+      clear: '清空全部消息',
+      noMatch: '没有匹配的消息。'
+    },
+    midCol: '消息 ID',
+    roleCol: '角色',
+    typeCol: '类型',
+    contentCol: '内容',
+    atCol: '时间',
+    statusCol: '状态',
+    role: { caller: '调用者', bot: '助手' },
+    type: { asr: '转写', reply: '回复' },
+    flag: { ok: '正常', fail: '失败' }
+  }
+}
