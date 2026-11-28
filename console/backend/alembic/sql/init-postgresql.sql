@@ -234,6 +234,8 @@ COMMENT ON TABLE "param_agent_config_version" IS 'agent 目标配置下发快照
 
 COMMENT ON TABLE "param_token_metric" IS '机器与负载的 token 增量时序，计数为窗口增量而非累计值';
 
+COMMENT ON TABLE "param_backend_metric" IS '各后端接口调用增量时序，按负载类型分类，计数为窗口增量而非累计值';
+
 COMMENT ON TABLE "param_lb_rule" IS '负载均衡路由规则，按优先级升序首条命中生效';
 
 COMMENT ON TABLE "param_lb_affinity" IS '会话亲和记录：命中粘性键则跳过规则评估直接选台';
@@ -241,6 +243,12 @@ COMMENT ON TABLE "param_lb_affinity" IS '会话亲和记录：命中粘性键则
 COMMENT ON TABLE "param_lb_route_log" IS '路由决策记账，只追加，用于命中率与规则命中统计';
 
 COMMENT ON TABLE "param_release" IS '发布流水线台账：外部 CI 执行构建与验证，控制台只记录过程';
+
+COMMENT ON TABLE "param_template" IS '参数模板：对话态热更与重启生效两类，字段快照以参数目录为 schema 源';
+
+COMMENT ON TABLE "param_session_record" IS '会话记录：一次语音通话一条，前端通话结束时保存逐行转写摘要';
+
+COMMENT ON TABLE "param_session_message" IS '会话消息行：会话内逐条转写，按 ordinal 保持通话顺序，随会话级联删除';
 
 COMMENT ON TABLE "param_version" IS '配置版本快照，创建后不可变；保存配置全文用于启动自检';
 
@@ -480,6 +488,10 @@ COMMENT ON COLUMN "param_machine"."gpu" IS '显卡型号描述';
 
 COMMENT ON COLUMN "param_machine"."gpu_total_gb" IS '显存总量（GB），不可得时为空';
 
+COMMENT ON COLUMN "param_machine"."platform" IS '平台类型：gpu、npu、amd 或 cpu；未上报时按显卡描述推断';
+
+COMMENT ON COLUMN "param_machine"."driver" IS '驱动/运行时版本描述（如 CUDA 13.0），硬件校验展示用';
+
 COMMENT ON COLUMN "param_machine"."version" IS '部署版本描述，来自 agent 读取的已安装包元数据';
 
 COMMENT ON COLUMN "param_machine"."gpu_util_pct" IS 'GPU 利用率（%%），按 pipeline 进程所在卡采样';
@@ -527,6 +539,74 @@ COMMENT ON COLUMN "param_machine"."updated_by" IS '最近修改人';
 COMMENT ON COLUMN "param_machine"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_template"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_template"."name" IS '模板名称，全局唯一';
+
+COMMENT ON COLUMN "param_template"."effect" IS '生效方式：runtime 对话态热更、restart 需发布并重启';
+
+COMMENT ON COLUMN "param_template"."platform" IS '平台类型：gpu、npu、amd 或 cpu';
+
+COMMENT ON COLUMN "param_template"."status" IS '模板状态：draft、review、published 或 archived';
+
+COMMENT ON COLUMN "param_template"."scene" IS '绑定场景 key，推荐配置方案的固定组成部分，空表示未绑定';
+
+COMMENT ON COLUMN "param_template"."min_vram_gb" IS '最低显存要求（GB），硬件校验用';
+
+COMMENT ON COLUMN "param_template"."fields_json" IS '字段快照：键、取值、session.update 路径或 YAML 键与目录溯源';
+
+COMMENT ON COLUMN "param_template"."description" IS '模板描述';
+
+COMMENT ON COLUMN "param_template"."created_by" IS '创建人';
+
+COMMENT ON COLUMN "param_template"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_template"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_template"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_session_record"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_session_record"."user_id" IS '保存人用户名（登录账号）';
+
+COMMENT ON COLUMN "param_session_record"."title" IS '会话标题，可改，空时落默认名';
+
+COMMENT ON COLUMN "param_session_record"."note" IS '备注，可改';
+
+COMMENT ON COLUMN "param_session_record"."pipeline_session_id" IS 'pipeline 侧会话 ID（WS grant），深链回跳用';
+
+COMMENT ON COLUMN "param_session_record"."instance_id" IS '路由到的 pipeline 实例标识';
+
+COMMENT ON COLUMN "param_session_record"."node" IS '机器 / 容器节点名';
+
+COMMENT ON COLUMN "param_session_record"."state" IS '结束状态：done 正常、failed 异常';
+
+COMMENT ON COLUMN "param_session_record"."turns" IS '助手轮数（有文本的助手消息数）';
+
+COMMENT ON COLUMN "param_session_record"."duration_ms" IS '通话时长（毫秒，前端墙钟差）';
+
+COMMENT ON COLUMN "param_session_record"."ttfa_ms" IS '首次出音延迟（毫秒），取首个助手轮的 tts_ttfa_s';
+
+COMMENT ON COLUMN "param_session_record"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_session_record"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_session_message"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_session_message"."session_id" IS '所属会话记录 id，外键级联删除';
+
+COMMENT ON COLUMN "param_session_message"."ordinal" IS '通话内顺序号，从 0 起';
+
+COMMENT ON COLUMN "param_session_message"."role" IS '角色：user、assistant 或 tool';
+
+COMMENT ON COLUMN "param_session_message"."type" IS '内容形态：text 或 audio（带原音转写）';
+
+COMMENT ON COLUMN "param_session_message"."content" IS '消息文本（转写或编辑后的内容）';
+
+COMMENT ON COLUMN "param_session_message"."interrupted" IS '是否被用户插话打断（助手条目）';
+
+COMMENT ON COLUMN "param_session_message"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine_command"."id" IS '主键标识';
 
@@ -639,6 +719,28 @@ COMMENT ON COLUMN "param_token_metric"."audio_duration_s" IS '本窗口音频时
 COMMENT ON COLUMN "param_token_metric"."window_s" IS '统计窗口长度（秒）';
 
 COMMENT ON COLUMN "param_token_metric"."reported_by" IS '上报方标识，通常为 agent';
+
+COMMENT ON COLUMN "param_backend_metric"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_backend_metric"."machine_id" IS '所属机器标识，软关联 param_machine.machine_id';
+
+COMMENT ON COLUMN "param_backend_metric"."kind" IS '负载类型：stt、llm 或 tts';
+
+COMMENT ON COLUMN "param_backend_metric"."engine" IS '上报时的后端引擎快照，旧版上报可为空';
+
+COMMENT ON COLUMN "param_backend_metric"."model" IS '上报时的模型名快照，旧版上报可为空';
+
+COMMENT ON COLUMN "param_backend_metric"."observed_at" IS '窗口起点时间（UTC）';
+
+COMMENT ON COLUMN "param_backend_metric"."calls" IS '本窗口调用次数增量';
+
+COMMENT ON COLUMN "param_backend_metric"."errors" IS '本窗口错误次数增量';
+
+COMMENT ON COLUMN "param_backend_metric"."latency_ms_sum" IS '本窗口调用时延总和（毫秒），均值由查询端推导';
+
+COMMENT ON COLUMN "param_backend_metric"."window_s" IS '统计窗口长度（秒）';
+
+COMMENT ON COLUMN "param_backend_metric"."reported_by" IS '上报方标识，通常为 agent';
 
 COMMENT ON COLUMN "param_lb_rule"."id" IS '主键标识';
 
@@ -1238,6 +1340,8 @@ COMMENT ON TABLE "param_agent_config_version" IS 'agent 目标配置下发快照
 
 COMMENT ON TABLE "param_token_metric" IS '机器与负载的 token 增量时序，计数为窗口增量而非累计值';
 
+COMMENT ON TABLE "param_backend_metric" IS '各后端接口调用增量时序，按负载类型分类，计数为窗口增量而非累计值';
+
 COMMENT ON TABLE "param_lb_rule" IS '负载均衡路由规则，按优先级升序首条命中生效';
 
 COMMENT ON TABLE "param_lb_affinity" IS '会话亲和记录：命中粘性键则跳过规则评估直接选台';
@@ -1245,6 +1349,12 @@ COMMENT ON TABLE "param_lb_affinity" IS '会话亲和记录：命中粘性键则
 COMMENT ON TABLE "param_lb_route_log" IS '路由决策记账，只追加，用于命中率与规则命中统计';
 
 COMMENT ON TABLE "param_release" IS '发布流水线台账：外部 CI 执行构建与验证，控制台只记录过程';
+
+COMMENT ON TABLE "param_template" IS '参数模板：对话态热更与重启生效两类，字段快照以参数目录为 schema 源';
+
+COMMENT ON TABLE "param_session_record" IS '会话记录：一次语音通话一条，前端通话结束时保存逐行转写摘要';
+
+COMMENT ON TABLE "param_session_message" IS '会话消息行：会话内逐条转写，按 ordinal 保持通话顺序，随会话级联删除';
 
 COMMENT ON TABLE "param_version" IS '配置版本快照，创建后不可变；保存配置全文用于启动自检';
 
@@ -1484,6 +1594,10 @@ COMMENT ON COLUMN "param_machine"."gpu" IS '显卡型号描述';
 
 COMMENT ON COLUMN "param_machine"."gpu_total_gb" IS '显存总量（GB），不可得时为空';
 
+COMMENT ON COLUMN "param_machine"."platform" IS '平台类型：gpu、npu、amd 或 cpu；未上报时按显卡描述推断';
+
+COMMENT ON COLUMN "param_machine"."driver" IS '驱动/运行时版本描述（如 CUDA 13.0），硬件校验展示用';
+
 COMMENT ON COLUMN "param_machine"."version" IS '部署版本描述，来自 agent 读取的已安装包元数据';
 
 COMMENT ON COLUMN "param_machine"."gpu_util_pct" IS 'GPU 利用率（%%），按 pipeline 进程所在卡采样';
@@ -1531,6 +1645,74 @@ COMMENT ON COLUMN "param_machine"."updated_by" IS '最近修改人';
 COMMENT ON COLUMN "param_machine"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_template"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_template"."name" IS '模板名称，全局唯一';
+
+COMMENT ON COLUMN "param_template"."effect" IS '生效方式：runtime 对话态热更、restart 需发布并重启';
+
+COMMENT ON COLUMN "param_template"."platform" IS '平台类型：gpu、npu、amd 或 cpu';
+
+COMMENT ON COLUMN "param_template"."status" IS '模板状态：draft、review、published 或 archived';
+
+COMMENT ON COLUMN "param_template"."scene" IS '绑定场景 key，推荐配置方案的固定组成部分，空表示未绑定';
+
+COMMENT ON COLUMN "param_template"."min_vram_gb" IS '最低显存要求（GB），硬件校验用';
+
+COMMENT ON COLUMN "param_template"."fields_json" IS '字段快照：键、取值、session.update 路径或 YAML 键与目录溯源';
+
+COMMENT ON COLUMN "param_template"."description" IS '模板描述';
+
+COMMENT ON COLUMN "param_template"."created_by" IS '创建人';
+
+COMMENT ON COLUMN "param_template"."updated_by" IS '最近修改人';
+
+COMMENT ON COLUMN "param_template"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_template"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_session_record"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_session_record"."user_id" IS '保存人用户名（登录账号）';
+
+COMMENT ON COLUMN "param_session_record"."title" IS '会话标题，可改，空时落默认名';
+
+COMMENT ON COLUMN "param_session_record"."note" IS '备注，可改';
+
+COMMENT ON COLUMN "param_session_record"."pipeline_session_id" IS 'pipeline 侧会话 ID（WS grant），深链回跳用';
+
+COMMENT ON COLUMN "param_session_record"."instance_id" IS '路由到的 pipeline 实例标识';
+
+COMMENT ON COLUMN "param_session_record"."node" IS '机器 / 容器节点名';
+
+COMMENT ON COLUMN "param_session_record"."state" IS '结束状态：done 正常、failed 异常';
+
+COMMENT ON COLUMN "param_session_record"."turns" IS '助手轮数（有文本的助手消息数）';
+
+COMMENT ON COLUMN "param_session_record"."duration_ms" IS '通话时长（毫秒，前端墙钟差）';
+
+COMMENT ON COLUMN "param_session_record"."ttfa_ms" IS '首次出音延迟（毫秒），取首个助手轮的 tts_ttfa_s';
+
+COMMENT ON COLUMN "param_session_record"."created_at" IS '创建时间（UTC）';
+
+COMMENT ON COLUMN "param_session_record"."updated_at" IS '最近修改时间（UTC）';
+
+COMMENT ON COLUMN "param_session_message"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_session_message"."session_id" IS '所属会话记录 id，外键级联删除';
+
+COMMENT ON COLUMN "param_session_message"."ordinal" IS '通话内顺序号，从 0 起';
+
+COMMENT ON COLUMN "param_session_message"."role" IS '角色：user、assistant 或 tool';
+
+COMMENT ON COLUMN "param_session_message"."type" IS '内容形态：text 或 audio（带原音转写）';
+
+COMMENT ON COLUMN "param_session_message"."content" IS '消息文本（转写或编辑后的内容）';
+
+COMMENT ON COLUMN "param_session_message"."interrupted" IS '是否被用户插话打断（助手条目）';
+
+COMMENT ON COLUMN "param_session_message"."created_at" IS '创建时间（UTC）';
 
 COMMENT ON COLUMN "param_machine_command"."id" IS '主键标识';
 
@@ -1643,6 +1825,28 @@ COMMENT ON COLUMN "param_token_metric"."audio_duration_s" IS '本窗口音频时
 COMMENT ON COLUMN "param_token_metric"."window_s" IS '统计窗口长度（秒）';
 
 COMMENT ON COLUMN "param_token_metric"."reported_by" IS '上报方标识，通常为 agent';
+
+COMMENT ON COLUMN "param_backend_metric"."id" IS '主键标识';
+
+COMMENT ON COLUMN "param_backend_metric"."machine_id" IS '所属机器标识，软关联 param_machine.machine_id';
+
+COMMENT ON COLUMN "param_backend_metric"."kind" IS '负载类型：stt、llm 或 tts';
+
+COMMENT ON COLUMN "param_backend_metric"."engine" IS '上报时的后端引擎快照，旧版上报可为空';
+
+COMMENT ON COLUMN "param_backend_metric"."model" IS '上报时的模型名快照，旧版上报可为空';
+
+COMMENT ON COLUMN "param_backend_metric"."observed_at" IS '窗口起点时间（UTC）';
+
+COMMENT ON COLUMN "param_backend_metric"."calls" IS '本窗口调用次数增量';
+
+COMMENT ON COLUMN "param_backend_metric"."errors" IS '本窗口错误次数增量';
+
+COMMENT ON COLUMN "param_backend_metric"."latency_ms_sum" IS '本窗口调用时延总和（毫秒），均值由查询端推导';
+
+COMMENT ON COLUMN "param_backend_metric"."window_s" IS '统计窗口长度（秒）';
+
+COMMENT ON COLUMN "param_backend_metric"."reported_by" IS '上报方标识，通常为 agent';
 
 COMMENT ON COLUMN "param_lb_rule"."id" IS '主键标识';
 
@@ -1996,6 +2200,119 @@ COMMENT ON COLUMN "callback_delivery_log"."status" IS '尝试结果：success、
 COMMENT ON COLUMN "callback_delivery_log"."error" IS '失败原因摘要，成功时为空';
 
 UPDATE alembic_version SET version_num='0015_callback_subsystem' WHERE alembic_version.version_num = '0014_comments_backfill';
+
+-- Running upgrade 0015_callback_subsystem -> 0016_agent_config_hash_len
+
+ALTER TABLE param_agent_config_version ALTER COLUMN yaml_hash TYPE VARCHAR(80);
+
+UPDATE alembic_version SET version_num='0016_agent_config_hash_len' WHERE alembic_version.version_num = '0015_callback_subsystem';
+
+-- Running upgrade 0016_agent_config_hash_len -> 0017_backend_metric
+
+CREATE TABLE param_backend_metric (
+    id SERIAL NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    kind VARCHAR(16) NOT NULL,
+    engine VARCHAR(64) DEFAULT '' NOT NULL,
+    model VARCHAR(128) DEFAULT '' NOT NULL,
+    observed_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    calls INTEGER DEFAULT '0' NOT NULL,
+    errors INTEGER DEFAULT '0' NOT NULL,
+    latency_ms_sum INTEGER DEFAULT '0' NOT NULL,
+    window_s INTEGER DEFAULT '0' NOT NULL,
+    reported_by VARCHAR(64) DEFAULT 'agent' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_backend_metric_machine_id ON param_backend_metric (machine_id);
+
+CREATE INDEX ix_param_backend_metric_observed_at ON param_backend_metric (observed_at);
+
+UPDATE alembic_version SET version_num='0017_backend_metric' WHERE alembic_version.version_num = '0016_agent_config_hash_len';
+
+-- Running upgrade 0017_backend_metric -> 0018_templates
+
+CREATE TABLE param_template (
+    id SERIAL NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    effect VARCHAR(16) DEFAULT 'runtime' NOT NULL,
+    platform VARCHAR(16) DEFAULT 'gpu' NOT NULL,
+    status VARCHAR(16) DEFAULT 'draft' NOT NULL,
+    scene VARCHAR(32) DEFAULT '' NOT NULL,
+    min_vram_gb FLOAT,
+    fields_json JSON NOT NULL,
+    description VARCHAR(512) DEFAULT '' NOT NULL,
+    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_template_name UNIQUE (name)
+);
+
+CREATE INDEX ix_param_template_effect ON param_template (effect);
+
+CREATE INDEX ix_param_template_platform ON param_template (platform);
+
+CREATE INDEX ix_param_template_status ON param_template (status);
+
+ALTER TABLE param_machine ADD COLUMN platform VARCHAR(16) DEFAULT 'gpu' NOT NULL;
+
+ALTER TABLE param_machine ADD COLUMN driver VARCHAR(64) DEFAULT '' NOT NULL;
+
+UPDATE alembic_version SET version_num='0018_templates' WHERE alembic_version.version_num = '0017_backend_metric';
+
+-- Running upgrade 0018_templates -> 0019_session_records
+
+CREATE TABLE param_session_record (
+    id SERIAL NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    title VARCHAR(200) DEFAULT '' NOT NULL,
+    note VARCHAR(500) DEFAULT '' NOT NULL,
+    pipeline_session_id VARCHAR(128) DEFAULT '' NOT NULL,
+    instance_id VARCHAR(100) DEFAULT '' NOT NULL,
+    node VARCHAR(100) DEFAULT '' NOT NULL,
+    state VARCHAR(16) DEFAULT 'done' NOT NULL,
+    turns INTEGER DEFAULT '0' NOT NULL,
+    duration_ms INTEGER DEFAULT '0' NOT NULL,
+    ttfa_ms INTEGER,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_session_record_user_id ON param_session_record (user_id);
+
+CREATE INDEX ix_param_session_record_state ON param_session_record (state);
+
+CREATE INDEX ix_param_session_record_created_at ON param_session_record (created_at);
+
+CREATE TABLE param_session_message (
+    id SERIAL NOT NULL,
+    session_id INTEGER NOT NULL,
+    ordinal INTEGER DEFAULT '0' NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    type VARCHAR(16) DEFAULT 'text' NOT NULL,
+    content TEXT NOT NULL,
+    interrupted BOOLEAN DEFAULT false NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY(session_id) REFERENCES param_session_record (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_param_session_message_session_id ON param_session_message (session_id);
+
+CREATE INDEX ix_param_session_message_ordinal ON param_session_message (ordinal);
+
+UPDATE alembic_version SET version_num='0019_session_records' WHERE alembic_version.version_num = '0018_templates';
+
+-- Running upgrade 0019_session_records -> 0020_session_message_fields
+
+ALTER TABLE param_session_message ADD COLUMN status VARCHAR(16) DEFAULT 'ok' NOT NULL;
+
+ALTER TABLE param_session_message ADD COLUMN duration_ms INTEGER DEFAULT '0' NOT NULL;
+
+UPDATE alembic_version SET version_num='0020_session_message_fields' WHERE alembic_version.version_num = '0019_session_records';
 
 COMMIT;
 

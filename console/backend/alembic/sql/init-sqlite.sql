@@ -573,3 +573,114 @@ CREATE INDEX ix_cdl_status ON callback_delivery_log (status);
 
 UPDATE alembic_version SET version_num='0015_callback_subsystem' WHERE alembic_version.version_num = '0014_comments_backfill';
 
+-- Running upgrade 0015_callback_subsystem -> 0016_agent_config_hash_len
+
+UPDATE alembic_version SET version_num='0016_agent_config_hash_len' WHERE alembic_version.version_num = '0015_callback_subsystem';
+
+-- Running upgrade 0016_agent_config_hash_len -> 0017_backend_metric
+
+CREATE TABLE param_backend_metric (
+    id INTEGER NOT NULL,
+    machine_id VARCHAR(64) NOT NULL,
+    kind VARCHAR(16) NOT NULL,
+    engine VARCHAR(64) DEFAULT '' NOT NULL,
+    model VARCHAR(128) DEFAULT '' NOT NULL,
+    observed_at DATETIME NOT NULL,
+    calls INTEGER DEFAULT '0' NOT NULL,
+    errors INTEGER DEFAULT '0' NOT NULL,
+    latency_ms_sum INTEGER DEFAULT '0' NOT NULL,
+    window_s INTEGER DEFAULT '0' NOT NULL,
+    reported_by VARCHAR(64) DEFAULT 'agent' NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_backend_metric_machine_id ON param_backend_metric (machine_id);
+
+CREATE INDEX ix_param_backend_metric_observed_at ON param_backend_metric (observed_at);
+
+UPDATE alembic_version SET version_num='0017_backend_metric' WHERE alembic_version.version_num = '0016_agent_config_hash_len';
+
+-- Running upgrade 0017_backend_metric -> 0018_templates
+
+CREATE TABLE param_template (
+    id INTEGER NOT NULL,
+    name VARCHAR(128) NOT NULL,
+    effect VARCHAR(16) DEFAULT 'runtime' NOT NULL,
+    platform VARCHAR(16) DEFAULT 'gpu' NOT NULL,
+    status VARCHAR(16) DEFAULT 'draft' NOT NULL,
+    scene VARCHAR(32) DEFAULT '' NOT NULL,
+    min_vram_gb FLOAT,
+    fields_json JSON NOT NULL,
+    description VARCHAR(512) DEFAULT '' NOT NULL,
+    created_by VARCHAR(64) DEFAULT '' NOT NULL,
+    updated_by VARCHAR(64) DEFAULT '' NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    CONSTRAINT uq_param_template_name UNIQUE (name)
+);
+
+CREATE INDEX ix_param_template_effect ON param_template (effect);
+
+CREATE INDEX ix_param_template_platform ON param_template (platform);
+
+CREATE INDEX ix_param_template_status ON param_template (status);
+
+ALTER TABLE param_machine ADD COLUMN platform VARCHAR(16) DEFAULT 'gpu' NOT NULL;
+
+ALTER TABLE param_machine ADD COLUMN driver VARCHAR(64) DEFAULT '' NOT NULL;
+
+UPDATE alembic_version SET version_num='0018_templates' WHERE alembic_version.version_num = '0017_backend_metric';
+
+-- Running upgrade 0018_templates -> 0019_session_records
+
+CREATE TABLE param_session_record (
+    id INTEGER NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    title VARCHAR(200) DEFAULT '' NOT NULL,
+    note VARCHAR(500) DEFAULT '' NOT NULL,
+    pipeline_session_id VARCHAR(128) DEFAULT '' NOT NULL,
+    instance_id VARCHAR(100) DEFAULT '' NOT NULL,
+    node VARCHAR(100) DEFAULT '' NOT NULL,
+    state VARCHAR(16) DEFAULT 'done' NOT NULL,
+    turns INTEGER DEFAULT '0' NOT NULL,
+    duration_ms INTEGER DEFAULT '0' NOT NULL,
+    ttfa_ms INTEGER,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL,
+    PRIMARY KEY (id)
+);
+
+CREATE INDEX ix_param_session_record_user_id ON param_session_record (user_id);
+
+CREATE INDEX ix_param_session_record_state ON param_session_record (state);
+
+CREATE INDEX ix_param_session_record_created_at ON param_session_record (created_at);
+
+CREATE TABLE param_session_message (
+    id INTEGER NOT NULL,
+    session_id INTEGER NOT NULL,
+    ordinal INTEGER DEFAULT '0' NOT NULL,
+    role VARCHAR(16) NOT NULL,
+    type VARCHAR(16) DEFAULT 'text' NOT NULL,
+    content TEXT NOT NULL,
+    interrupted BOOLEAN DEFAULT 0 NOT NULL,
+    created_at DATETIME NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY(session_id) REFERENCES param_session_record (id) ON DELETE CASCADE
+);
+
+CREATE INDEX ix_param_session_message_session_id ON param_session_message (session_id);
+
+CREATE INDEX ix_param_session_message_ordinal ON param_session_message (ordinal);
+
+UPDATE alembic_version SET version_num='0019_session_records' WHERE alembic_version.version_num = '0018_templates';
+
+-- Running upgrade 0019_session_records -> 0020_session_message_fields
+
+ALTER TABLE param_session_message ADD COLUMN status VARCHAR(16) DEFAULT 'ok' NOT NULL;
+
+ALTER TABLE param_session_message ADD COLUMN duration_ms INTEGER DEFAULT '0' NOT NULL;
+
+UPDATE alembic_version SET version_num='0020_session_message_fields' WHERE alembic_version.version_num = '0019_session_records';
+
