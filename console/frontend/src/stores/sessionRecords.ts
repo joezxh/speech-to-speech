@@ -123,8 +123,8 @@ export const useSessionRecordsStore = defineStore('sessionRecords', () => {
         state: f.state || undefined,
         inst: f.inst || undefined,
         range: f.range || undefined,
-        from: f.from || undefined,
-        to: f.to || undefined,
+        from_date: f.from || undefined,
+        to_date: f.to || undefined,
         page: page.value,
         pageSize: pageSize.value
       })

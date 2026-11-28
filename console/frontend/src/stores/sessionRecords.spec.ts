@@ -135,6 +135,17 @@ describe('sessionRecords store', () => {
     expect(store.instances).toEqual([{ instanceId: 'pipe-a', node: 'n1' }])
   })
 
+  it('maps date filters to backend from_date/to_date params', async () => {
+    const store = useSessionRecordsStore()
+    store.filters.from = '2026-11-01'
+    store.filters.to = '2026-11-28'
+    await store.load()
+    expect(api.listSessionRecords).toHaveBeenCalledWith(
+      expect.objectContaining({ from_date: '2026-11-01', to_date: '2026-11-28' })
+    )
+    expect(api.listSessionRecords).not.toHaveBeenCalledWith(expect.objectContaining({ from: '2026-11-01' }))
+  })
+
   it('removeMessage updates detail and row messageCount', async () => {
     const store = useSessionRecordsStore()
     await store.load()

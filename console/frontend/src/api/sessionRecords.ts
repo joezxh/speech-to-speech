@@ -53,8 +53,8 @@ export interface SessionRecordQuery {
   state?: string
   inst?: string
   range?: string
-  from?: string
-  to?: string
+  from_date?: string
+  to_date?: string
   page?: number
   pageSize?: number
 }

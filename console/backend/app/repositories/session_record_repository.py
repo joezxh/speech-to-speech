@@ -70,14 +70,14 @@ class SessionRecordRepository:
         return rows, int(total)
 
     def instances(self) -> list[dict]:
-        """实例下拉数据源：非空 (instance_id, node) 对去重排序。"""
-        rows = list(
-            self.session.scalars(select(ParamSessionRecord)).all()
-        )
+        """实例下拉数据源：非空 (instance_id, node) 对去重排序（两列投影，不拖全实体）。"""
+        rows = self.session.execute(
+            select(ParamSessionRecord.instance_id, ParamSessionRecord.node).distinct()
+        ).all()
         pairs = {
-            (row.instance_id, row.node)
-            for row in rows
-            if row.instance_id or row.node
+            (instance_id or "", node or "")
+            for instance_id, node in rows
+            if instance_id or node
         }
         return [{"instanceId": a, "node": b} for a, b in sorted(pairs)]
 
