@@ -17,6 +17,24 @@ export default {
   clearBody: 'Clear all messages of this record? The record itself is kept.',
   deleteMsgTitle: 'Delete message',
   deleteMsgBody: 'Delete this message?',
+  card: {
+    state: {
+      live: 'Live',
+      done: 'Completed',
+      failed: 'Failed',
+      unsaved: 'Unsaved',
+      partial: 'Some clips missing'
+    },
+    caller: 'Caller',
+    bot: 'Assistant',
+    asr: 'ASR',
+    reply: 'Reply',
+    voice: 'Voice clip',
+    noAudio: 'No audio',
+    noClip: 'Cannot play back',
+    stt: { ok: 'transcribed', fail: 'ASR failed' },
+    tts: { ok: 'synthesized', fail: 'TTS failed' }
+  },
   routeCol: {
     time: 'Time',
     instance: 'Instance',

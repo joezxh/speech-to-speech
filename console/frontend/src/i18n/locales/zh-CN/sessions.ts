@@ -17,6 +17,24 @@ export default {
   clearBody: '确认清空该会话的全部消息行？会话本身保留。',
   deleteMsgTitle: '删除消息',
   deleteMsgBody: '确认删除这条消息？',
+  card: {
+    state: {
+      live: '进行中',
+      done: '已完成',
+      failed: '失败',
+      unsaved: '未保存',
+      partial: '部分片段缺失'
+    },
+    caller: '用户',
+    bot: '助理',
+    asr: 'ASR',
+    reply: '回复',
+    voice: '语音片段',
+    noAudio: '无音频',
+    noClip: '不可回放',
+    stt: { ok: '已转写', fail: 'ASR 失败' },
+    tts: { ok: '已合成', fail: 'TTS 失败' }
+  },
   routeCol: {
     time: '时间',
     instance: '实例',

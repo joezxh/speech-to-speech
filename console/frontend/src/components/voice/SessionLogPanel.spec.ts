@@ -4,10 +4,11 @@ import { createApp, defineComponent, h } from 'vue'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
 
-import * as sessionRecordsApi from '@/api/sessionRecords'
 import i18n from '@/i18n'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SessionLogPanel from './SessionLogPanel.vue'
+import type { LiveCard } from './SessionCards.vue'
+import type { TranscriptEntry } from '@/features/voice/types'
 
 vi.mock('@/api/sessionRecords', () => ({
   listSessionRecords: vi.fn(),
@@ -32,7 +33,11 @@ function mountPanel(tab: 'log' | 'route' = 'log') {
   return mountPanelWithHandler(() => {}, tab)
 }
 
-function mountPanelWithHandler(onUpdateTab: (value: 'log' | 'route') => void, tab: 'log' | 'route' = 'log') {
+function mountPanelWithHandler(
+  onUpdateTab: (value: 'log' | 'route') => void,
+  tab: 'log' | 'route' = 'log',
+  extra: { live?: LiveCard | null; saveState?: 'pending' | 'saved' | 'partial' | 'unsaved' } = {}
+) {
   const root = document.createElement('div')
   document.body.appendChild(root)
   roots.push(root)
@@ -40,7 +45,13 @@ function mountPanelWithHandler(onUpdateTab: (value: 'log' | 'route') => void, ta
   const app = createApp(
     defineComponent({
       setup() {
-        return () => h(SessionLogPanel, { tab, 'onUpdate:tab': onUpdateTab })
+        return () =>
+          h(SessionLogPanel, {
+            tab,
+            live: extra.live ?? null,
+            saveState: extra.saveState ?? 'saved',
+            'onUpdate:tab': onUpdateTab
+          })
       }
     })
   )
@@ -69,5 +80,22 @@ describe('SessionLogPanel 右栏常驻卡', () => {
     tabs[1].click()
     await Promise.resolve()
     expect(seen).toEqual(['route'])
+  })
+
+  it('传入 live 卡：卡片流置顶渲染 live 卡（进行中）', async () => {
+    const entry: TranscriptEntry = { key: 'u:1', role: 'user', text: '你好', partial: false }
+    const live: LiveCard = {
+      entries: [entry],
+      pipelineSessionId: 'psid-live',
+      instanceId: 'inst-1',
+      node: 'node-a',
+      startedAtMs: Date.now()
+    }
+    const root = mountPanelWithHandler(() => {}, 'log', { live, saveState: 'pending' })
+    await Promise.resolve()
+    const liveCard = root.querySelector('.scard[data-kind="live"][data-state="live"]')
+    expect(liveCard).not.toBeNull()
+    expect(liveCard?.textContent).toContain('进行中')
+    expect(liveCard?.textContent).toContain('你好')
   })
 })

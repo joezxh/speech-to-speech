@@ -153,6 +153,22 @@ export const useVoiceStore = defineStore('voice', () => {
   }
 
   /**
+   * 助手回复的整段音频（client 的 `assistant-audio` 事件）：objectURL 归属键带
+   * `a:` 前缀，与用户侧的裸 itemId 不相撞；resetTranscript 统一回收。
+   */
+  function applyAssistantAudio(recording: { responseId: string; blob: Blob; durationMs: number }): void {
+    if (!recording.responseId) return
+    const key = `a:${recording.responseId}`
+    const url = URL.createObjectURL(recording.blob)
+    const previous = audioUrls.get(key)
+    if (previous) URL.revokeObjectURL(previous)
+    audioUrls.set(key, url)
+    if (!reducer.assistantAudio({ responseId: recording.responseId, url, durationMs: recording.durationMs })) return
+    entries.value = [...reducer.entries]
+    markUnread()
+  }
+
+  /**
    * 气泡层订阅每一次转写更新（demo 客户端的 `transcript` 事件）。传 `null` 退订：
    * 页面卸载后 reducer 不该再握着一个已经销毁的组件回调。
    */
@@ -260,6 +276,7 @@ export const useVoiceStore = defineStore('voice', () => {
     applyToolCall,
     applyToolResult,
     applyUserAudio,
+    applyAssistantAudio,
     subscribeTranscript,
     markInterrupted,
     attachLatency,

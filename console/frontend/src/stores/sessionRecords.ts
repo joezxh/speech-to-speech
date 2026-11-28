@@ -49,6 +49,17 @@ export function usableEntriesOf(entries: readonly TranscriptEntry[]): Transcript
   )
 }
 
+/**
+ * 保存后 live 卡的处置（纯函数）：
+ * - 保存失败 → 保留 live 卡与内存转写，标注「未保存」；
+ * - 成功但 pipelineSessionId 为空 → 没有合并键，直接移除 live 卡；
+ * - 其余 → 与后端返回的记录合并去重（按 pipelineSessionId）。
+ */
+export function decidePostSave(pipelineSessionId: string, ok: boolean): 'merge' | 'drop' | 'keep-unsaved' {
+  if (!ok) return 'keep-unsaved'
+  return pipelineSessionId === '' ? 'drop' : 'merge'
+}
+
 export function toSavePayload(
   entries: readonly TranscriptEntry[],
   opts: { title?: string; pipelineSessionId?: string; instanceId?: string; node?: string; state?: 'done' | 'failed'; durationMs?: number } = {}

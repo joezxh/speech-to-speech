@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { useI18n } from 'vue-i18n'
 
 import { endSessionBeacon, getDemoConfig, getMe, heartbeat, leaveQueueBeacon, search } from '@/api/demo'
 import { acquireMic, releaseMic } from '@/features/voice/audio/capture'
@@ -20,12 +19,14 @@ import { openCamera, snapshot } from '@/features/voice/tools/camera'
 import { useBubbles } from '@/features/voice/useBubbles'
 import { buildDirectWsUrl, S2sClient } from '@/features/voice/transport/s2s-client'
 import type { ToolCallRecord, ToolResultRecord } from '@/features/voice/transport/events'
-import type { SentAudio } from '@/features/voice/audio/sent-audio'
-import type { ToolCall, ToolDef, TurnLatency, VoiceSettings } from '@/features/voice/types'
+import { USER_AUDIO_SAMPLE_RATE, type SentAudio } from '@/features/voice/audio/sent-audio'
+import type { ToolCall, ToolDef, TranscriptEntry, TurnLatency, VoiceSettings } from '@/features/voice/types'
 import SessionLogPanel from '@/components/voice/SessionLogPanel.vue'
 import StageTranscript from '@/components/voice/StageTranscript.vue'
+import type { LiveCard } from '@/components/voice/SessionCards.vue'
+import { uploadSessionClip } from '@/api/sessionRecords'
 import { useShellStore } from '@/stores/shell'
-import { toSavePayload, useSessionRecordsStore } from '@/stores/sessionRecords'
+import { decidePostSave, toSavePayload, usableEntriesOf, useSessionRecordsStore } from '@/stores/sessionRecords'
 import { useVoiceStore } from '@/stores/voice'
 import type { VoiceStatus } from '@/stores/voice'
 import { useToast } from '@/composables/useToast'
@@ -36,7 +37,6 @@ const records = useSessionRecordsStore()
 const toast = useToast()
 const route = useRoute()
 const router = useRouter()
-const { t } = useI18n()
 
 /** 会话记录右侧面板：tab 状态写进 URL（/?panel=log|route），详情深链 /?session=<id>。 */
 const panelTab = ref<'log' | 'route'>('log')
@@ -312,6 +312,10 @@ async function connect(): Promise<void> {
     userTurnStopped((event as CustomEvent<{ itemId?: string }>).detail.itemId)
   )
   client.addEventListener('user-audio', (event: Event) => store.applyUserAudio((event as CustomEvent).detail as SentAudio))
+  // 助手侧整段回复音频（best-effort capture）：挂到 a:<responseId> 行，供 live 卡片段条播放。
+  client.addEventListener('assistant-audio', (event: Event) =>
+    store.applyAssistantAudio((event as CustomEvent).detail as { responseId: string; blob: Blob; durationMs: number })
+  )
   client.addEventListener('queue', (event: Event) => {
     // 排队位置与退队票据只能从这条事件里来（`acquireGrant` 的轮询回调）。
     // `pollIntervalS` 是 client 内部自己用的节奏，页面不读，填 0 只为满足票据形状。
@@ -434,13 +438,72 @@ async function teardown(): Promise<void> {
 /** 本次通话的起始墙钟（保存会话记录时算 durationMs 用）。 */
 let connectedAtMs = 0
 
+/** 挂断后的待处置 live 卡（先入列表，保存成功后与后端记录合并/移除）。 */
+const pendingLive = ref<LiveCard | null>(null)
+const saveState = ref<'pending' | 'saved' | 'partial' | 'unsaved'>('saved')
+
+/** 通话中的 live 卡（右栏卡片流置顶）；挂断后切换为 pendingLive 快照。 */
+const liveCard = computed<LiveCard | null>(() => {
+  if (!store.live || store.entries.length === 0) return null
+  return {
+    entries: store.entries,
+    pipelineSessionId: store.grant?.sessionId ?? '',
+    instanceId: '',
+    node: store.config.pipeline.container,
+    startedAtMs: connectedAtMs || undefined
+  }
+})
+const panelLive = computed<LiveCard | null>(() => (store.live ? liveCard.value : pendingLive.value))
+
 /**
- * 通话结束自动保存会话记录（0019）：一次通话 = 一条记录 + 逐行消息。
- * 失败静默降级：不清空内存转写，只 toast 提示，不阻塞挂断清理。
+ * 双端音频片段逐条上传（并发 ≤2）：blob 由内存 objectURL 取回；单条失败静默计数，
+ * 不影响记录本身。clip.messageOrdinal = usableEntriesOf 下标（与消息行同键）。
+ */
+async function uploadClips(recordId: number, entries: readonly TranscriptEntry[]): Promise<number> {
+  const tasks = usableEntriesOf(entries)
+    .map((entry, ordinal) => ({ entry, ordinal }))
+    .filter(({ entry }) => entry.role !== 'tool' && entry.audio != null)
+  let failed = 0
+  let cursor = 0
+  const worker = async (): Promise<void> => {
+    while (cursor < tasks.length) {
+      const task = tasks[cursor]
+      cursor += 1
+      const audio = task.entry.audio!
+      try {
+        const blob = await fetch(audio.url).then((response) => response.blob())
+        await uploadSessionClip(recordId, {
+          role: task.entry.role === 'assistant' ? 'assistant' : 'user',
+          itemRef: task.entry.key.slice(2),
+          messageOrdinal: task.ordinal,
+          sampleRate: USER_AUDIO_SAMPLE_RATE,
+          durationMs: Math.round(audio.durationMs),
+          blob
+        })
+      } catch {
+        failed += 1
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(2, tasks.length) }, worker))
+  return failed
+}
+
+/**
+ * 通话结束自动保存会话记录（0019）：一次通话 = 一条记录 + 逐行消息 + 双端音频片段。
+ * 挂断后 live 卡先入列表；保存成功按 decidePostSave 合并/移除；失败保留卡并标「未保存」。
  */
 async function saveSessionFromCall(): Promise<void> {
   const entries = store.entries
   if (!store.grant || entries.length === 0) return
+  pendingLive.value = {
+    entries: [...entries],
+    pipelineSessionId: store.grant.sessionId,
+    instanceId: '',
+    node: store.config.pipeline.container,
+    startedAtMs: connectedAtMs || undefined
+  }
+  saveState.value = 'pending'
   const payload = toSavePayload(entries, {
     pipelineSessionId: store.grant.sessionId,
     instanceId: '',
@@ -448,13 +511,28 @@ async function saveSessionFromCall(): Promise<void> {
     state: store.state === 'error' ? 'failed' : 'done',
     durationMs: connectedAtMs ? Date.now() - connectedAtMs : 0
   })
-  if (payload.messages.length === 0) return
+  if (payload.messages.length === 0) {
+    pendingLive.value = null
+    return
+  }
   try {
-    await records.saveFromCall(payload)
-    toast.push(`Session saved with ${payload.messages.length} messages.`)
-    // 保存成功才清内存转写；失败保留，用户可重试（重启对话页也不丢）。
+    const saved = await records.saveFromCall(payload)
+    const failedClips = await uploadClips(saved.id, entries)
+    saveState.value = failedClips > 0 ? 'partial' : 'saved'
+    const decision = decidePostSave(payload.pipelineSessionId ?? '', true)
+    if (decision === 'keep-unsaved') return
+    // merge/drop 都收掉待处置卡；merge 的合并本体是后端列表刷新后的新行。
+    pendingLive.value = null
     store.resetTranscript()
+    toast.push(
+      failedClips > 0
+        ? `Session saved; ${failedClips} voice clip(s) failed to upload.`
+        : `Session saved with ${payload.messages.length} messages.`
+    )
   } catch (caught) {
+    saveState.value = 'unsaved'
+    // keep-unsaved：卡与内存转写都保留，用户可重试（重启对话页也不丢）。
+    decidePostSave(payload.pipelineSessionId ?? '', false)
     const msg = caught instanceof Error ? caught.message : String(caught)
     toast.push(`Failed to save session record: ${msg}`, 'warn')
   }
@@ -628,7 +706,7 @@ onBeforeUnmount(() => {
         -->
       </section>
 
-      <SessionLogPanel :tab="panelTab" @update:tab="openPanel" />
+      <SessionLogPanel :tab="panelTab" :live="panelLive" :save-state="saveState" @update:tab="openPanel" />
     </div>
 
 

@@ -27,25 +27,9 @@
         <button type="button" class="btn sm slp__history" @click="router.push('/history')">
           {{ t('sessions.openHistory') }}
         </button>
-        <button
-          v-for="row in store.rows"
-          :key="row.id"
-          type="button"
-          class="slp__card"
-          @click="store.openDetail(row.id)"
-        >
-          <span class="slp__dot" :data-state="row.state"></span>
-          <span class="slp__cardmain">
-            <strong>{{ row.title }}</strong>
-            <small>{{ row.createdAt }} · {{ row.instanceId || row.node || '—' }}</small>
-            <span class="slp__badges">
-              <PBadge kind="accent" :text="t('sessions.turnsBadge', { n: row.turns })" />
-              <PBadge kind="ro" :text="fmtDuration(row.durationMs)" />
-              <PBadge v-if="row.ttfaMs != null" kind="hot" :text="`TTFA ${row.ttfaMs}ms`" />
-            </span>
-          </span>
-        </button>
-        <p v-if="!store.loading && !store.rows.length" class="slp__empty">{{ t('sessions.noRecords') }}</p>
+        <!-- 卡片流（原型 .sess）：live/待保存卡置顶，其后是后端记录列表卡。 -->
+        <SessionCards :cards="cards" @open="openRecord" />
+        <p v-if="!store.loading && !cards.length" class="slp__empty">{{ t('sessions.noRecords') }}</p>
       </template>
     </div>
 
@@ -80,15 +64,24 @@
 </template>
 
 <script setup lang="ts">
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
-import PBadge from '@/components/proto/PBadge.vue'
+import SessionCards from '@/components/voice/SessionCards.vue'
+import type { LiveCard, SessionCardLine, SessionCardState, SessionCardVM } from '@/components/voice/SessionCards.vue'
 import SessionRecordDetail from '@/components/voice/SessionRecordDetail.vue'
-import { useSessionRecordsStore } from '@/stores/sessionRecords'
+import { usableEntriesOf, useSessionRecordsStore } from '@/stores/sessionRecords'
+import type { SessionRecordRow } from '@/api/sessionRecords'
+import type { TranscriptEntry } from '@/features/voice/types'
 
-const props = defineProps<{ tab: 'log' | 'route' }>()
+const props = defineProps<{
+  tab: 'log' | 'route'
+  /** 通话中的 live 卡 / 挂断后的待处置卡；null = 没有进行中的卡。 */
+  live: LiveCard | null
+  /** 保存流程状态：pending=保存中，saved/partial/unsaved=终态（决定卡的处置）。 */
+  saveState: 'pending' | 'saved' | 'partial' | 'unsaved'
+}>()
 const emit = defineEmits<{ (e: 'update:tab', value: 'log' | 'route'): void }>()
 
 const { t } = useI18n()
@@ -105,11 +98,97 @@ watch(
   { immediate: true }
 )
 
-function fmtDuration(ms: number): string {
-  if (ms <= 0) return '0s'
-  const totalSec = Math.round(ms / 1000)
-  if (totalSec < 60) return `${totalSec}s`
-  return `${Math.floor(totalSec / 60)}m${totalSec % 60}s`
+/** saveState → 卡片徽标态：保存中沿用 live 外观，saved 卡会被合并移除。 */
+function liveCardState(): SessionCardState {
+  if (props.saveState === 'unsaved') return 'unsaved'
+  if (props.saveState === 'partial') return 'partial'
+  if (props.saveState === 'saved') return 'done'
+  return 'live'
+}
+
+/** 逐行转写 → 卡片行（ordinal = usableEntriesOf 下标，与 clip.messageOrdinal 同键；tool 行不渲染）。 */
+function liveLinesOf(entries: readonly TranscriptEntry[]): SessionCardLine[] {
+  return usableEntriesOf(entries)
+    .map((entry, ordinal) => ({ entry, ordinal }))
+    .filter(({ entry }) => entry.role !== 'tool')
+    .map(({ entry, ordinal }) => ({
+      ordinal,
+      role: entry.role === 'assistant' ? ('assistant' as const) : ('user' as const),
+      asr: entry.role === 'user' ? entry.text : '',
+      text: entry.role === 'assistant' ? entry.text : '',
+      stt:
+        entry.role === 'user'
+          ? entry.text.trim() !== ''
+            ? ('ok' as const)
+            : entry.audio
+              ? ('fail' as const)
+              : ('none' as const)
+          : ('none' as const),
+      tts:
+        entry.role === 'assistant'
+          ? entry.text.trim() !== '' && !entry.interrupted
+            ? ('ok' as const)
+            : entry.latency
+              ? ('fail' as const)
+              : ('none' as const)
+          : ('none' as const),
+      durMs: entry.audio?.durationMs ?? 0,
+      audioUrl: entry.audio?.url ?? null
+    }))
+}
+
+function fmtClock(at: number): string {
+  return new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+}
+
+const cards = computed<SessionCardVM[]>(() => {
+  const list: SessionCardVM[] = []
+  if (props.live) {
+    const firstAssistant = usableEntriesOf(props.live.entries).find(
+      (entry) => entry.role === 'assistant' && entry.latency?.tts_ttfa_s != null
+    )
+    list.push({
+      key: `live:${props.live.pipelineSessionId || 'adhoc'}`,
+      kind: 'live',
+      state: liveCardState(),
+      when: fmtClock(props.live.startedAtMs ?? Date.now()),
+      inst: props.live.instanceId,
+      node: props.live.node,
+      lines: liveLinesOf(props.live.entries),
+      id: props.live.pipelineSessionId || '—',
+      turns: props.live.entries.filter((entry) => entry.role === 'assistant').length,
+      durMs: props.live.startedAtMs ? Math.max(0, Date.now() - props.live.startedAtMs) : 0,
+      ttfaMs:
+        firstAssistant?.latency?.tts_ttfa_s != null
+          ? Math.round(firstAssistant.latency.tts_ttfa_s * 1000)
+          : null
+    })
+  }
+  for (const row of store.rows) list.push(savedCardVm(row))
+  return list
+})
+
+/** 后端列表行卡：无逐行消息（不逐行拉详情），用摘录展示；点开详情回放片段。 */
+function savedCardVm(row: SessionRecordRow): SessionCardVM {
+  return {
+    key: `row:${row.id}`,
+    kind: 'saved',
+    state: row.state,
+    when: row.createdAt,
+    inst: row.instanceId,
+    node: row.node,
+    lines: [],
+    excerpt: row.excerpt,
+    id: row.pipelineSessionId || String(row.id),
+    turns: row.turns,
+    durMs: row.durationMs,
+    ttfaMs: row.ttfaMs,
+    recordId: row.id
+  }
+}
+
+function openRecord(recordId: number): void {
+  void store.openDetail(recordId)
 }
 </script>
 
@@ -161,39 +240,6 @@ function fmtDuration(ms: number): string {
   }
   &__history {
     align-self: flex-start;
-  }
-  &__card {
-    display: flex;
-    gap: 10px;
-    align-items: flex-start;
-    text-align: left;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: transparent;
-    padding: 10px 12px;
-    cursor: pointer;
-    color: inherit;
-    small {
-      display: block;
-      color: var(--muted);
-      margin: 2px 0 6px;
-    }
-  }
-  &__dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-top: 6px;
-    flex-shrink: 0;
-    background: var(--ok-text);
-    &[data-state='failed'] {
-      background: var(--danger-text);
-    }
-  }
-  &__badges {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
   }
   &__routetoolbar {
     display: flex;

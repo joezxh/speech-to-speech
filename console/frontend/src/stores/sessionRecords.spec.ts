@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 
 import * as sessionRecordsApi from '@/api/sessionRecords'
-import { useSessionRecordsStore, toSavePayload, usableEntriesOf } from '@/stores/sessionRecords'
+import { decidePostSave, useSessionRecordsStore, toSavePayload, usableEntriesOf } from '@/stores/sessionRecords'
 import type { SessionRecordRow } from '@/api/sessionRecords'
 import type { TranscriptEntry } from '@/features/voice/types'
 
@@ -114,6 +114,21 @@ describe('toSavePayload', () => {
     usable.forEach((item, index) => {
       expect(item.role).toBe(payload.messages[index].role)
     })
+  })
+})
+
+describe('decidePostSave（保存后 live 卡处置）', () => {
+  it('保存成功且 pipelineSessionId 非空 → merge（与后端记录合并去重）', () => {
+    expect(decidePostSave('psid-1', true)).toBe('merge')
+  })
+
+  it('保存成功但 pipelineSessionId 为空 → drop（直接移除 live 卡，不做合并）', () => {
+    expect(decidePostSave('', true)).toBe('drop')
+  })
+
+  it('保存失败 → keep-unsaved（保留卡与内存转写，标注未保存）', () => {
+    expect(decidePostSave('psid-1', false)).toBe('keep-unsaved')
+    expect(decidePostSave('', false)).toBe('keep-unsaved')
   })
 })
 

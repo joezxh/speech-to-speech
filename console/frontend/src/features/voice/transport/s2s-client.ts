@@ -1,4 +1,4 @@
-import { SentAudioRecorder } from '../audio/sent-audio'
+import { pcm16ToWavBlob, SentAudioRecorder } from '../audio/sent-audio'
 import type { QueueTicket, SessionGrant, ToolCall, ToolDef, ToolResult } from '../types'
 import { appendRealtimeTicket } from '@/composables/useRealtimeTicket'
 import { readTurnLatency } from './turn-latency'
@@ -166,6 +166,17 @@ export class S2sClient extends EventTarget {
    * 回放的就是模型听到的，而不是第二路原始麦克风。
    */
   private readonly userAudioRecorder = new SentAudioRecorder()
+
+  /**
+   * 助手侧 best-effort capture：按 responseId 累积下行的 PCM16 字节，response.done
+   * 时打包成 WAV 发 `assistant-audio`。字节必须复制——playback 队列会把同一个
+   * ArrayBuffer transfer 走。被打断的回复保留已收到的部分（cancelled 也发）。
+   */
+  private assistantChunks: Uint8Array[] = []
+
+  private assistantSamples = 0
+
+  private assistantResponseId = ''
 
   // `setTimeout` 的返回值随宿主类型变化（DOM 是 number，node 是 Timeout），交给推断。
   private joinWaiter: { resolve: () => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null
@@ -397,6 +408,7 @@ export class S2sClient extends EventTarget {
       }
       case 'response.created':
         this.resetPlaybackBuffer(event.response?.id ?? '')
+        this.resetAssistantCapture(event.response?.id ?? '')
         if (this.status === 'connected' || this.status === 'user-speaking') this.setStatus('processing')
         break
       case 'response.output_audio.delta':
@@ -434,6 +446,9 @@ export class S2sClient extends EventTarget {
   private onAudio(event: any): void {
     if (this.options.transport !== 'websocket' || !this.playbackNode || this.closed) return
     if (!this.playbackResponseId || event.responseId !== this.playbackResponseId || !event.data?.byteLength) return
+    // capture 在 playback 之前：releasePlayback 会 transfer 走 event.data 的 buffer。
+    this.assistantChunks.push(new Uint8Array(event.data.slice(0)))
+    this.assistantSamples += event.data.byteLength / 2
     const view = new DataView(event.data)
     const samples = new Float32Array(event.data.byteLength / 2)
     for (let i = 0; i < samples.length; i += 1) {
@@ -445,6 +460,31 @@ export class S2sClient extends EventTarget {
     this.pending.push({ samples, key: this.playbackAudioKey })
     this.pendingSamples += samples.length
     if (this.playbackStarted || this.pendingSamples >= this.playbackThreshold) this.releasePlayback()
+  }
+
+  private resetAssistantCapture(responseId: string): void {
+    this.assistantResponseId = responseId
+    this.assistantChunks = []
+    this.assistantSamples = 0
+  }
+
+  /** 本轮收到的下行音频打包成 WAV（无音频则不发事件）；随后清空累积器。 */
+  private emitAssistantAudio(): void {
+    const total = this.assistantSamples
+    const responseId = this.assistantResponseId
+    this.resetAssistantCapture('')
+    if (!responseId || total <= 0) return
+    const pcm = new Int16Array(total)
+    let offset = 0
+    for (const chunk of this.assistantChunks) {
+      pcm.set(new Int16Array(chunk.buffer, chunk.byteOffset, chunk.byteLength / 2), offset)
+      offset += chunk.byteLength / 2
+    }
+    this.emit('assistant-audio', {
+      responseId,
+      blob: pcm16ToWavBlob(pcm, AUDIO_SAMPLE_RATE),
+      durationMs: Math.round((total / AUDIO_SAMPLE_RATE) * 1000)
+    })
   }
 
   private get playbackThreshold(): number {
@@ -473,6 +513,8 @@ export class S2sClient extends EventTarget {
   private finishPlayback(responseId: string, status: string): void {
     if (!responseId || responseId !== this.playbackResponseId) return
     if (status === 'completed' || status === 'incomplete') this.releasePlayback()
+    // cancelled 也发：被打断的回复保留已收到的部分音频（best-effort capture）。
+    this.emitAssistantAudio()
     this.resetPlaybackBuffer()
   }
 

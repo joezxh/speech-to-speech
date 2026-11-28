@@ -45,6 +45,13 @@ export interface UserAudioRecord {
   truncated: boolean
 }
 
+/** 助手侧整段回复音频（client 按 responseId 累积 PCM 后打包），挂到 `a:<responseId>` 行。 */
+export interface AssistantAudioRecord {
+  responseId: string
+  url: string
+  durationMs: number
+}
+
 function text(value: unknown): string {
   return typeof value === 'string' ? value : ''
 }
@@ -131,6 +138,25 @@ export class TranscriptReducer {
     if (at === undefined) {
       this.index.set(key, this.entries.length)
       this.entries.push({ key, role: 'user', text: '', partial: false, audio })
+      return true
+    }
+    this.entries[at] = { ...this.entries[at], audio }
+    return true
+  }
+
+  /**
+   * 助手回复的完整音频挂到 `a:<responseId>` 那一行（best-effort capture，与
+   * `userAudio` 同一套替换语义）。行还不存在就先建一行空文本的助手条目：
+   * 纯音频回复（outputModalities=audio、无转写）也算这一轮存在过。
+   */
+  assistantAudio(recording: AssistantAudioRecord): boolean {
+    if (!recording.responseId) return false
+    const key = `a:${recording.responseId}`
+    const audio: TranscriptAudio = { url: recording.url, durationMs: recording.durationMs, truncated: false }
+    const at = this.index.get(key)
+    if (at === undefined) {
+      this.index.set(key, this.entries.length)
+      this.entries.push({ key, role: 'assistant', text: '', partial: false, audio })
       return true
     }
     this.entries[at] = { ...this.entries[at], audio }
